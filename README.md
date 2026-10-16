@@ -1,106 +1,103 @@
-# Q弹汤圆 · Phase 1
+# Q弹汤圆 · Phase 2
 
-本地离线桌宠与免费养成项目，使用 Python 3.10+、PySide6 6.8.3。当前已完成桌宠物理、四张元宝汤圆表情适配与固定位置记忆。
+本地离线桌宠与免费养成项目，Python 3.10+、PySide6 6.8.3。已完成桌宠物理、四张用户图片适配、固定位置记忆，以及饥饿 / 好感 / 糯米币 / 气泡 / 快捷互动。
 
-[GitHub 私有仓库](https://github.com/Nozomi-love/q-tangyuan-desktop) · [项目规范](docs/项目规范.md) · [开发日志](docs/开发日志.md) · [素材记录](docs/素材记录.md) · [目录说明](docs/目录说明.md)
+[GitHub 私有仓库](https://github.com/Nozomi-love/q-tangyuan-desktop) · [项目规范](docs/项目规范.md) · [开发日志](docs/开发日志.md) · [目录说明](docs/目录说明.md) · [Phase 2 验收指南](docs/Phase2验收.md) · [素材记录](docs/素材记录.md)
 
 ![四种表情的实际渲染预览](docs/images/phase1-artwork.png)
 
 ## 运行
 
-本机已在项目内的 .venv 安装依赖，PowerShell 执行：
+先从旧版桌宠的托盘菜单退出，再在 PowerShell 中运行：
 
     Set-Location -LiteralPath 'D:\Codex\Q弹汤圆'
     .\.venv\Scripts\python.exe main.py
 
-已激活项目虚拟环境时，也可以执行 python main.py。新电脑首次安装：
+已激活虚拟环境时可以执行 python main.py。新电脑首次安装：
 
     python -m venv .venv
     .\.venv\Scripts\python.exe -m pip install -r requirements.txt
     .\.venv\Scripts\python.exe main.py
 
-资源相对于 main.py 定位。修改程序代码后请重启旧桌宠进程；只更换图片或 expressions.json 时，可使用“重新加载表情 PNG”。
+资源相对于 main.py 定位。更新代码后重启旧进程；只更换默认图片或 expressions.json 时，可从“调试与外观”重新加载表情 PNG。
 
-## 固定位置
+独立验收，不影响正式存档：
 
-1. 右键桌宠或托盘，勾选“固定当前位置（可拖动调整）”。
-2. 左键拖到想要的位置，松手后留在那里。
-3. 固定时仍会呼吸、切换表情和果冻回弹，点击不再跳离固定锚点。
-4. 取消勾选后恢复重力与抛投。
-5. 固定开关和位置自动保存，下次启动会恢复。位置按所在显示器工作区比例记录，适配分辨率变化；显示器不存在时回退主屏并限制在可见区域。
-6. “重置回主屏幕右下角”保留固定开关，将固定位置一起移到主屏右下角。
+    .\.venv\Scripts\python.exe main.py --demo
 
-位置保存在 data/save_data.json，不上传 GitHub。写入时保留其他数据字段，校验失败或写入失败会在终端提示并保留原文件。测试脚本使用独立测试存档；启动冒烟模式不读写用户位置设置。
+每次 --demo 都新建一个 tests/artifacts/demo-时间/ 存档，并在终端输出位置；演示数据不上传。需要缩短挂机等待时可加 --dev-mode，或在菜单勾选开发测试加速。
 
-## 默认表情
+## 养成与快捷互动
 
-原始图片保存在 assets/skins/default/，由同目录 expressions.json 映射：
+右键汤圆或托盘即可查看实时等级 / 经验、饥饿与余额，并购买投喂白砂糖、摸头、固定位置、复位和退出。
 
-| 状态 | 当前原始图片 | 触发条件 |
-| --- | --- | --- |
-| idle | ChatGPT 图像 2026年10月16日 14_01_36.png | 默认待机 |
-| happy | ChatGPT 图像 2026年10月16日 14_01_42.png | 点击后 0.8 秒 |
-| dizzy | ChatGPT 图像 2026年10月16日 14_01_47.png | 左键拖拽期间 |
-| flat | ChatGPT 图像 2026年10月16日 14_01_53.png | 测试饿扁开启 |
-
-当前四张原图均为 1254×1254、不带透明通道的白底 RGB PNG：
-- 加载时在内存中去除与画布边缘连通的近白色背景，保留轮廓内的白色身体和碗内高光。
-- 以最大连通主体对齐底部和显示比例；眩晕图的星星仍显示，但不会让主体缩小。
-- 按主体比例等比缩放，保留元宝碗造型；饿扁由程序统一压至约 40% 高度。
-- 原始图片没有被重命名、覆盖或重新编码；来源与 SHA-256 见素材记录。
-- 托盘图标使用同一待机外观，热加载时同步更新。
-
-仍兼容原有 idle.png、happy.png、dizzy.png、flat.png 文件名；同名标准文件存在时优先使用。没有对应图片时先回退 idle，最后使用无五官圆形兜底。损坏、全透明、超限图片会被跳过并提示。输入最长边上限 4096，渲染缓存最长边 768。
-
-完整用户皮肤上传、GIF 与 manifest 动作包按 Phase 4 推进。
-
-## 交互验收
-
-1. 启动后观察透明、置顶、无边框窗口与托盘；汤圆应在主屏幕工作区右下角。
-2. 静置：高度约 ±3.3% 呼吸，宽度反向补偿，碗底贴住工作区底边。
-3. 单击：瞬间压扁变宽、轻跳和回弹；开心表情 0.8 秒后恢复。
-4. 按住轻移不足 5 逻辑像素后松手仍算点击，超过阈值后才进入拖拽。
-5. 拖到高处左右晃动：眩晕表情与星星可见，倾角平滑且不超过 ±18°。
-6. 横向甩出后松手：保留部分惯性，重力下落，边缘反弹；高处落下应有更强落地压缩。
-7. 拖动后停住约 0.2 秒再松手：不应沿用很早以前的甩动速度。
-8. 托盘或右键切换饿扁，检查难受表情、40% 高度与贴地；再次切换后恢复。
-9. 如有多屏，拖到另一屏再松手，检查该屏工作区；可修改缩放或任务栏占用区再检查落点。
-10. 测试托盘复位、PNG 热加载与退出；退出后桌宠和托盘同时消失。
-
-Phase 1 双击表现为连续戳一戳；后续主面板接入双击打开，空翻使用独立菜单。
-
-## 模块
-
-| 文件 | 职责 |
+| 规则 | 当前数值 |
 | --- | --- |
-| main.py | 应用控制器、托盘、共享菜单、异常退出与启动诊断 |
-| pet_engine.py | 状态、形变、弹簧、重力/碰撞、图片预处理和渲染 |
-| pet_window.py | 透明 Tool 窗口、60 Hz 调度、Qt 坐标映射、多屏、固定位置与鼠标事件 |
-| save_manager.py | 固定开关/位置持久化、原子写入、保留其他存档字段 |
-| requirements.txt | 固定 Qt 依赖 |
-| styles/theme.qss | 柔和菜单样式 |
-| assets/skins/default/expressions.json | 默认表情文件名与加载方式 |
-| tests/test_phase1.py | 51 项物理、渲染与交互回归测试 |
-| tests/verify_native.py | Windows 原生属性、托盘动作与退出验证 |
-| tests/verify_artwork.py | 四表情、去白底、白色身体、原图散列和预览验证 |
-| tests/verify_pinning.py | 两个独立原生进程验证关闭/重启后的固定位置 |
+| 初始数值 | 100 币、饥饿 80、Lv.1 / 0 EXP |
+| 饥饿衰减 | 在线每满 180 秒 -1，最低 0 |
+| 零惩罚饿扁 | 真实饥饿 0 时 flat 外观与 40% 高度；不死亡、不扣好感；间隔 45 秒提醒 |
+| 戳一戳 | 饥饿 ≥50 时 +2 EXP，否则 +1 EXP；拖拽不计点击 |
+| 每日掉币 | 当地自然日的前 20 次点击，各有 35% 概率 +2 币；同时追踪判定次数和掉落次数 |
+| 挂机拾币 | 每 90 秒出现一个 10～20 币礼包；点气泡或汤圆领取，另加 5 EXP |
+| 礼包超时 | 30 秒后自动入账；未领取金额与剩余时间可跨重启恢复，不能重复领取 |
+| 升级 | 当前等级 ×50 EXP 升级，保留余量，每级 +30 币；上限 Lv.30，满级不继续累加经验 |
+| 白砂糖 | -10 币，饥饿 +25（最多 100），+10 EXP；成功喂食计入累计投喂 |
+| 摸摸头 | +3 EXP、开心反馈、10 秒冷却 |
 
-后续核心模块为 models.py、dashboard.py。运行存档、虚拟环境、测试产物和备份不提交到 Git。
+经验只增不减。挂机统计为累计在线秒数；关闭、休眠或长时间暂停不补算收入与饥饿。正常运行每秒推进模型，养成时钟与动画帧率独立。
 
-## 验证
+气泡是独立无焦点浮窗，支持圆角、淡入淡出、礼包微光与浮动。跟随当前表情的实际外框，在当前屏幕工作区内限制位置；靠近屏幕顶部时移到下方。升级消息优先显示，结束后仍可继续显示待领礼包。
 
-    .\.venv\Scripts\python.exe -B tests\test_phase1.py
-    .\.venv\Scripts\python.exe -B tests\verify_artwork.py
-    .\.venv\Scripts\python.exe -B tests\verify_native.py
-    .\.venv\Scripts\python.exe -B tests\verify_pinning.py
-    .\.venv\Scripts\python.exe -B main.py --smoke-test
+升级会开心连跳三次。固定模式保留锚点，用连续 Q 弹反馈庆贺；真实饿扁时保留压扁状态，喂食后恢复。
 
-行为测试可设置 QT_QPA_PLATFORM=offscreen。原生验证适用于 Windows，自动打开本程序窗口并退出。测试产物保留于 tests/artifacts/。
+## 固定位置与存档
 
-实际验证环境：Windows、Python 3.12.6、Qt 6.8.3、单显示器、150% 缩放。34 项行为测试、实际素材验证及原生托盘验证通过。多块物理显示器、其他操作系统和 Python 3.10 尚未实测；负坐标工作区与多种更新频率已通过模拟验证。
+勾选“固定当前位置（可拖动调整）”，拖到目标位置松手即可；取消后恢复重力。点击、呼吸和表情仍可使用。复位保留固定开关，移到主屏右下角。
 
-目标更新频率 60 Hz，按实际时间推进；物理子步最多 1/240 秒，长停顿最多推进 0.1 秒。实际显示流畅度受系统负载与桌面合成影响。地面遵循系统 availableGeometry；任务栏自动隐藏时按系统报告的工作区处理。
+存档位于 data/save_data.json，统一包含养成数据、每日与累计统计、计时余量、未领礼包，以及 window 显示器 / 相对位置 / 固定开关。启动自动读取，互动后短暂合并保存，在线每 15 秒自动保存，安全退出时再保存。
 
-## 持续开发记录
+Phase 1 的 schema_version=1 存档在首次正常启动时平滑升级到版本 2：先按原字节创建同目录时间戳备份并回读，再保留原窗口设置和未知字段、补充养成默认值。普通运行不会反复补发初始 100 币。损坏、未来版本或无法读取的存档保留原文件，本次仅内存体验并提示；并发写入和过期会话不会覆盖其他进程的较新进度。
 
-用户已授权在本项目后续开发任务结束后自行提交和推送经过验证的进展。每个阶段更新开发日志并保留清晰提交；初始 Phase 1 基线与本次素材适配分开记录。规则见 AGENTS.md。
+存档、备份、环境和测试产物均不上传 GitHub。测试与 --smoke-test 不使用正式存档。
+
+## 调试
+
+“调试与外观”子菜单提供：饥饿归零、恢复满值、独立手动饿扁、开发计时加速、立即生成礼包和表情热加载。
+
+- 手动测试饿扁不修改真实饥饿；关闭它也不能解除饥饿 0 的真实饿扁。
+- 成功喂食会同时结束手动测试，触发恢复回弹；币不足不扣币、不加经验。
+- 加速模式：饥饿每 2 秒 -1、礼包每 10 秒、饥饿提醒每 8 秒。礼包仍有 30 秒领取时间，未领礼包不会叠加。
+- config/catalog.json 可调整正常 / 加速计时以及白砂糖价格、恢复量、经验。重启或切换加速开关重新读取。概率、每日判定上限、升级公式与奖励在 models.py 中维护。
+- 调试行为会影响当前存档；建议用 --demo 验收。
+
+## 默认图片与物理
+
+assets/skins/default/expressions.json 将四张用户原始 PNG 映射到 idle / happy / dizzy / flat，也兼容标准状态文件名。优先标准文件；缺图先回退 idle，再使用无五官圆形兜底。图片损坏、全透明或最长边超过 4096 时跳过；加载缓存最长边 768。
+
+原图为 1254×1254 的白底 RGB 图片：加载器仅在内存去除边缘连通近白背景，保留轮廓内白色主体；以最大连通主体等比缩放、碗底对齐，保留眩晕图的悬浮星星。原图没有改名或重新编码，散列见素材记录；托盘同步使用待机图。
+
+所有皮肤统一应用底部中心锚点、面积补偿呼吸、阻尼回弹、±18° 拖拽倾角和抛投。目标更新频率 60 Hz，物理子步最多 1/240 秒；长动画停顿最多推进 0.1 秒。工作区使用当前显示器 availableGeometry 和 Qt 逻辑像素；任务栏自动隐藏时遵循系统报告。
+
+完整 GIF / PNG 用户导入、独立挂件、通用空翻和 manifest 动作包仍在 Phase 4；主面板、商城背包与成就在 Phase 3。当前“打开主面板”会显示阶段说明。
+
+## 模块与验证
+
+五个核心 Python 文件的职责见目录说明：main.py 协调应用，models.py 维护养成，pet_engine.py 处理物理和图片，pet_window.py 处理桌面输入与气泡，save_manager.py 处理持久化。
+
+    .\.venv\Scripts\python.exe -B -X utf8 tests\test_phase1.py
+    .\.venv\Scripts\python.exe -B -X utf8 tests\test_phase2.py
+    .\.venv\Scripts\python.exe -B -X utf8 tests\verify_artwork.py
+    .\.venv\Scripts\python.exe -B -X utf8 tests\verify_native.py
+    .\.venv\Scripts\python.exe -B -X utf8 tests\verify_pinning.py
+    .\.venv\Scripts\python.exe -B -X utf8 tests\verify_phase2_native.py
+    .\.venv\Scripts\python.exe -B -X utf8 main.py --smoke-test
+
+行为测试可使用 QT_QPA_PLATFORM=offscreen；原生检查在 Windows 打开本程序窗口并自动退出，需在正常桌面会话运行。结果和截图保留在 tests/artifacts/，不递归清理。
+
+验证环境：Windows、Python 3.12.6、Qt 6.8.3、单屏 150% 缩放。Phase 1 的 51 项回归、Phase 2 的 44 项模型 / 迁移 / 气泡测试、素材检查、原生窗口与两个独立进程恢复检查通过。原生养成检查使用真实的加速计时；90 秒正式阈值和 30 秒超时采用模型推进验证。负坐标屏幕边界采用模拟，多块物理显示器、其他系统及 Python 3.10 未实测。
+
+## 持续版本记录
+
+用户已授权在本项目后续开发任务中自行提交、推送经过验证的进展；每阶段更新 docs/开发日志.md。GitHub 保持私有，运行数据不入库；规则见 AGENTS.md。
+
+Qt API 依据：[Signal](https://doc.qt.io/qtforpython-6/PySide6/QtCore/Signal.html)、[QWidget](https://doc.qt.io/qtforpython-6/PySide6/QtWidgets/QWidget.html)、[QTimer](https://doc.qt.io/qtforpython-6/PySide6/QtCore/QTimer.html)。

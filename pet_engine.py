@@ -84,7 +84,10 @@ class PetEngine:
         self.dragging = False
         self.held = False
         self.grounded = True
-        self.flat = False
+        self.manual_flat = False
+        self.starving = False
+        self._celebration_hops = 0
+        self._next_celebration_at = 0.0
         self.pinned = False
         self.happy_until = 0.0
         self.last_drag_time = 0.0
@@ -92,7 +95,13 @@ class PetEngine:
         self.reset(area)
 
     @property
+    def flat(self) -> bool:
+        return self.manual_flat or self.starving
+
+    @property
     def state(self) -> PetState:
+        if self.starving:
+            return PetState.FLAT
         if self.dragging:
             return PetState.DIZZY
         if self.flat:
@@ -142,6 +151,7 @@ class PetEngine:
         self.dragging = self.held = False
         self.grounded = True
         self.happy_until = 0.0
+        self._celebration_hops = 0
         self.x = self.area.right - self.BODY_WIDTH / 2 - 48.0
         self.y = self.area.bottom
         self._confine_horizontal()
@@ -176,7 +186,30 @@ class PetEngine:
         self._confine_drag()
 
     def set_flat(self, enabled: bool) -> None:
-        self.flat = bool(enabled)
+        self.manual_flat = bool(enabled)
+
+    def set_starving(self, enabled: bool) -> None:
+        was_flat = self.flat
+        self.starving = bool(enabled)
+        if self.starving:
+            self._celebration_hops = 0
+            if self.vy < 0 and not self.held:
+                self.vy = 0.0
+        elif was_flat and not self.flat:
+            self.rebound()
+
+    def rebound(self) -> None:
+        self.spring = -0.29
+        self.spring_velocity = 0.0
+        self.happy_until = self.elapsed + 0.8
+
+    def celebrate(self) -> None:
+        self.happy_until = self.elapsed + 2.5
+        if self.flat:
+            self.rebound()
+            return
+        self._celebration_hops = 3
+        self._next_celebration_at = self.elapsed
 
     def hold(self) -> None:
         self.held = True
@@ -214,7 +247,7 @@ class PetEngine:
         self.happy_until = self.elapsed + 0.8
         self.spring = min(self.spring, -0.29)
         self.spring_velocity = 0.0
-        if not self.pinned:
+        if not self.pinned and not self.flat:
             self.grounded = False
             self.vy = min(self.vy, -self.CLICK_JUMP_SPEED)
 
@@ -251,6 +284,15 @@ class PetEngine:
         if not math.isfinite(elapsed_seconds) or elapsed_seconds <= 0:
             return None
         self.elapsed += elapsed_seconds
+        if (self._celebration_hops and not self.held and not self.flat
+                and self.elapsed >= self._next_celebration_at
+                and (self.grounded or self.pinned)):
+            self.rebound()
+            if not self.pinned:
+                self.grounded = False
+                self.vy = -self.CLICK_JUMP_SPEED * 1.1
+            self._celebration_hops -= 1
+            self._next_celebration_at = self.elapsed + 0.4
         duration = min(elapsed_seconds, self.MAX_FRAME_DELTA)
         steps = max(1, math.ceil(duration / self.MAX_STEP))
         dt = duration / steps

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "timing": {
+    "hunger_seconds": 180,
+    "gift_seconds": 90,
+    "hungry_notice_seconds": 45
+  },
+  "development_timing": {
+    "hunger_seconds": 2,
+    "gift_seconds": 10,
+    "hungry_notice_seconds": 8
+  },
+  "white_sugar": {
+    "name": "白砂糖",
+    "cost": 10,
+    "hunger": 25,
+    "exp": 10
+  }
+}

@@ -6,17 +6,159 @@ import math
 from pathlib import Path
 import time
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
-    QCloseEvent, QGuiApplication, QMouseEvent, QPaintEvent, QPainter, QScreen,
+    QColor, QCloseEvent, QFont, QFontMetrics, QGuiApplication, QMouseEvent, QPaintEvent, QPainter, QPen, QScreen,
 )
 from PySide6.QtWidgets import QWidget
 
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 
 
+class SpeechBubble(QWidget):
+    """Independent no-focus tool window: never clipped by the pet canvas."""
+    claimed = Signal()
+    GIFT_TEXT = "🎁 捡到糯米币啦\n点击领取 · 30 秒后自动收好"
+
+    def __init__(self, owner: QWidget) -> None:
+        super().__init__(owner, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setFont(QFont("Microsoft YaHei UI", 10))
+        self._text = ""
+        self._tone = "normal"
+        self._expires = 0.0
+        self._born = time.perf_counter()
+        self._gift = False
+        self._showing_gift = False
+        self._pressed_at: QPointF | None = None
+        self._body = QRectF()
+        self._area = None
+        self._alpha = 0.0
+        self.timer = QTimer(self)
+        self.timer.setInterval(16)
+        self.timer.timeout.connect(self._tick)
+
+    def set_collectible(self, available: bool) -> None:
+        self._gift = available
+        if available and self._tone != "level":
+            self._expires = 0.0
+        self._refresh()
+
+    def show_message(self, text: str, tone: str = "normal", duration: float = 2.5) -> None:
+        now = time.perf_counter()
+        if self._tone == "level" and self._expires > now and tone != "level":
+            return
+        self._text, self._tone = text, tone
+        self._born = now
+        self._expires = now + duration + 0.3
+        self._refresh()
+
+    def follow(self, body: QRectF, area: WorkArea) -> None:
+        self._body, self._area = QRectF(body), area
+        self._reposition()
+
+    def _refresh(self) -> None:
+        now = time.perf_counter()
+        has_message = self._expires > now
+        show_gift = self._gift and (not has_message or self._tone not in ("level", "reward"))
+        visible = has_message or self._gift
+        if not visible:
+            self.hide()
+            self.timer.stop()
+            self._tone = "normal"
+            return
+        if show_gift != self._showing_gift:
+            self._born = now
+            self._pressed_at = None
+        self._showing_gift = show_gift
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not show_gift)
+        self.setCursor(Qt.CursorShape.PointingHandCursor if show_gift else Qt.CursorShape.ArrowCursor)
+        text = self.GIFT_TEXT if show_gift else self._text
+        width = min(330, max(80, int(self._area.width - 16))) if self._area else 330
+        flags = Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap
+        bounds = QFontMetrics(self.font()).boundingRect(QRect(0, 0, width - 40, 400), flags, text)
+        height = max(62, bounds.height() + 34)
+        if self._area:
+            height = min(height, int(self._area.height))
+        self.setFixedSize(width, height)
+        self._reposition()
+        self._alpha = min(1.0, max(0.0, (now - self._born) / 0.18))
+        if not show_gift:
+            self._alpha *= min(1.0, max(0.0, (self._expires - now) / 0.3))
+        self.show()
+        if not self.timer.isActive():
+            self.timer.start()
+        self.update()
+
+    def _reposition(self) -> None:
+        if self._area is None:
+            return
+        area, body = self._area, self._body
+        bob = 3 * math.sin((time.perf_counter() - self._born) * math.tau / 2.4) if self._showing_gift else 0
+        x = body.center().x() - self.width() / 2
+        y = body.top() - self.height() - 8 + bob
+        if y < area.top + 4:
+            y = body.bottom() + 8 + bob
+        x = max(area.left + 4, min(x, area.right - self.width() - 4))
+        y = max(area.top, min(y, area.bottom - self.height()))
+        self.move(math.floor(x), math.floor(y))
+
+    def _tick(self) -> None:
+        self._refresh()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setOpacity(self._alpha)
+        panel = QRectF(self.rect()).adjusted(5, 5, -5, -5)
+        gift = self._showing_gift
+        accent = QColor("#e9b763" if gift else "#d5a9bd" if self._tone == "level" else "#dacbd5")
+        if gift or self._tone == "level":
+            glow = QColor(accent)
+            glow.setAlpha(int(40 + 20 * math.sin(time.perf_counter() * 3)))
+            painter.setPen(QPen(glow, 8))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(panel, 17, 17)
+        painter.setPen(QPen(accent, 1.2))
+        painter.setBrush(QColor(255, 247, 222, 242) if gift else QColor(255, 249, 253, 239))
+        painter.drawRoundedRect(panel, 17, 17)
+        painter.setPen(QColor("#69523f" if gift else "#675360"))
+        painter.setFont(self.font())
+        painter.drawText(self.rect().adjusted(20, 14, -20, -14),
+                         Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
+                         self.GIFT_TEXT if gift else self._text)
+        painter.end()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if self._showing_gift and event.button() == Qt.MouseButton.LeftButton:
+            self._pressed_at = QPointF(event.globalPosition())
+            event.accept()
+        else:
+            event.ignore()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        pressed, self._pressed_at = self._pressed_at, None
+        if self._showing_gift and event.button() == Qt.MouseButton.LeftButton and pressed is not None:
+            delta = event.globalPosition() - pressed
+            if abs(delta.x()) < 5 and abs(delta.y()) < 5 and self.rect().contains(event.position().toPoint()):
+                self.claimed.emit()
+            event.accept()
+        else:
+            event.ignore()
+
+    def stop(self) -> None:
+        self.timer.stop()
+        self.hide()
+
+
 class PetWindow(QWidget):
     clicked = Signal()
+    collectible_clicked = Signal()
     drag_started = Signal()
     landed = Signal(float)
     context_menu_requested = Signal(QPoint)
@@ -33,7 +175,7 @@ class PetWindow(QWidget):
 
     def __init__(self, skin_directory: Path) -> None:
         super().__init__()
-        self.setWindowTitle("Q弹汤圆 · Phase 1")
+        self.setWindowTitle("Q弹汤圆 · Phase 2")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -52,6 +194,8 @@ class PetWindow(QWidget):
         self.active_screen = primary
         self.engine = PetEngine(self.work_area(primary))
         self.renderer = SkinRenderer(skin_directory)
+        self.bubble = SpeechBubble(self)
+        self.bubble.claimed.connect(self.collectible_clicked.emit)
         self._pressed = False
         self._press_global = QPointF()
         self._drag_offset = QPointF()
@@ -168,6 +312,23 @@ class PetWindow(QWidget):
         self.engine.set_flat(enabled)
         self.update()
 
+    def set_starving(self, enabled: bool) -> None:
+        self.engine.set_starving(enabled)
+        self._sync_window()
+
+    def show_message(self, text: str, tone: str = "normal") -> None:
+        self.bubble.show_message(text, tone)
+
+    def show_collectible(self, enabled: bool) -> None:
+        self.bubble.set_collectible(enabled)
+        self._position_bubble()
+
+    def _position_bubble(self) -> None:
+        state = self.renderer.source_state(self.engine.state)
+        rect = self.renderer.draw_rects[state] if state is not None else self.renderer.body_rect()
+        transform = self.renderer.body_transform(self.engine, QPointF(self.engine.x, self.engine.y))
+        self.bubble.follow(transform.mapRect(rect), self.engine.area)
+
     def reload_skins(self) -> None:
         self.renderer.reload()
         self.update()
@@ -181,6 +342,7 @@ class PetWindow(QWidget):
     def _sync_window(self) -> None:
         self.move(math.floor(self.engine.x - self.ANCHOR_X),
                   math.floor(self.engine.y - self.ANCHOR_Y))
+        self._position_bubble()
         self.update()
 
     def _schedule_frame(self) -> None:
@@ -307,8 +469,8 @@ class PetWindow(QWidget):
         event.accept()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        # Phase 1 treats the second press as another poke. Dashboard opening
-        # will be connected in Phase 2; flips have a separate menu entry.
+        # The second press remains a poke until the Phase 3 dashboard exists.
+        # Flips will use a separate menu entry.
         self.mousePressEvent(event)
 
     def event(self, event: QEvent) -> bool:
@@ -331,5 +493,6 @@ class PetWindow(QWidget):
 
     def stop(self) -> None:
         self.timer.stop()
+        self.bubble.stop()
         self._pressed = False
         self.engine.held = self.engine.dragging = False
