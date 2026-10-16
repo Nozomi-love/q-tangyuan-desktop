@@ -11,7 +11,7 @@ if sys.version_info < (3, 10):
     raise SystemExit("Q弹汤圆需要 Python 3.10 或更高版本。")
 
 try:
-    from PySide6.QtCore import Qt, QTimer
+    from PySide6.QtCore import QPointF, Qt, QTimer
     from PySide6.QtGui import QAction, QGuiApplication, QIcon, QPainter, QPixmap
     from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 except ModuleNotFoundError as error:
@@ -23,20 +23,24 @@ except ModuleNotFoundError as error:
         ) from error
     raise
 
-from pet_engine import SkinRenderer
+from pet_engine import PetEngine, SkinRenderer, WorkArea
 from pet_window import PetWindow
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 
-def create_tray_icon() -> QIcon:
+def create_tray_icon(renderer: SkinRenderer | None = None) -> QIcon:
     pixmap = QPixmap(64, 64)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.translate(32.0, 59.0)
     painter.scale(0.43, 0.43)
-    SkinRenderer.paint_fallback(painter)
+    if renderer is not None and renderer.pixmaps:
+        icon_engine = PetEngine(WorkArea(0, 0, 300, 300))
+        renderer.paint(painter, icon_engine, QPointF(0, 0))
+    else:
+        SkinRenderer.paint_fallback(painter)
     painter.end()
     return QIcon(pixmap)
 
@@ -47,7 +51,7 @@ class PetApplication:
     def __init__(self, app: QApplication) -> None:
         self.app = app
         self.window = PetWindow(PROJECT_ROOT / "assets" / "skins" / "default")
-        self.icon = create_tray_icon()
+        self.icon = create_tray_icon(self.window.renderer)
         app.setWindowIcon(self.icon)
         self.window.setWindowIcon(self.icon)
 
@@ -66,7 +70,7 @@ class PetApplication:
 
         self.reset_action.triggered.connect(self.window.reset_to_primary)
         self.flat_action.toggled.connect(self.window.set_test_flat)
-        self.reload_action.triggered.connect(self.window.reload_skins)
+        self.reload_action.triggered.connect(self._reload_skins)
         self.quit_action.triggered.connect(app.quit)
         self.window.context_menu_requested.connect(self.menu.popup)
         self.window.close_requested.connect(app.quit)
@@ -82,6 +86,13 @@ class PetApplication:
 
         app.aboutToQuit.connect(self.stop)
         self.window.show()
+
+    def _reload_skins(self) -> None:
+        self.window.reload_skins()
+        self.icon = create_tray_icon(self.window.renderer)
+        self.app.setWindowIcon(self.icon)
+        self.window.setWindowIcon(self.icon)
+        self.tray.setIcon(self.icon)
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:

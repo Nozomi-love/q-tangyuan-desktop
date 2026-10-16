@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "remove_connected_white": true,
+  "fit": "largest_body_contain",
+  "files": {
+    "idle": "ChatGPT 图像 2026年10月16日 14_01_36.png",
+    "happy": "ChatGPT 图像 2026年10月16日 14_01_42.png",
+    "dizzy": "ChatGPT 图像 2026年10月16日 14_01_47.png",
+    "flat": "ChatGPT 图像 2026年10月16日 14_01_53.png"
+  }
+}

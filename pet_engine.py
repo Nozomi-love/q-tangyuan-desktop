@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import logging
+import json
 import math
 from pathlib import Path
 
@@ -284,24 +285,153 @@ class PetEngine:
 
 
 class SkinRenderer:
-    """Cache four PNG states and draw each through the same body transform.
+    """Load canonical PNGs or the expression mapping, without changing originals.
 
-    Expression variants share one logical body rectangle. Transparent borders
-    are removed; flat.png is normalized before the 0.4 hunger transform,
-    avoiding accidental double flattening of the artwork.
+    Expressions with floating effects can use their largest connected component
+    as the physical body. The complete artwork, including stars, still renders.
     """
+
+    CACHE_EDGE = 768
 
     def __init__(self, skin_directory: Path) -> None:
         self.skin_directory = Path(skin_directory)
         self.pixmaps: dict[PetState, QPixmap] = {}
         self.images: dict[PetState, QImage] = {}
+        self.draw_rects: dict[PetState, QRectF] = {}
+        self.source_paths: dict[PetState, Path] = {}
         self.reload()
+
+    def _configuration(self) -> dict:
+        file_path = self.skin_directory / "expressions.json"
+        if not file_path.is_file():
+            return {}
+        try:
+            config = json.loads(file_path.read_text(encoding="utf-8"))
+            if not isinstance(config, dict) or config.get("schema_version") != 1:
+                raise ValueError("需要 schema_version=1 的对象")
+            files = config.get("files", {})
+            if not isinstance(files, dict) or not all(isinstance(v, str) for v in files.values()):
+                raise ValueError("files 必须把状态名映射到文件名")
+            return config
+        except (OSError, UnicodeError, ValueError) as error:
+            LOGGER.warning("表情配置不可用，回退标准文件名：%s", error)
+            return {}
+
+    @staticmethod
+    def _flood_spans(mask: bytearray, width: int, height: int, seed: tuple[int, int]):
+        """Consume a 4-connected region as horizontal spans."""
+        stack = [seed]
+        while stack:
+            x, y = stack.pop()
+            row = y * width
+            if not mask[row + x]:
+                continue
+            left = x
+            while left > 0 and mask[row + left - 1]:
+                left -= 1
+            right = x
+            while right + 1 < width and mask[row + right + 1]:
+                right += 1
+            mask[row + left:row + right + 1] = bytes(right - left + 1)
+            yield y, left, right
+            for next_y in (y - 1, y + 1):
+                if not 0 <= next_y < height:
+                    continue
+                start, end = next_y * width + left, next_y * width + right + 1
+                index = start
+                while index < end:
+                    found = mask.find(b"\x01", index, end)
+                    if found < 0:
+                        break
+                    stack.append((found % width, next_y))
+                    index = found + 1
+                    while index < end and mask[index]:
+                        index += 1
+
+    @classmethod
+    def _remove_connected_white(cls, image: QImage) -> QImage:
+        """Only the neutral, near-white region connected to the border clears.
+
+        White rice and highlights enclosed by the outline remain opaque.
+        This is a load-time rendering operation; no source PNG is rewritten.
+        """
+        width, height = image.width(), image.height()
+        data = bytearray(image.constBits())
+        eligible = bytearray(width * height)
+        for pixel in range(width * height):
+            offset = pixel * 4
+            r, g, b = data[offset], data[offset + 1], data[offset + 2]
+            if min(r, g, b) >= 225 and max(r, g, b) - min(r, g, b) <= 24:
+                eligible[pixel] = 1
+        seeds = (
+            [(x, 0) for x in range(width)]
+            + [(x, height - 1) for x in range(width)]
+            + [(0, y) for y in range(1, height - 1)]
+            + [(width - 1, y) for y in range(1, height - 1)]
+        )
+        for seed in seeds:
+            if not eligible[seed[1] * width + seed[0]]:
+                continue
+            for y, left, right in cls._flood_spans(eligible, width, height, seed):
+                start = (y * width + left) * 4 + 3
+                stop = (y * width + right) * 4 + 4
+                data[start:stop:4] = bytes(right - left + 1)
+        return QImage(bytes(data), width, height, image.bytesPerLine(),
+                      QImage.Format.Format_RGBA8888).copy()
+
+    @classmethod
+    def _foreground_boxes(cls, image: QImage, largest_body: bool):
+        """Return union/body boxes as left, top, right-exclusive, bottom-exclusive."""
+        width, height = image.width(), image.height()
+        alpha = bytes(image.constBits())[3::4]
+        union = [width, height, 0, 0]
+        body = None
+        if largest_body:
+            mask = bytearray(int(value > 12) for value in alpha)
+            search_from, largest_area = 0, 0
+            while True:
+                first = mask.find(b"\x01", search_from)
+                if first < 0:
+                    break
+                box = [width, height, 0, 0]
+                area = 0
+                for y, left, right in cls._flood_spans(mask, width, height, (first % width, first // width)):
+                    box = [min(box[0], left), min(box[1], y),
+                           max(box[2], right + 1), max(box[3], y + 1)]
+                    area += right - left + 1
+                union = [min(union[0], box[0]), min(union[1], box[1]),
+                         max(union[2], box[2]), max(union[3], box[3])]
+                if area > largest_area:
+                    largest_area, body = area, box
+                search_from = first + 1
+        else:
+            for y in range(height):
+                row = alpha[y * width:(y + 1) * width]
+                nonzero = [x for x, value in enumerate(row) if value > 12]
+                if nonzero:
+                    union = [min(union[0], nonzero[0]), min(union[1], y),
+                             max(union[2], nonzero[-1] + 1), y + 1]
+            body = union
+        if body is None or union[2] <= union[0]:
+            return None
+        return union, body
 
     def reload(self) -> None:
         self.pixmaps.clear()
         self.images.clear()
+        self.draw_rects.clear()
+        self.source_paths.clear()
+        config = self._configuration()
         for state in PetState:
-            file_path = self.skin_directory / f"{state.value}.png"
+            canonical = self.skin_directory / f"{state.value}.png"
+            file_path = canonical
+            if not canonical.is_file():
+                filename = config.get("files", {}).get(state.value, f"{state.value}.png")
+                file_path = self.skin_directory / filename
+            # Expression mappings may only refer to files inside this skin.
+            if not file_path.resolve().is_relative_to(self.skin_directory.resolve()):
+                LOGGER.warning("跳过皮肤目录之外的文件：%s", state.value)
+                continue
             if not file_path.is_file():
                 continue
             reader = QImageReader(str(file_path))
@@ -310,29 +440,41 @@ class SkinRenderer:
             if size.width() > 4096 or size.height() > 4096:
                 LOGGER.warning("跳过过大的表情 PNG：%s（最长边上限 4096）", file_path.name)
                 continue
+            if max(size.width(), size.height()) > self.CACHE_EDGE:
+                reader.setScaledSize(size.scaled(
+                    self.CACHE_EDGE, self.CACHE_EDGE, Qt.AspectRatioMode.KeepAspectRatio
+                ))
             image = reader.read()
             if image.isNull():
                 LOGGER.warning("表情 PNG 无法读取，使用兜底：%s", file_path.name)
                 continue
+            has_alpha = image.hasAlphaChannel()
             image = image.convertToFormat(QImage.Format.Format_RGBA8888)
-            # Scan alpha once at load time, never inside a frame tick.
-            alpha = bytes(image.constBits())[3::4]
-            width, height = image.width(), image.height()
-            left, top, right, bottom = width, height, -1, -1
-            for y in range(height):
-                row = alpha[y * width:(y + 1) * width]
-                if not any(row):
-                    continue
-                nonzero = [x for x, value in enumerate(row) if value]
-                left, right = min(left, nonzero[0]), max(right, nonzero[-1])
-                top, bottom = min(top, y), y
-            if right < left:
+            if config.get("remove_connected_white") is True and not has_alpha:
+                image = self._remove_connected_white(image)
+            largest_body = config.get("fit") == "largest_body_contain"
+            boxes = self._foreground_boxes(image, largest_body)
+            if boxes is None:
                 LOGGER.warning("表情 PNG 全透明，使用兜底：%s", file_path.name)
                 continue
-            image = image.copy(left, top, right - left + 1, bottom - top + 1)
+            foreground, body = boxes
+            left, top, right, bottom = foreground
+            image = image.copy(left, top, right - left, bottom - top)
             image.setDevicePixelRatio(1.0)
+            if largest_body:
+                bx1, by1, bx2, by2 = body
+                scale = min(PetEngine.BODY_WIDTH / (bx2 - bx1),
+                            PetEngine.BODY_HEIGHT / (by2 - by1))
+                draw_rect = QRectF(
+                    (left - (bx1 + bx2) / 2) * scale, (top - by2) * scale,
+                    image.width() * scale, image.height() * scale,
+                )
+            else:
+                draw_rect = self.body_rect()
             self.images[state] = image
             self.pixmaps[state] = QPixmap.fromImage(image)
+            self.draw_rects[state] = draw_rect
+            self.source_paths[state] = file_path
 
     def source_state(self, state: PetState) -> PetState | None:
         if state in self.pixmaps:
@@ -360,10 +502,10 @@ class SkinRenderer:
         if not invertible:
             return False
         local = inverse.map(point)
-        rect = self.body_rect()
+        source = self.source_state(engine.state)
+        rect = self.draw_rects[source] if source is not None else self.body_rect()
         if not rect.contains(local):
             return False
-        source = self.source_state(engine.state)
         if source is None:
             nx = local.x() / (PetEngine.BODY_WIDTH / 2)
             ny = (local.y() + PetEngine.BODY_HEIGHT / 2) / (PetEngine.BODY_HEIGHT / 2)
@@ -382,7 +524,7 @@ class SkinRenderer:
         source = self.source_state(engine.state)
         if source is not None:
             pixmap = self.pixmaps[source]
-            painter.drawPixmap(self.body_rect(), pixmap, QRectF(pixmap.rect()))
+            painter.drawPixmap(self.draw_rects[source], pixmap, QRectF(pixmap.rect()))
         else:
             self.paint_fallback(painter)
         painter.restore()

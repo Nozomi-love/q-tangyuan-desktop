@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import math
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -313,6 +314,67 @@ class RendererTests(unittest.TestCase):
         self.assertTrue(image.save(str(directory / "idle.png")))
         renderer = SkinRenderer(directory)
         self.assertFalse(renderer.hit_test(self.engine, QPointF(192, 244), QPointF(192, 186)))
+
+    def test_background_removal_keeps_enclosed_white_body(self) -> None:
+        image = QImage(100, 100, QImage.Format.Format_RGBA8888)
+        image.fill(QColor("white"))
+        painter = QPainter(image)
+        painter.setPen(QColor("#333333"))
+        painter.setBrush(QColor("white"))
+        painter.drawEllipse(20, 20, 60, 60)
+        painter.end()
+        processed = SkinRenderer._remove_connected_white(image)
+        self.assertEqual(processed.pixelColor(0, 0).alpha(), 0)
+        self.assertEqual(processed.pixelColor(50, 50).alpha(), 255)
+        self.assertEqual(processed.pixelColor(50, 50).name(), "#ffffff")
+
+    def test_floating_effect_does_not_change_main_body_bounds(self) -> None:
+        image = QImage(80, 100, QImage.Format.Format_RGBA8888)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        painter.fillRect(20, 40, 40, 50, QColor("#445566"))
+        painter.fillRect(5, 2, 10, 10, QColor("#ffc400"))
+        painter.end()
+        foreground, body = SkinRenderer._foreground_boxes(image, True)
+        self.assertEqual(body, [20, 40, 60, 90])
+        self.assertEqual(foreground, [5, 2, 60, 90])
+
+    def test_expression_mapping_keeps_original_filename_and_bytes(self) -> None:
+        directory = ARTIFACTS / "mapped"
+        directory.mkdir()
+        source = directory / "original-expression.png"
+        image = QImage(100, 100, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        painter = QPainter(image)
+        painter.fillRect(20, 30, 60, 50, QColor("#8199aa"))
+        painter.end()
+        self.assertTrue(image.save(str(source)))
+        before = source.read_bytes()
+        (directory / "expressions.json").write_text(json.dumps({
+            "schema_version": 1, "remove_connected_white": True,
+            "fit": "largest_body_contain", "files": {"idle": source.name},
+        }), encoding="utf-8")
+        renderer = SkinRenderer(directory)
+        self.assertEqual(renderer.source_paths[PetState.IDLE], source)
+        self.assertEqual(renderer.source_state(PetState.HAPPY), PetState.IDLE)
+        self.assertEqual(source.read_bytes(), before)
+        rect = renderer.draw_rects[PetState.IDLE]
+        self.assertAlmostEqual(rect.bottom(), 0)
+        self.assertAlmostEqual(rect.width(), 128)
+
+    def test_expression_mapping_cannot_escape_skin_directory(self) -> None:
+        directory = ARTIFACTS / "escape-check"
+        directory.mkdir()
+        outside = ARTIFACTS / "outside.png"
+        image = QImage(10, 10, QImage.Format.Format_ARGB32)
+        image.fill(QColor("red"))
+        self.assertTrue(image.save(str(outside)))
+        (directory / "expressions.json").write_text(json.dumps({
+            "schema_version": 1, "files": {"idle": "../outside.png"},
+        }), encoding="utf-8")
+        with self.assertLogs("pet_engine", level="WARNING"):
+            renderer = SkinRenderer(directory)
+        self.assertEqual(len(renderer.pixmaps), 0)
 
 
 class InputTests(unittest.TestCase):
