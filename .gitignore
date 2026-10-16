@@ -15,3 +15,6 @@ data/*.tmp
 
 # Imported skins stay local; never publish personal images.
 assets/skins/user_*/
+
+# Machine-local Windows shortcuts
+*.lnk
