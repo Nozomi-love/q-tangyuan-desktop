@@ -12,3 +12,6 @@ data/*.tmp
 .env.*
 !.env.example
 *.log
+
+# Imported skins stay local; never publish personal images.
+assets/skins/user_*/

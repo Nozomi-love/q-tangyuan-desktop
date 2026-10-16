@@ -9,6 +9,7 @@ import json
 import math
 from pathlib import Path
 import random
+import re
 import time
 from typing import Callable
 
@@ -69,6 +70,16 @@ class Catalog:
         self.items = deepcopy(source["items"])
         self.achievements = deepcopy(source["achievements"])
         self.interactions = dict(source["interactions"])
+        self.perks = deepcopy(source.get("perks", {}))
+        self.milestones = deepcopy(source.get("milestones", []))
+        for perk_id, perk in self.perks.items():
+            if not isinstance(perk_id, str) or not isinstance(perk, dict) or not isinstance(perk.get("name"), str):
+                raise ValueError("等级特权配置无效")
+            _integer(perk["level"], "特权等级", 1, 30)
+        for milestone in self.milestones:
+            _integer(milestone["level"], "里程碑等级", 1, 30)
+            if not isinstance(milestone["label"], str) or any(p not in self.perks for p in milestone["perks"]):
+                raise ValueError("里程碑配置无效")
         if not isinstance(self.items, dict) or not self.items:
             raise ValueError("items 必须是商品对象")
         for item_id, item in self.items.items():
@@ -94,7 +105,7 @@ class Catalog:
             raise ValueError("商品中必须包含 sugar")
         ids = set()
         metrics = {"total_clicks", "total_drops", "total_feeds", "total_pets", "flavors_seen",
-                   "total_gifts", "affection_level", "rapid_poke_peak", "total_shakes", "starvation_recoveries"}
+                   "total_gifts", "affection_level", "rapid_poke_peak", "total_shakes", "starvation_recoveries", "customizations"}
         for achievement in self.achievements:
             aid = achievement["id"]
             if not isinstance(aid, str) or aid in ids or achievement["metric"] not in metrics:
@@ -124,6 +135,9 @@ class PetData:
     unlocked_achievements: list[str] = field(default_factory=list)
     claimed_achievements: list[str] = field(default_factory=list)
     active_buff: dict = field(default_factory=dict)
+    selected_skin_id: str = "default"
+    custom_import_unlocked: bool = False
+    accessories: dict = field(default_factory=lambda: {"head": "", "face": "", "effect": "", "offset_y": 0})
     coins: int = 100
     hunger: float = 80.0
     affection_level: int = 1
@@ -134,7 +148,7 @@ class PetData:
     stats: dict = field(default_factory=lambda: {
         "total_clicks": 0, "total_feeds": 0, "total_idle_seconds": 0.0,
         "total_gifts": 0, "total_pets": 0, "total_drops": 0, "total_shakes": 0,
-        "starvation_recoveries": 0, "rapid_poke_peak": 0,
+        "starvation_recoveries": 0, "rapid_poke_peak": 0, "customizations": 0,
     })
     timers: dict = field(default_factory=lambda: {
         "hunger_elapsed": 0.0, "coin_elapsed": 0.0,
@@ -156,6 +170,14 @@ class PetData:
                 else:
                     defaults[key] = raw[key]
         item = cls(**defaults)
+        if not isinstance(item.selected_skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", item.selected_skin_id):
+            raise ValueError("皮肤 ID 无效")
+        if type(item.custom_import_unlocked) is not bool:
+            raise ValueError("导入权限需要布尔值")
+        for slot, choices in (("head", ("", "sprout", "crown", "bow")), ("face", ("", "sunglasses")), ("effect", ("", "steam"))):
+            if item.accessories[slot] not in choices:
+                raise ValueError("挂件配置无效")
+        _integer(item.accessories["offset_y"], "挂件垂直偏移", -30, 30)
         for key in ("name", "equipped_title"):
             if not isinstance(getattr(item, key), str) or not 1 <= len(getattr(item, key)) <= 40:
                 raise ValueError(f"{key} 需要 1～40 个字符")
@@ -187,7 +209,7 @@ class PetData:
             raise ValueError("每日日期需要 YYYY-MM-DD")
         attempts = _integer(item.daily_stats["poke_attempts"], "poke_attempts", 0, 20)
         _integer(item.daily_stats["poke_coin_drops"], "poke_coin_drops", 0, attempts)
-        for key in ("total_clicks", "total_feeds", "total_gifts", "total_pets", "total_drops", "total_shakes", "starvation_recoveries", "rapid_poke_peak"):
+        for key in ("total_clicks", "total_feeds", "total_gifts", "total_pets", "total_drops", "total_shakes", "starvation_recoveries", "rapid_poke_peak", "customizations"):
             _integer(item.stats[key], key)
         _number(item.stats["total_idle_seconds"], "total_idle_seconds")
         for key in ("hunger_elapsed", "coin_elapsed", "hungry_notice_elapsed", "pet_cooldown_remaining"):
@@ -214,6 +236,8 @@ class PetModel(QObject):
     achievement_unlocked = Signal(dict)
     buff_changed = Signal(dict)
     dizzy_requested = Signal()
+    appearance_changed = Signal(dict)
+    perks_unlocked = Signal(list)
     MAX_LEVEL = 30
 
     def __init__(self, data: PetData | None = None, rules: GameRules | None = None,
@@ -231,6 +255,11 @@ class PetModel(QObject):
         self._today = today
         self._roll_day()
         self.set_rules(self.rules)
+        self.debug_unlock_all = False
+        self.trick_cooldowns = {"flip": 0.0, "clone": 0.0, "ball": 0.0}
+        self.trick_busy = 0.0
+        self._known_perks = set()
+        self._refresh_perks(announce=False)
         self.initial_achievements = self._detect_achievements()
 
     @property
@@ -278,6 +307,7 @@ class PetModel(QObject):
 
     def _publish(self, previous_starving: bool, levels: list[int] | None = None,
                  message: str = "", tone: str = "normal") -> None:
+        self._refresh_perks()
         unlocked = self._detect_achievements()
         self.state_changed.emit(self.snapshot())
         if self.starving != previous_starving:
@@ -442,6 +472,105 @@ class PetModel(QObject):
         self._publish(self.starving)
         return True
 
+    def has_perk(self, perk_id: str) -> bool:
+        perk = self.catalog.perks.get(perk_id)
+        return bool(perk and (self.debug_unlock_all or self.data.affection_level >= perk["level"]
+                              or (perk_id == "custom_import" and self.data.custom_import_unlocked)))
+
+    def perk_status(self) -> list[dict]:
+        return [dict(deepcopy(row), unlocked=all(self.has_perk(p) for p in row["perks"]))
+                for row in self.catalog.milestones]
+
+    def _refresh_perks(self, announce: bool = True) -> None:
+        available = {key for key in self.catalog.perks if self.has_perk(key)}
+        newly = available - self._known_perks
+        self._known_perks = available
+        if "title_guardian" in available and "✨ 汤圆守护神" not in self.data.titles:
+            self.data.titles.append("✨ 汤圆守护神")
+        if newly and announce:
+            self.perks_unlocked.emit([self.catalog.perks[key]["name"] for key in self.catalog.perks if key in newly])
+
+    def set_debug_unlock(self, enabled: bool, *, authorized: bool = False) -> bool:
+        # Only the controller started with --dev-mode authorizes this runtime override.
+        if not authorized or type(enabled) is not bool:
+            return False
+        self.debug_unlock_all = enabled
+        self._publish(self.starving, message="🧪 全部特权试用已" + ("开启" if enabled else "关闭"))
+        self.appearance_changed.emit(self.effective_accessories())
+        return True
+
+    def unlock_custom_import(self) -> bool:
+        if self.has_perk("custom_import"):
+            return True
+        if self.data.coins < 50:
+            self.feedback.emit("提前打开衣橱需要 50 糯米币，Lv.3 可免费开启。", "hungry")
+            return False
+        self.data.coins -= 50
+        self.data.custom_import_unlocked = True
+        self._publish(self.starving, message="🎨 衣橱已提前开启，试试导入自己的小伙伴吧！")
+        return True
+
+    def effective_accessories(self) -> dict:
+        result = deepcopy(self.data.accessories)
+        for slot in ("head", "face", "effect"):
+            value = result[slot]
+            perk_id = ("effect_" if slot == "effect" else "accessory_") + value
+            if value and not self.has_perk(perk_id):
+                result[slot] = ""
+        return result
+
+    def equip_accessory(self, slot: str, item: str) -> bool:
+        choices = {"head": ("", "sprout", "crown", "bow"), "face": ("", "sunglasses"), "effect": ("", "steam")}
+        if slot not in choices or item not in choices[slot]:
+            return False
+        perk_id = ("effect_" if slot == "effect" else "accessory_") + item
+        if item and not self.has_perk(perk_id):
+            self.feedback.emit("再陪伴一阵子，就能解锁这个装扮啦～", "normal")
+            return False
+        if self.data.accessories[slot] == item:
+            return True
+        self.data.accessories[slot] = item
+        if item:
+            self.data.stats["customizations"] += 1
+        self._publish(self.starving)
+        self.appearance_changed.emit(self.effective_accessories())
+        return True
+
+    def set_accessory_offset(self, offset_y: int) -> bool:
+        if type(offset_y) is not int or not -30 <= offset_y <= 30:
+            return False
+        self.data.accessories["offset_y"] = offset_y
+        self._publish(self.starving)
+        self.appearance_changed.emit(self.effective_accessories())
+        return True
+
+    def select_skin(self, skin_id: str, *, imported: bool = False) -> bool:
+        if not isinstance(skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", skin_id):
+            return False
+        if skin_id != "default" and not self.has_perk("custom_import"):
+            return False
+        changed = skin_id != self.data.selected_skin_id
+        self.data.selected_skin_id = skin_id
+        if skin_id != "default" and (changed or imported):
+            self.data.stats["customizations"] += 1
+        self._publish(self.starving, message="🎨 已换上新外观，挂件和小特技也能一起用哦～" if changed else "")
+        return True
+
+    def can_perform_trick(self, trick_id: str) -> bool:
+        return (trick_id in self.trick_cooldowns and self.has_perk("trick_" + trick_id)
+                and self.trick_cooldowns[trick_id] <= 0 and self.trick_busy <= 0 and not self.starving)
+
+    def record_trick(self, trick_id: str) -> bool:
+        if not self.can_perform_trick(trick_id):
+            return False
+        duration = {"flip": 1.1, "clone": 2.5, "ball": 5.0}[trick_id]
+        self.trick_busy = duration
+        self.trick_cooldowns[trick_id] = max(5.0, duration)
+        levels = self._add_exp(5) if trick_id == "flip" else []
+        text = {"flip": "🌀 看我翻个跟头！好感 +5", "clone": "✨ 看我的糯米分身术！", "ball": "⚽ 芝麻小球，接住啦！"}[trick_id]
+        self._publish(self.starving, levels, text, "special")
+        return True
+
     def record_drop(self) -> None:
         self.data.stats["total_drops"] += 1
         self._publish(self.starving)
@@ -484,6 +613,9 @@ class PetModel(QObject):
         if not math.isfinite(seconds) or seconds <= 0:
             return
         previous = self.starving
+        self.trick_busy = max(0.0, self.trick_busy - seconds)
+        for trick_id in self.trick_cooldowns:
+            self.trick_cooldowns[trick_id] = max(0.0, self.trick_cooldowns[trick_id] - seconds)
         self._roll_day()
         if self.data.active_buff:
             buff = self.data.active_buff

@@ -43,3 +43,14 @@ QMenu::item:checked { background: #ecedf8; color: #62668e; }
 QMenu::item:disabled { color: #8e7c84; }
 QMenu::separator { height: 1px; background: #eadddf; margin: 6px 10px; }
 QToolTip { background: #fff8ee; color: #6f5665; border: 1px solid #e5ceda; border-radius: 6px; padding: 6px; }
+
+/* Phase 4 wardrobe and accessory controls. */
+QLabel#disclaimer { background: #f6eee2; color: #8b7058; padding: 12px; border: 1px solid #e9d8bc; border-radius: 10px; font-size: 12px; }
+QLabel#milestone { background: #f3ece8; color: #a09298; padding: 11px; border: 1px solid #e9dfdc; border-radius: 10px; }
+QLabel#milestone[unlocked="true"] { background: #edf3e7; color: #667752; border-color: #d7e3cd; }
+QSlider:horizontal { min-height: 28px; }
+QSlider::groove:horizontal { height: 7px; border-radius: 3px; background: #e9dce0; }
+QSlider::sub-page:horizontal { border-radius: 3px; background: #dcadc3; }
+QSlider::handle:horizontal { width: 18px; margin: -6px 0; border-radius: 9px; background: #bd7b9a; border: 3px solid #f9e4ee; }
+QSlider::handle:horizontal:hover { background: #a86485; border-color: #f3d6e4; }
+QCheckBox#debugPerks { color: #a17450; background: #fff2dd; border-radius: 8px; padding: 9px; }

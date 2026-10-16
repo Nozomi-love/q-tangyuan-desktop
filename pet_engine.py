@@ -12,9 +12,9 @@ import json
 import math
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QObject, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
-    QColor, QImage, QImageReader, QLinearGradient, QPainter, QPen,
+    QColor, QImage, QImageReader, QLinearGradient, QMovie, QPainter, QPainterPath, QPen, QPolygonF,
     QPixmap, QTransform,
 )
 
@@ -88,6 +88,12 @@ class PetEngine:
         self.starving = False
         self._celebration_hops = 0
         self._next_celebration_at = 0.0
+        self._trick = ""
+        self._trick_started = 0.0
+        self._trick_duration = 0.0
+        self._trick_jump_height = 0.0
+        self.ball_x = self.ball_y = 0.0
+        self.ball_vx = self.ball_vy = 0.0
         self.buff: dict = {}
         self.dizzy_until = 0.0
         self._next_spicy_at = 0.0
@@ -148,6 +154,75 @@ class PetEngine:
             max(p[0] for p in corners), max(p[1] for p in corners),
         )
 
+    @property
+    def active_trick(self) -> str:
+        return self._trick
+
+    @property
+    def trick_progress(self) -> float:
+        if not self._trick or self._trick_duration <= 0:
+            return 0.0
+        return clamp((self.elapsed - self._trick_started) / self._trick_duration, 0.0, 1.0)
+
+    @property
+    def visual_offset(self) -> QPointF:
+        # A visual jump preserves the saved foot anchor even when pinned.
+        if self._trick == "flip":
+            return QPointF(0, -self._trick_jump_height * math.sin(math.pi * self.trick_progress))
+        if self._trick == "ball":
+            hop = abs(math.sin((self.elapsed - self._trick_started) * math.pi * 2.4))
+            return QPointF(0, -min(12.0, self._trick_jump_height) * hop)
+        return QPointF()
+
+    @property
+    def visual_angle(self) -> float:
+        if self._trick == "flip":
+            progress = self.trick_progress
+            smooth = progress * progress * (3.0 - 2.0 * progress)
+            return 360.0 * smooth
+        return 0.0
+
+    def perform_trick(self, trick: str) -> bool:
+        durations = {"flip": 1.1, "clone": 2.5, "ball": 5.0}
+        if (trick not in durations or self._trick or self.held or self.dragging
+                or self.flat or not (self.grounded or self.pinned)):
+            return False
+        self._trick = trick
+        self._trick_started = self.elapsed
+        self._trick_duration = durations[trick]
+        self._trick_jump_height = min(170.0, max(0.0,
+            self.y - self.area.top - self.BODY_HEIGHT * self.buff.get("scale", 1.0) - 65.0))
+        self.vx = self.vy = 0.0
+        if trick == "ball":
+            self.ball_x, self.ball_y = 0.0, -self.BODY_HEIGHT * self.pose.scale_y - 75.0
+            self.ball_vx, self.ball_vy = 145.0, -30.0
+        self._celebration_hops = 0
+        self.happy_until = self.elapsed + self._trick_duration + 0.8
+        return True
+
+    def _advance_ball(self, duration: float) -> None:
+        if self._trick != "ball":
+            return
+        steps = max(1, math.ceil(duration / self.MAX_STEP))
+        dt = duration / steps
+        for _ in range(steps):
+            self.ball_x += self.ball_vx * dt
+            self.ball_y += self.ball_vy * dt + 0.5 * 680.0 * dt * dt
+            self.ball_vy += 680.0 * dt
+            if abs(self.ball_x) > 145.0:
+                self.ball_x = clamp(self.ball_x, -145.0, 145.0)
+                self.ball_vx *= -0.94
+            head = -self.BODY_HEIGHT * self.pose.scale_y + self.visual_offset.y() - 12.0
+            floor = head if abs(self.ball_x) <= self.BODY_WIDTH * self.pose.scale_x * 0.5 else -12.0
+            if self.ball_y >= floor and self.ball_vy > 0:
+                self.ball_y = floor
+                self.ball_vy = -max(190.0, self.ball_vy * 0.82)
+                self.happy_until = self.elapsed + 0.8
+
+    def cancel_trick(self) -> None:
+        self._trick = ""
+        self._trick_duration = 0.0
+
     def reset(self, area: WorkArea | None = None) -> None:
         if area is not None:
             self.area = area
@@ -155,6 +230,7 @@ class PetEngine:
         self.angle = self.target_angle = 0.0
         self.spring = self.spring_velocity = 0.0
         self.dragging = self.held = False
+        self.cancel_trick()
         self.grounded = True
         self.happy_until = 0.0
         self._celebration_hops = 0
@@ -193,11 +269,14 @@ class PetEngine:
 
     def set_flat(self, enabled: bool) -> None:
         self.manual_flat = bool(enabled)
+        if self.manual_flat:
+            self.cancel_trick()
 
     def set_starving(self, enabled: bool) -> None:
         was_flat = self.flat
         self.starving = bool(enabled)
         if self.starving:
+            self.cancel_trick()
             self._celebration_hops = 0
             if self.vy < 0 and not self.held:
                 self.vy = 0.0
@@ -233,6 +312,7 @@ class PetEngine:
         self.held = True
 
     def begin_drag(self) -> None:
+        self.cancel_trick()
         self.held = self.dragging = True
         self.grounded = False
         self.vx = self.vy = 0.0
@@ -265,7 +345,7 @@ class PetEngine:
         self.happy_until = self.elapsed + 0.8
         self.spring = min(self.spring, -0.29)
         self.spring_velocity = 0.0
-        if not self.pinned and not self.flat:
+        if not self.pinned and not self.flat and not self._trick:
             self.grounded = False
             self.vy = min(self.vy, -self.CLICK_JUMP_SPEED)
 
@@ -302,7 +382,13 @@ class PetEngine:
         if not math.isfinite(elapsed_seconds) or elapsed_seconds <= 0:
             return None
         self.elapsed += elapsed_seconds
-        if (self._celebration_hops and not self.held and not self.flat
+        if self._trick and self.elapsed - self._trick_started >= self._trick_duration:
+            trick = self._trick
+            self.cancel_trick()
+            self.rebound()
+            if trick == "flip":
+                self._squash_on_landing(520.0)
+        if (self._celebration_hops and not self._trick and not self.held and not self.flat
                 and self.elapsed >= self._next_celebration_at
                 and (self.grounded or self.pinned)):
             self.rebound()
@@ -318,7 +404,7 @@ class PetEngine:
             if self.buff["remaining_seconds"] <= 0:
                 self.set_buff({})
         running = self.buff.get("behavior_remaining", 0) > 0 and not self.flat
-        if running and not self.held:
+        if running and not self.held and not self._trick:
             if self.pinned:
                 if self.elapsed >= self._next_spicy_at:
                     self.rebound()
@@ -329,6 +415,7 @@ class PetEngine:
                     self.vy = -155.0
                     self.grounded = False
                     self._next_spicy_at = self.elapsed + 0.22
+        self._advance_ball(duration)
         steps = max(1, math.ceil(duration / self.MAX_STEP))
         dt = duration / steps
         impact: float | None = None
@@ -351,7 +438,7 @@ class PetEngine:
                     self._confine_drag()
                 continue
 
-            if self.pinned:
+            if self.pinned or self._trick:
                 continue
 
             if self.grounded:
@@ -387,17 +474,26 @@ class PetEngine:
         return impact
 
 
-class SkinRenderer:
+class SkinRenderer(QObject):
     """Load canonical PNGs or the expression mapping, without changing originals.
 
     Expressions with floating effects can use their largest connected component
     as the physical body. The complete artwork, including stars, still renders.
     """
 
+    frame_changed = Signal()
     CACHE_EDGE = 768
+    CUSTOM_CACHE_EDGE = 512
 
     def __init__(self, skin_directory: Path) -> None:
+        super().__init__()
         self.skin_directory = Path(skin_directory)
+        self.movies: dict[PetState, QMovie] = {}
+        self._movie_states: dict[QMovie, list[PetState]] = {}
+        self._active_movie: QMovie | None = None
+        self.anchor_rects: dict[PetState, QRectF] = {}
+        self.content_rects: dict[PetState, QRectF] = {}
+        self.accessories = {"head": "", "face": "", "effect": "", "offset_y": 0}
         self.pixmaps: dict[PetState, QPixmap] = {}
         self.tint_cache: dict[tuple[PetState, str], QPixmap] = {}
         self.images: dict[PetState, QImage] = {}
@@ -405,21 +501,65 @@ class SkinRenderer:
         self.source_paths: dict[PetState, Path] = {}
         self.reload()
 
+    @staticmethod
+    def _guard_path(path: Path) -> None:
+        from save_manager import SkinImportError, SkinManager
+        try:
+            SkinManager._no_links(path)
+        except SkinImportError as error:
+            raise ValueError(str(error)) from error
+
     def _configuration(self) -> dict:
-        file_path = self.skin_directory / "expressions.json"
+        # User packages use the same safe state table as the importer. The
+        # runtime checks paths again because files can be edited after import.
+        manifest = self.skin_directory / "manifest.json"
+        file_path = manifest if manifest.is_file() else self.skin_directory / "expressions.json"
         if not file_path.is_file():
             return {}
         try:
-            config = json.loads(file_path.read_text(encoding="utf-8"))
-            if not isinstance(config, dict) or config.get("schema_version") != 1:
+            from save_manager import SkinImportError, SkinManager
+            try:
+                payload = SkinManager._read_file(file_path, 65536)
+            except SkinImportError as error:
+                raise ValueError(str(error)) from error
+            config = json.loads(payload.decode("utf-8-sig"))
+            if not isinstance(config, dict) or config.get("schema_version", 1) != 1:
                 raise ValueError("需要 schema_version=1 的对象")
-            files = config.get("files", {})
+            files = config.get("states", config.get("files", {}))
             if not isinstance(files, dict) or not all(isinstance(v, str) for v in files.values()):
-                raise ValueError("files 必须把状态名映射到文件名")
+                raise ValueError("状态必须映射到相对文件名")
+            config["files"] = files
+            config["custom"] = file_path == manifest
             return config
         except (OSError, UnicodeError, ValueError) as error:
             LOGGER.warning("表情配置不可用，回退标准文件名：%s", error)
             return {}
+
+    def stop(self) -> None:
+        self._active_movie = None
+        for movie in set(self.movies.values()):
+            movie.stop()
+
+    def _dispose_movies(self) -> None:
+        self.stop()
+        for movie in set(self.movies.values()):
+            movie.frameChanged.disconnect()
+            movie.finished.disconnect()
+            movie.deleteLater()
+        self.movies.clear()
+        self._movie_states.clear()
+
+    def set_accessories(self, accessories: dict) -> None:
+        values = accessories if isinstance(accessories, dict) else {}
+        self.accessories = {
+            "head": values.get("head") if values.get("head") in {"sprout", "crown", "bow"} else "",
+            "face": "sunglasses" if values.get("face") == "sunglasses" else "",
+            "effect": "steam" if values.get("effect") == "steam" else "",
+            "offset_y": int(clamp(values.get("offset_y", 0), -30, 30))
+                if isinstance(values.get("offset_y", 0), (int, float))
+                and math.isfinite(values.get("offset_y", 0)) else 0,
+        }
+        self.frame_changed.emit()
 
     @staticmethod
     def _flood_spans(mask: bytearray, width: int, height: int, seed: tuple[int, int]):
@@ -520,66 +660,223 @@ class SkinRenderer:
             return None
         return union, body
 
+    @staticmethod
+    def _bounded_image(image: QImage, edge: int) -> QImage:
+        if image.isNull() or max(image.width(), image.height()) <= edge:
+            return image
+        ratio = edge / max(image.width(), image.height())
+        width = max(1, round(image.width() * ratio))
+        height = max(1, round(image.height() * ratio))
+        # KeepAspectRatio can round an 8192x1 strip to 512x0. One physical
+        # texture pixel is the closest representable dimension at this bound.
+        return image.scaled(width, height, Qt.AspectRatioMode.IgnoreAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation)
+
+    @staticmethod
+    def _visible_alpha_box(image: QImage) -> tuple[int, int, int, int] | None:
+        """Find visible bounds without per-pixel Python work on GIF frames."""
+        width, height = image.width(), image.height()
+        alpha = bytes(image.constBits())[3::4]
+        opaque = alpha.translate(bytes(1 if value > 12 else 0 for value in range(256)))
+        first, last = opaque.find(b"\x01"), opaque.rfind(b"\x01")
+        if first < 0:
+            return None
+        top, bottom = first // width, last // width + 1
+        left, right = width, 0
+        for y in range(top, bottom):
+            row = opaque[y * width:(y + 1) * width]
+            start = row.find(b"\x01")
+            if start >= 0:
+                left, right = min(left, start), max(right, row.rfind(b"\x01") + 1)
+        return left, top, right, bottom
+
+    @classmethod
+    def _gif_reference_box(cls, reader: QImageReader, first_image: QImage,
+                           frame_count: int) -> tuple[int, int, int, int]:
+        # Use one fixed union of visible content. Transparent GIF padding never
+        # lifts the visible feet or head ornaments; moving frame parts keep one
+        # stable scale. Frames are decoded one at a time and immediately freed.
+        union = None
+        image = first_image
+        for index in range(min(frame_count, 200)):
+            if index:
+                image = cls._bounded_image(reader.read(), cls.CUSTOM_CACHE_EDGE)
+                if image.isNull():
+                    raise ValueError("GIF 后续帧无法解码")
+                image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+            box = cls._visible_alpha_box(image)
+            if box is not None:
+                union = box if union is None else (min(union[0], box[0]), min(union[1], box[1]),
+                                                   max(union[2], box[2]), max(union[3], box[3]))
+        if union is None:
+            raise ValueError("GIF 所有帧均透明")
+        return union
+
     def reload(self) -> None:
+        self._dispose_movies()
         self.pixmaps.clear()
         self.tint_cache.clear()
         self.images.clear()
         self.draw_rects.clear()
+        self.anchor_rects.clear()
+        self.content_rects.clear()
         self.source_paths.clear()
+        try:
+            self._guard_path(self.skin_directory)
+        except (ValueError, OSError) as error:
+            LOGGER.warning("皮肤目录不安全，使用兜底：%s", error)
+            return
         config = self._configuration()
+        movies_by_path: dict[Path, QMovie] = {}
         for state in PetState:
+            filename = config.get("files", {}).get(state.value, f"{state.value}.png")
             canonical = self.skin_directory / f"{state.value}.png"
-            file_path = canonical
-            if not canonical.is_file():
-                filename = config.get("files", {}).get(state.value, f"{state.value}.png")
-                file_path = self.skin_directory / filename
-            # Expression mappings may only refer to files inside this skin.
-            if not file_path.resolve().is_relative_to(self.skin_directory.resolve()):
-                LOGGER.warning("跳过皮肤目录之外的文件：%s", state.value)
-                continue
-            if not file_path.is_file():
-                continue
-            reader = QImageReader(str(file_path))
-            reader.setAutoTransform(True)
-            size = reader.size()
-            if size.width() > 4096 or size.height() > 4096:
-                LOGGER.warning("跳过过大的表情 PNG：%s（最长边上限 4096）", file_path.name)
-                continue
-            if max(size.width(), size.height()) > self.CACHE_EDGE:
-                reader.setScaledSize(size.scaled(
-                    self.CACHE_EDGE, self.CACHE_EDGE, Qt.AspectRatioMode.KeepAspectRatio
-                ))
-            image = reader.read()
-            if image.isNull():
-                LOGGER.warning("表情 PNG 无法读取，使用兜底：%s", file_path.name)
-                continue
-            has_alpha = image.hasAlphaChannel()
-            image = image.convertToFormat(QImage.Format.Format_RGBA8888)
-            if config.get("remove_connected_white") is True and not has_alpha:
-                image = self._remove_connected_white(image)
-            largest_body = config.get("fit") == "largest_body_contain"
-            boxes = self._foreground_boxes(image, largest_body)
-            if boxes is None:
-                LOGGER.warning("表情 PNG 全透明，使用兜底：%s", file_path.name)
-                continue
-            foreground, body = boxes
-            left, top, right, bottom = foreground
-            image = image.copy(left, top, right - left, bottom - top)
-            image.setDevicePixelRatio(1.0)
-            if largest_body:
-                bx1, by1, bx2, by2 = body
-                scale = min(PetEngine.BODY_WIDTH / (bx2 - bx1),
-                            PetEngine.BODY_HEIGHT / (by2 - by1))
-                draw_rect = QRectF(
-                    (left - (bx1 + bx2) / 2) * scale, (top - by2) * scale,
-                    image.width() * scale, image.height() * scale,
-                )
-            else:
-                draw_rect = self.body_rect()
+            file_path = self.skin_directory / filename
+            if not config.get("custom") and canonical.is_file():
+                file_path = canonical
+            try:
+                self._guard_path(file_path)
+                if ("\\" in filename or ":" in filename or ".." in Path(filename).parts
+                        or Path(filename).is_absolute() or file_path.is_symlink()
+                        or not file_path.resolve().is_relative_to(self.skin_directory.resolve())):
+                    raise ValueError("状态路径不在本地皮肤目录内")
+                if not file_path.is_file():
+                    continue
+                if file_path.suffix.lower() not in {".png", ".gif"} or file_path.stat().st_size > 20 * 1024 * 1024:
+                    raise ValueError("只允许不超过 20 MiB 的 PNG/GIF")
+                reader = QImageReader(str(file_path))
+                reader.setAutoTransform(True)
+                if not reader.canRead() or bytes(reader.format()).lower() != file_path.suffix[1:].lower().encode("ascii"):
+                    raise ValueError("文件内容与 PNG/GIF 扩展名不符")
+                size = reader.size()
+                if file_path.suffix.lower() == ".gif":
+                    from save_manager import SkinImportError, SkinManager
+                    with file_path.open("rb") as stream:
+                        payload = stream.read(20 * 1024 * 1024 + 1)
+                    if len(payload) > 20 * 1024 * 1024:
+                        raise ValueError("GIF 超过 20 MiB")
+                    try:
+                        logical_width, logical_height, _frames = SkinManager._gif_structure(payload)
+                    except SkinImportError as error:
+                        raise ValueError(str(error)) from error
+                    # QImageReader.size() can describe the first image block;
+                    # the GIF logical canvas may be much larger than it.
+                    size.setWidth(logical_width)
+                    size.setHeight(logical_height)
+                if (not size.isValid() or max(size.width(), size.height()) > 8192
+                        or size.width() * size.height() > 16_777_216):
+                    raise ValueError("图片原始尺寸超过安全范围")
+                animated = file_path.suffix.lower() == ".gif" and reader.imageCount() > 1
+                if animated and reader.imageCount() > 200:
+                    raise ValueError("GIF 不得超过 200 帧")
+                edge = self.CUSTOM_CACHE_EDGE if config.get("custom") or animated else self.CACHE_EDGE
+                scaled_size = (size.scaled(edge, edge, Qt.AspectRatioMode.KeepAspectRatio)
+                               if max(size.width(), size.height()) > edge else size)
+                scaled_size.setWidth(max(1, scaled_size.width()))
+                scaled_size.setHeight(max(1, scaled_size.height()))
+                if max(size.width(), size.height()) > edge:
+                    reader.setScaledSize(scaled_size)
+                image = self._bounded_image(reader.read(), edge)
+                if image.isNull():
+                    raise ValueError("无法解码图片")
+                has_alpha = image.hasAlphaChannel()
+                image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+                if (file_path.suffix.lower() == ".png"
+                        and ((config.get("remove_connected_white") is True and not has_alpha)
+                             or config.get("remove_white_background") is True)):
+                    image = self._remove_connected_white(image)
+                largest_body = config.get("fit") == "largest_body_contain"
+                if animated:
+                    bx1, by1, bx2, by2 = self._gif_reference_box(reader, image, reader.imageCount())
+                    draw_scale = min(PetEngine.BODY_WIDTH / (bx2 - bx1),
+                                     PetEngine.BODY_HEIGHT / (by2 - by1),
+                                     256.0 / max(image.width(), image.height()))
+                    draw_rect = QRectF(-(bx1 + bx2) * draw_scale / 2,
+                                       -by2 * draw_scale,
+                                       image.width() * draw_scale, image.height() * draw_scale)
+                    anchor_rect = QRectF(-(bx2 - bx1) * draw_scale / 2,
+                                         -(by2 - by1) * draw_scale,
+                                         (bx2 - bx1) * draw_scale, (by2 - by1) * draw_scale)
+                else:
+                    boxes = self._foreground_boxes(image, largest_body)
+                    if boxes is None:
+                        raise ValueError("图片全透明")
+                    foreground, body = boxes
+                    left, top, right, bottom = foreground
+                    image = image.copy(left, top, right - left, bottom - top)
+                    if largest_body:
+                        bx1, by1, bx2, by2 = body
+                        scale = min(PetEngine.BODY_WIDTH / (bx2 - bx1),
+                                    PetEngine.BODY_HEIGHT / (by2 - by1))
+                        draw_rect = QRectF((left - (bx1 + bx2) / 2) * scale,
+                                          (top - by2) * scale,
+                                          image.width() * scale, image.height() * scale)
+                        anchor_rect = QRectF(-(bx2 - bx1) * scale / 2,
+                                             -(by2 - by1) * scale,
+                                             (bx2 - bx1) * scale, (by2 - by1) * scale)
+                    elif config.get("custom"):
+                        scale = min(PetEngine.BODY_WIDTH / image.width(),
+                                    PetEngine.BODY_HEIGHT / image.height())
+                        draw_rect = QRectF(-image.width() * scale / 2, -image.height() * scale,
+                                          image.width() * scale, image.height() * scale)
+                        anchor_rect = QRectF(draw_rect)
+                    else:
+                        draw_rect = anchor_rect = self.body_rect()
+                image.setDevicePixelRatio(1.0)
+                self.images[state] = image
+                self.pixmaps[state] = QPixmap.fromImage(image)
+                self.draw_rects[state] = draw_rect
+                self.anchor_rects[state] = anchor_rect
+                self.content_rects[state] = QRectF(anchor_rect if animated else draw_rect)
+                self.source_paths[state] = file_path
+                if animated:
+                    resolved = file_path.resolve()
+                    movie = movies_by_path.get(resolved)
+                    if movie is None:
+                        movie = QMovie(str(file_path), parent=self)
+                        movie.setCacheMode(QMovie.CacheMode.CacheNone)
+                        movie.setScaledSize(scaled_size)
+                        if not movie.isValid():
+                            movie.deleteLater()
+                            raise ValueError("GIF 动画不可用")
+                        movies_by_path[resolved] = movie
+                        self._movie_states[movie] = []
+                        movie.frameChanged.connect(lambda _frame, item=movie: self._movie_frame(item))
+                        movie.finished.connect(lambda item=movie: self._restart_movie(item))
+                    self.movies[state] = movie
+                    self._movie_states[movie].append(state)
+            except (OSError, ValueError, RuntimeError) as error:
+                LOGGER.warning("跳过不可用皮肤 %s：%s", state.value, error)
+        self._activate_movie(PetState.IDLE)
+
+    def _restart_movie(self, movie: QMovie) -> None:
+        if self._active_movie is movie:
+            movie.start()
+
+    def _activate_movie(self, state: PetState) -> None:
+        source = self.source_state(state)
+        movie = self.movies.get(source)
+        if movie is self._active_movie:
+            return
+        if self._active_movie is not None:
+            self._active_movie.stop()
+        self._active_movie = movie
+        if movie is not None:
+            movie.start()
+
+    def _movie_frame(self, movie: QMovie) -> None:
+        image = self._bounded_image(movie.currentImage(), self.CUSTOM_CACHE_EDGE)
+        if image.isNull():
+            return
+        image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+        image.setDevicePixelRatio(1.0)
+        for state in self._movie_states.get(movie, []):
             self.images[state] = image
             self.pixmaps[state] = QPixmap.fromImage(image)
-            self.draw_rects[state] = draw_rect
-            self.source_paths[state] = file_path
+            # Invalidate only the current frame, never accumulate frame caches.
+            for key in [key for key in self.tint_cache if key[0] == state]:
+                del self.tint_cache[key]
+        self.frame_changed.emit()
 
     def source_state(self, state: PetState) -> PetState | None:
         if state in self.pixmaps:
@@ -597,9 +894,14 @@ class SkinRenderer:
     def body_transform(engine: PetEngine, foot: QPointF) -> QTransform:
         pose = engine.pose
         transform = QTransform()
-        transform.translate(foot.x(), foot.y())
+        offset = engine.visual_offset
+        transform.translate(foot.x() + offset.x(), foot.y() + offset.y())
         transform.rotate(pose.angle)
         transform.scale(pose.scale_x, pose.scale_y)
+        if engine.visual_angle:
+            transform.translate(0, -PetEngine.BODY_HEIGHT / 2)
+            transform.rotate(engine.visual_angle)
+            transform.translate(0, PetEngine.BODY_HEIGHT / 2)
         return transform
 
     def hit_test(self, engine: PetEngine, foot: QPointF, point: QPointF) -> bool:
@@ -624,6 +926,8 @@ class SkinRenderer:
     def tinted_pixmap(self, state: PetState, color: str) -> QPixmap:
         key = (state, color)
         if key not in self.tint_cache:
+            if len(self.tint_cache) >= 32:
+                self.tint_cache.clear()
             image = self.pixmaps[state].copy()
             tint = QColor(color)
             tint.setAlphaF(0.35)
@@ -634,10 +938,78 @@ class SkinRenderer:
             self.tint_cache[key] = image
         return self.tint_cache[key]
 
+    def anchor_rect(self, state: PetState) -> QRectF:
+        source = self.source_state(state)
+        return QRectF(self.anchor_rects[source]) if source is not None else self.body_rect()
+
+    def visible_rect(self, state: PetState) -> QRectF:
+        source = self.source_state(state)
+        return QRectF(self.content_rects[source]) if source is not None else self.body_rect()
+
+    def accessory_bounds(self, state: PetState) -> QRectF:
+        body = self.anchor_rect(state)
+        result = QRectF(body)
+        offset = self.accessories["offset_y"]
+        top = body.top() + offset
+        if self.accessories["head"]:
+            result = result.united(QRectF(body.center().x() - 35, top - 38, 70, 48))
+        if self.accessories["face"]:
+            result = result.united(QRectF(body.left() - 5, body.top() + body.height() * 0.42 + offset - 15,
+                                          body.width() + 10, 30))
+        if self.accessories["effect"]:
+            result = result.united(QRectF(body.center().x() - 63, top - 72, 126, 75))
+        return result
+
+    def _clone_offsets(self, engine: PetEngine) -> list[tuple[float, float, float]]:
+        if engine.active_trick != "clone":
+            return []
+        progress = engine.trick_progress
+        envelope = clamp(min(progress / 0.14, (1 - progress) / 0.14), 0, 1)
+        envelope = envelope * envelope * (3 - 2 * envelope)
+        time = engine.elapsed - engine._trick_started
+        return [(side * 152.0 * envelope,
+                 -abs(math.sin(time * math.tau * 1.25 + (0.4 if side > 0 else 0))) * 25 * envelope,
+                 0.42 * envelope) for side in (-1, 1)]
+
+    def scene_bounds(self, engine: PetEngine, foot: QPointF) -> QRectF:
+        source = self.source_state(engine.state)
+        body = self.visible_rect(engine.state)
+        local = body.united(self.accessory_bounds(engine.state))
+        result = self.body_transform(engine, foot).mapRect(local)
+        for dx, dy, _opacity in self._clone_offsets(engine):
+            result = result.united(self.body_transform(engine, foot + QPointF(dx, dy)).mapRect(local))
+        if engine.active_trick == "ball":
+            result = result.united(QRectF(foot.x() + engine.ball_x - 14,
+                                          foot.y() + engine.ball_y - 14, 28, 28))
+        if engine.buff.get("item_id") == "strawberry":
+            result = result.united(QRectF(foot.x() - 90, foot.y() - 165, 180, 170))
+        return result.adjusted(-3, -3, 3, 3)
+
     def paint(self, painter: QPainter, engine: PetEngine, foot: QPointF) -> None:
+        self._activate_movie(engine.state)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        for dx, dy, opacity in self._clone_offsets(engine):
+            self._paint_instance(painter, engine, foot + QPointF(dx, dy), opacity)
+        self._paint_instance(painter, engine, foot, 1.0)
+        if engine.active_trick == "ball":
+            self._paint_ball(painter, foot + QPointF(engine.ball_x, engine.ball_y))
+        if engine.buff.get("item_id") == "strawberry":
+            painter.setPen(Qt.PenStyle.NoPen)
+            for index in range(9):
+                phase = (engine.elapsed * 0.20 + index / 9) % 1.0
+                x = foot.x() + math.sin(index * 2.4) * (70 + phase * 12)
+                y = foot.y() - 8 - phase * 145 + engine.visual_offset.y()
+                color = QColor("#efa3c2")
+                color.setAlphaF(0.5 * math.sin(math.pi * phase))
+                painter.setBrush(color)
+                painter.drawEllipse(QPointF(x, y), 2.0 + index % 3, 2.0 + index % 3)
+        painter.restore()
+
+    def _paint_instance(self, painter: QPainter, engine: PetEngine, foot: QPointF, opacity: float) -> None:
+        painter.save()
+        painter.setOpacity(painter.opacity() * opacity)
         painter.setTransform(self.body_transform(engine, foot), combine=True)
         source = self.source_state(engine.state)
         if source is not None:
@@ -652,20 +1024,104 @@ class SkinRenderer:
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(tint)
                 painter.drawEllipse(self.body_rect())
+        self._paint_accessories(painter, engine)
         painter.restore()
-        if engine.buff.get("item_id") == "strawberry":
-            painter.save()
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    def _paint_accessories(self, painter: QPainter, engine: PetEngine) -> None:
+        rect = self.anchor_rect(engine.state)
+        offset = self.accessories["offset_y"]
+        head = self.accessories["head"]
+        painter.save()
+        painter.translate(rect.center().x(), rect.top() + offset)
+        if self.accessories["effect"] == "steam":
+            for index in range(4):
+                phase = (engine.elapsed * 0.32 + index * 0.25) % 1
+                x = (index - 1.5) * 26
+                y = -8 - phase * 49
+                color = QColor("#e6bc87")
+                color.setAlphaF(0.62 * math.sin(math.pi * phase))
+                painter.setPen(QPen(color, 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                path = QPainterPath(QPointF(x, y + 9))
+                path.cubicTo(x - 8, y + 3, x + 8, y - 3, x, y - 10)
+                painter.drawPath(path)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(245, 204, 116, int(150 * math.sin(math.pi * phase))))
+                painter.drawEllipse(QPointF(x + 9, y - 5), 1.8, 1.8)
+        if head == "sprout":
+            painter.setPen(QPen(QColor("#5f9965"), 3.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            stem = QPainterPath(QPointF(0, 2))
+            stem.cubicTo(-5, -8, 4, -15, 1, -25)
+            painter.drawPath(stem)
+            painter.setPen(QPen(QColor("#6b9f65"), 1.0))
+            painter.setBrush(QColor("#a5d289"))
+            leaf = QPainterPath(QPointF(1, -15))
+            leaf.cubicTo(-20, -29, -23, -11, 1, -15)
+            painter.drawPath(leaf)
+            painter.setBrush(QColor("#b9dba1"))
+            leaf = QPainterPath(QPointF(1, -20))
+            leaf.cubicTo(19, -37, 26, -18, 1, -20)
+            painter.drawPath(leaf)
+        elif head == "crown":
+            painter.setPen(QPen(QColor("#d19a3b"), 1.7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                                Qt.PenJoinStyle.RoundJoin))
+            painter.setBrush(QColor("#f8d675"))
+            painter.drawPolygon(QPolygonF([QPointF(-25, -4), QPointF(-29, -28), QPointF(-13, -18),
+                                           QPointF(0, -35), QPointF(13, -18), QPointF(29, -28),
+                                           QPointF(25, -4)]))
+            painter.setBrush(QColor("#f5c65d"))
+            painter.drawRoundedRect(QRectF(-25, -8, 50, 10), 3, 3)
             painter.setPen(Qt.PenStyle.NoPen)
-            for index in range(9):
-                phase = (engine.elapsed * 0.20 + index / 9) % 1.0
-                x = foot.x() + math.sin(index * 2.4) * (70 + phase * 12)
-                y = foot.y() - 8 - phase * 145
-                color = QColor("#efa3c2")
-                color.setAlphaF(0.5 * math.sin(math.pi * phase))
-                painter.setBrush(color)
-                painter.drawEllipse(QPointF(x, y), 2.0 + index % 3, 2.0 + index % 3)
+            painter.setBrush(QColor("#e897a8"))
+            painter.drawEllipse(QPointF(0, -15), 4, 5)
+            painter.setBrush(QColor("#fff5cf"))
+            for x, y in [(-29, -29), (0, -35), (29, -29)]:
+                painter.drawEllipse(QPointF(x, y), 3.1, 3.1)
+        elif head == "bow":
+            painter.setPen(QPen(QColor("#cf819b"), 1.5))
+            painter.setBrush(QColor("#f4b2c8"))
+            for side in (-1, 1):
+                wing = QPainterPath(QPointF(0, -8))
+                wing.cubicTo(side * 32, -35, side * 32, 5, 0, -8)
+                painter.drawPath(wing)
+            painter.setBrush(QColor("#ef9ab7"))
+            painter.drawRoundedRect(QRectF(-5, -14, 10, 13), 4, 4)
+        painter.restore()
+        if self.accessories["face"] == "sunglasses":
+            painter.save()
+            painter.translate(rect.center().x(), rect.top() + rect.height() * 0.42 + offset)
+            width = min(94.0, rect.width() * 0.82)
+            lens = width * 0.42
+            painter.setPen(QPen(QColor("#373241"), 3.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.setBrush(QColor("#443d50"))
+            painter.drawRoundedRect(QRectF(-width / 2, -9, lens, 19), 5, 5)
+            painter.drawRoundedRect(QRectF(width / 2 - lens, -9, lens, 19), 5, 5)
+            painter.drawLine(QPointF(-width * 0.08, -4), QPointF(width * 0.08, -4))
+            painter.drawLine(QPointF(-width / 2 - 4, -6), QPointF(-width / 2, -5))
+            painter.drawLine(QPointF(width / 2, -5), QPointF(width / 2 + 4, -6))
+            painter.setPen(QPen(QColor("#a3a0b7"), 1.6))
+            painter.drawLine(QPointF(-width * 0.37, -5), QPointF(-width * 0.23, 1))
+            painter.drawLine(QPointF(width * 0.16, -5), QPointF(width * 0.30, 1))
             painter.restore()
+
+    @staticmethod
+    def _paint_ball(painter: QPainter, center: QPointF) -> None:
+        painter.save()
+        painter.translate(center)
+        gradient = QLinearGradient(-9, -12, 9, 12)
+        gradient.setColorAt(0, QColor("#676170"))
+        gradient.setColorAt(1, QColor("#292731"))
+        painter.setPen(QPen(QColor("#24212c"), 1.0))
+        painter.setBrush(gradient)
+        painter.drawEllipse(QPointF(), 12, 12)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#d9c69f"))
+        for x, y, angle in [(-5, -4, -20), (3, -6, 30), (6, 2, -10), (-3, 5, 40)]:
+            painter.save()
+            painter.translate(x, y)
+            painter.rotate(angle)
+            painter.drawEllipse(QRectF(-1, -2, 2, 4))
+            painter.restore()
+        painter.restore()
 
     @staticmethod
     def paint_fallback(painter: QPainter) -> None:

@@ -30,7 +30,7 @@ from dashboard import DashboardWindow
 from models import GameRules, PetData, PetModel
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from pet_window import PetWindow
-from save_manager import SaveDataError, SaveManager
+from save_manager import SaveDataError, SaveManager, SkinManager, SkinImportError
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -55,8 +55,11 @@ class PetApplication:
     """Coordinate model, windows and persistence using Qt signals."""
 
     def __init__(self, app: QApplication, save_path: Path | None = PROJECT_ROOT / "data" / "save_data.json",
-                 accelerated: bool = False) -> None:
+                 accelerated: bool = False, skins_root: Path | None = None,
+                 dev_mode: bool | None = None) -> None:
         self.app = app
+        self.dev_mode = accelerated if dev_mode is None else dev_mode
+        self.skin_manager = SkinManager(skins_root or PROJECT_ROOT / "assets" / "skins")
         self.save_manager = SaveManager(save_path) if save_path is not None else None
         self._restoring = True
         self._stopped = False
@@ -72,12 +75,19 @@ class PetApplication:
                 logging.warning("存档读取失败，本次只在内存体验，原文件保留：%s", error)
         self.model = PetModel(data, self._load_rules(accelerated))
         self.window = PetWindow(PROJECT_ROOT / "assets" / "skins" / "default")
+        self._skin_restore_warning = ""
+        if data.selected_skin_id != "default":
+            restored = self.skin_manager.resolve(data.selected_skin_id)
+            if restored.name != data.selected_skin_id or not self.window.set_skin(restored):
+                self._skin_restore_warning = "原自定义皮肤暂时无法读取，先用白汤圆陪伴你；原选择和素材保留。"
+        self.window.set_accessories(self.model.effective_accessories())
         self.icon = create_tray_icon(self.window.renderer)
         app.setWindowIcon(self.icon)
         self.window.setWindowIcon(self.icon)
         self._build_menu()
         self.dashboard = DashboardWindow(self.model)
         self.dashboard.setWindowIcon(self.icon)
+        self.dashboard.set_phase4_context(self.skin_manager.list_skins(), self.dev_mode)
         self._connect_dashboard()
 
         self.model.state_changed.connect(self._state_changed)
@@ -89,6 +99,8 @@ class PetApplication:
         self.model.buff_changed.connect(self.window.set_buff)
         self.model.achievement_unlocked.connect(self._achievement_unlocked)
         self.model.dizzy_requested.connect(self._dizzy)
+        self.model.appearance_changed.connect(self.window.set_accessories)
+        self.model.perks_unlocked.connect(self._perks_unlocked)
         self.window.clicked.connect(self.model.poke)
         self.window.dashboard_requested.connect(self.dashboard.summon)
         self.window.drag_landed.connect(self.model.record_drop)
@@ -141,6 +153,8 @@ class PetApplication:
             self._achievement_unlocked(achievement)
         if self._save_blocked:
             self.window.show_message("存档读取失败，原文件已保留；本次进度不写入。", "hungry")
+        elif self._skin_restore_warning:
+            self.window.show_message(self._skin_restore_warning, "special")
         elif accelerated:
             self.window.show_message(f"🧪 加速：饥饿 {self.model.rules.hunger_seconds:g} 秒 -1，礼包 {self.model.rules.gift_seconds:g} 秒", "normal")
 
@@ -165,6 +179,12 @@ class PetApplication:
         self.pin_action = self.menu.addAction("📌 固定当前位置（可拖动调整）")
         self.pin_action.setCheckable(True)
         self.dashboard_action = self.menu.addAction("🏠 打开主面板")
+        self.trick_menu = self.menu.addMenu("🎪 表演特技")
+        self.trick_actions = {}
+        for trick_id in ("flip", "clone", "ball"):
+            action = self.trick_menu.addAction(self.model.catalog.perks["trick_" + trick_id]["name"])
+            action.triggered.connect(lambda checked=False, tid=trick_id: self._perform_trick(tid))
+            self.trick_actions[trick_id] = action
         self.menu.addSeparator()
         self.debug_menu = self.menu.addMenu("🧪 调试与外观")
         self.hunger_zero_action = self.debug_menu.addAction("[调试] 饥饿值归零")
@@ -175,7 +195,7 @@ class PetApplication:
         self.dev_action.setCheckable(True)
         self.gift_action = self.debug_menu.addAction("[调试] 立即生成拾币气泡")
         self.reset_action = self.menu.addAction("重置回主屏幕右下角")
-        self.reload_action = self.debug_menu.addAction("重新加载表情 PNG")
+        self.reload_action = self.debug_menu.addAction("重新加载当前皮肤")
         self.menu.addSeparator()
         self.quit_action = self.menu.addAction("❌ 退出程序")
         self.feed_action.triggered.connect(self.model.feed_sugar)
@@ -201,6 +221,16 @@ class PetApplication:
         self.dashboard.hunger_full_requested.connect(lambda: self.model.set_hunger(100))
         self.dashboard.gift_requested.connect(self.model.offer_collectible)
         self.dashboard.reload_requested.connect(self._reload_skins)
+        self.dashboard.accessory_requested.connect(self.model.equip_accessory)
+        self.dashboard.offset_requested.connect(self.model.set_accessory_offset)
+        self.dashboard.trick_requested.connect(self._perform_trick)
+        self.dashboard.skin_requested.connect(self._select_skin)
+        self.dashboard.import_image_requested.connect(self._import_image)
+        self.dashboard.import_pack_requested.connect(self._import_pack)
+        self.dashboard.export_template_requested.connect(self._export_template)
+        self.dashboard.import_unlock_requested.connect(self.model.unlock_custom_import)
+        self.dashboard.debug_unlock_requested.connect(
+            lambda enabled: self.model.set_debug_unlock(enabled, authorized=self.dev_mode))
         for action in (self.pin_action, self.dev_action, self.flat_action):
             action.toggled.connect(self._sync_settings)
 
@@ -228,6 +258,12 @@ class PetApplication:
         self.pet_action.setText("👋 摸摸头 (好感+3)" + (f" · 冷却 {remaining} 秒" if remaining else ""))
         self.pet_action.setEnabled(remaining == 0)
         self.gift_action.setEnabled(not self.model.has_collectible)
+        for trick_id, action in self.trick_actions.items():
+            perk = self.model.catalog.perks["trick_" + trick_id]
+            remaining = math.ceil(self.model.trick_cooldowns[trick_id])
+            suffix = " · Lv.{} 解锁".format(perk["level"]) if not self.model.has_perk("trick_" + trick_id) else (f" · {remaining}s" if remaining else "")
+            action.setText(perk["name"] + suffix)
+            action.setEnabled(self.model.can_perform_trick(trick_id))
 
     def _state_changed(self, _state: dict) -> None:
         self._dirty = True
@@ -288,6 +324,69 @@ class PetApplication:
 
     def _reload_skins(self) -> None:
         self.window.reload_skins()
+        self._reload_icon()
+
+    def _perks_unlocked(self, names: list) -> None:
+        self.window.set_accessories(self.model.effective_accessories())
+        self.window.show_message("🎊 新特权解锁：" + "、".join(names), "achievement")
+
+    def _perform_trick(self, trick_id: str) -> bool:
+        if not self.model.can_perform_trick(trick_id):
+            self.model.feedback.emit("特技还在休息，或尚未解锁哦～", "normal")
+            return False
+        if not self.window.perform_trick(trick_id):
+            self.model.feedback.emit("先让汤圆站稳、吃饱，再来表演吧～", "normal")
+            return False
+        return self.model.record_trick(trick_id)
+
+    def _refresh_wardrobe(self) -> None:
+        self.dashboard.set_phase4_context(self.skin_manager.list_skins(), self.dev_mode)
+        self.dashboard.refresh()
+
+    def _select_skin(self, skin_id: str, imported: bool = False) -> bool:
+        if skin_id != "default" and not self.model.has_perk("custom_import"):
+            self.model.feedback.emit("衣橱将在 Lv.3 开启，也可花 50 币提前解锁。", "normal")
+            self._refresh_wardrobe()
+            return False
+        directory = self.skin_manager.resolve(skin_id)
+        if directory.name != skin_id or not self.window.set_skin(directory):
+            self.model.feedback.emit("皮肤素材缺失或无效，当前外观已保留。", "hungry")
+            self._refresh_wardrobe()
+            return False
+        self.model.select_skin(skin_id, imported=imported)
+        self.window.set_accessories(self.model.effective_accessories())
+        self._reload_icon()
+        self._refresh_wardrobe()
+        return True
+
+    def _import_image(self, source: str, remove_white: bool) -> None:
+        self._import_skin(source, remove_white=remove_white)
+
+    def _import_pack(self, source: str) -> None:
+        self._import_skin(source, pack=True)
+
+    def _import_skin(self, source: str, *, pack: bool = False, remove_white: bool = False) -> None:
+        if not self.model.has_perk("custom_import"):
+            self.model.feedback.emit("请先解锁衣橱，再导入本地素材。", "normal")
+            return
+        try:
+            skin = (self.skin_manager.import_pack(Path(source)) if pack else
+                    self.skin_manager.import_image(Path(source), remove_white=remove_white))
+            if not self._select_skin(skin["id"], imported=True):
+                self._refresh_wardrobe()
+        except (SkinImportError, OSError, ValueError) as error:
+            logging.warning("皮肤导入被拒绝：%s", error)
+            self.model.feedback.emit("导入未完成：" + str(error), "hungry")
+
+    def _export_template(self, destination: str) -> None:
+        target = Path(destination) / datetime.now().strftime("汤圆皮肤模板-%Y%m%d-%H%M%S-%f")
+        try:
+            result = self.skin_manager.export_template(target)
+            self.model.feedback.emit("📄 皮肤包模板已生成：" + str(result), "normal")
+        except (SkinImportError, OSError, ValueError) as error:
+            self.model.feedback.emit("模板导出未完成：" + str(error), "hungry")
+
+    def _reload_icon(self) -> None:
         self.icon = create_tray_icon(self.window.renderer)
         self.app.setWindowIcon(self.icon)
         self.window.setWindowIcon(self.icon)
@@ -313,7 +412,7 @@ class PetApplication:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Q弹汤圆 · Phase 3")
+    parser = argparse.ArgumentParser(description="Q弹汤圆 · Phase 4")
     parser.add_argument("--smoke-test", action="store_true",
                         help="启动真实窗口与托盘，2 秒后输出诊断并自动退出")
     parser.add_argument("--dev-mode", action="store_true", help="开启养成计时加速：饥饿 2 秒、拾币 10 秒")
@@ -352,7 +451,7 @@ def main() -> int:
     elif args.resume_demo is not None:
         save_path = args.resume_demo
         print(f"继续演示存档：{save_path}", flush=True)
-    controller = PetApplication(app, save_path=None if args.smoke_test else save_path, accelerated=args.dev_mode)
+    controller = PetApplication(app, save_path=None if args.smoke_test else save_path, accelerated=args.dev_mode, dev_mode=args.dev_mode)
     if args.smoke_test:
         def finish_smoke() -> None:
             window = controller.window
@@ -372,7 +471,7 @@ def main() -> int:
                 "growth": controller.model.snapshot(),
                 "dashboard_tabs": controller.dashboard.tabs.count(),
             }
-            print("PHASE3_SMOKE_OK " + json.dumps(diagnostics, ensure_ascii=False), flush=True)
+            print("PHASE4_SMOKE_OK " + json.dumps(diagnostics, ensure_ascii=False), flush=True)
             app.quit()
         QTimer.singleShot(2000, finish_smoke)
 

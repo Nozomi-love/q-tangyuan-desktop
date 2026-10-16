@@ -170,6 +170,7 @@ class SpeechBubble(QWidget):
 
 
 class PetWindow(QWidget):
+    trick_finished = Signal(str)
     clicked = Signal()
     collectible_clicked = Signal()
     dashboard_requested = Signal()
@@ -184,15 +185,15 @@ class PetWindow(QWidget):
 
     FRAME_PERIOD = 1.0 / 60.0
     DRAG_THRESHOLD = 5.0
-    CANVAS_WIDTH = 448
-    CANVAS_HEIGHT = 352
-    ANCHOR_X = 224.0
-    ANCHOR_Y = 288.0
+    CANVAS_WIDTH = 800
+    CANVAS_HEIGHT = 640
+    ANCHOR_X = 400.0
+    ANCHOR_Y = 544.0
     DOUBLE_CLICK_SECONDS = 0.2
 
     def __init__(self, skin_directory: Path) -> None:
         super().__init__()
-        self.setWindowTitle("Q弹汤圆 · Phase 3")
+        self.setWindowTitle("Q弹汤圆 · Phase 4")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -211,6 +212,7 @@ class PetWindow(QWidget):
         self.active_screen = primary
         self.engine = PetEngine(self.work_area(primary))
         self.renderer = SkinRenderer(skin_directory)
+        self.renderer.frame_changed.connect(self.update)
         self.bubble = SpeechBubble(self)
         self.bubble.claimed.connect(self.collectible_clicked.emit)
         self._pending_pokes = deque()
@@ -340,6 +342,32 @@ class PetWindow(QWidget):
         self._sync_window()
         self.pinned_changed.emit(True)
 
+    def set_skin(self, directory: Path) -> bool:
+        candidate = SkinRenderer(directory)
+        if not candidate.pixmaps:
+            candidate.stop()
+            candidate.deleteLater()
+            return False
+        old = self.renderer
+        candidate.set_accessories(old.accessories)
+        self.renderer = candidate
+        candidate.frame_changed.connect(self.update)
+        old.stop()
+        old.deleteLater()
+        self._sync_window()
+        return True
+
+    def set_accessories(self, accessories: dict) -> None:
+        self.renderer.set_accessories(accessories)
+        self._sync_window()
+
+    def perform_trick(self, trick: str) -> bool:
+        if not self.engine.perform_trick(trick):
+            return False
+        self._awaiting_drop = False
+        self._sync_window()
+        return True
+
     def set_buff(self, buff: dict) -> None:
         self.engine.set_buff(buff)
         self._sync_window()
@@ -361,8 +389,9 @@ class PetWindow(QWidget):
 
     def _position_bubble(self) -> None:
         state = self.renderer.source_state(self.engine.state)
-        rect = self.renderer.draw_rects[state] if state is not None else self.renderer.body_rect()
+        rect = self.renderer.visible_rect(self.engine.state)
         transform = self.renderer.body_transform(self.engine, QPointF(self.engine.x, self.engine.y))
+        rect = rect.united(self.renderer.accessory_bounds(self.engine.state))
         self.bubble.follow(transform.mapRect(rect), self.engine.area)
 
     def reload_skins(self) -> None:
@@ -392,7 +421,10 @@ class PetWindow(QWidget):
             self.reset_to_primary()
         else:
             self.engine.set_work_area(self.work_area(self.active_screen))
+        trick = self.engine.active_trick
         impact = self.engine.advance(dt)
+        if trick and not self.engine.active_trick:
+            self.trick_finished.emit(trick)
         if impact is not None:
             self.landed.emit(impact)
             if self._awaiting_drop:
@@ -590,5 +622,7 @@ class PetWindow(QWidget):
         self.click_timer.stop()
         self._pending_pokes.clear()
         self.bubble.stop()
+        self.renderer.stop()
+        self.engine.cancel_trick()
         self._pressed = False
         self.engine.held = self.engine.dragging = False

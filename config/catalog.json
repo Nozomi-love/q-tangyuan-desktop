@@ -188,6 +188,16 @@
       "coins": 80,
       "title": "",
       "description": "真实饥饿为 0 时投喂恢复"
+    },
+    {
+      "id": "soul_infusion",
+      "tier": 2,
+      "name": "灵魂注入",
+      "metric": "customizations",
+      "target": 1,
+      "coins": 100,
+      "title": "百变星君",
+      "description": "首次导入/切换自定义皮肤，或穿戴一件挂件"
     }
   ],
   "interactions": {
@@ -196,5 +206,114 @@
     "shake_min_speed": 700,
     "shake_distance": 400,
     "shake_reversals": 3
-  }
+  },
+  "perks": {
+    "accessory_sprout": {
+      "name": "🌱 呆毛嫩芽",
+      "level": 2,
+      "kind": "accessory",
+      "slot": "head",
+      "item": "sprout"
+    },
+    "trick_flip": {
+      "name": "🌀 原地空翻",
+      "level": 2,
+      "kind": "trick"
+    },
+    "accessory_crown": {
+      "name": "👑 迷你金皇冠",
+      "level": 3,
+      "kind": "accessory",
+      "slot": "head",
+      "item": "crown"
+    },
+    "custom_import": {
+      "name": "🎨 本地自定义皮肤导入",
+      "level": 3,
+      "kind": "system"
+    },
+    "effect_steam": {
+      "name": "♨️ 暖心热气",
+      "level": 4,
+      "kind": "accessory",
+      "slot": "effect",
+      "item": "steam"
+    },
+    "trick_clone": {
+      "name": "✨ Q弹影分身",
+      "level": 4,
+      "kind": "trick"
+    },
+    "accessory_sunglasses": {
+      "name": "🕶️ 酷盖墨镜",
+      "level": 5,
+      "kind": "accessory",
+      "slot": "face",
+      "item": "sunglasses"
+    },
+    "trick_ball": {
+      "name": "⚽ 芝麻弹力球",
+      "level": 5,
+      "kind": "trick"
+    },
+    "accessory_bow": {
+      "name": "🎀 樱粉蝴蝶结",
+      "level": 6,
+      "kind": "accessory",
+      "slot": "head",
+      "item": "bow"
+    },
+    "title_guardian": {
+      "name": "✨ 汤圆守护神",
+      "level": 6,
+      "kind": "title"
+    }
+  },
+  "milestones": [
+    {
+      "level": 1,
+      "label": "初识汤圆 · 默认皮肤与基础互动",
+      "perks": []
+    },
+    {
+      "level": 2,
+      "label": "萌芽相伴",
+      "perks": [
+        "accessory_sprout",
+        "trick_flip"
+      ]
+    },
+    {
+      "level": 3,
+      "label": "百变衣橱",
+      "perks": [
+        "accessory_crown",
+        "custom_import"
+      ]
+    },
+    {
+      "level": 4,
+      "label": "暖心魔法",
+      "perks": [
+        "effect_steam",
+        "trick_clone"
+      ]
+    },
+    {
+      "level": 5,
+      "label": "玩伴时光",
+      "perks": [
+        "accessory_sunglasses",
+        "trick_ball"
+      ]
+    },
+    {
+      "level": 6,
+      "label": "汤圆守护神",
+      "perks": [
+        "accessory_bow",
+        "title_guardian"
+      ]
+    }
+  ]
 }

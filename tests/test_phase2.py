@@ -289,7 +289,7 @@ class MigrationTests(unittest.TestCase):
         pet, position = self.manager.load_all()
         self.manager.update_game(pet.to_dict(), position)
         saved = json.loads(self.file.read_bytes())
-        self.assertEqual(saved["schema_version"], 3)
+        self.assertEqual(saved["schema_version"], 4)
         self.assertEqual(saved["window"], original["window"])
         self.assertEqual(saved["inventory"], original["inventory"])
         self.assertEqual(saved["stats"]["future_stat"], 12)

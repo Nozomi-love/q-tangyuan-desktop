@@ -136,10 +136,10 @@ class AchievementTests(unittest.TestCase):
         self.assertEqual(restored.initial_achievements, [])
         self.assertEqual(restored.data.coins, 100)
 
-    def test_exact_ten_achievements_with_three_tiers(self):
+    def test_eleven_achievements_with_three_tiers(self):
         achievements = Catalog.load().achievements
-        self.assertEqual(len(achievements), 10)
-        self.assertEqual([sum(a["tier"] == t for a in achievements) for t in (1, 2, 3)], [4, 3, 3])
+        self.assertEqual(len(achievements), 11)
+        self.assertEqual([sum(a["tier"] == t for a in achievements) for t in (1, 2, 3)], [4, 4, 3])
 
     def test_first_poke_unlocks_once_but_does_not_auto_award(self):
         pet = wealthy()
@@ -272,7 +272,7 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(pet.data.claimed_achievements, [])
         self.manager.update_game(pet.snapshot(), window)
         saved = json.loads(self.file.read_bytes())
-        self.assertEqual((saved["schema_version"], saved["coins"], saved["hunger"]), (3, 234, 41))
+        self.assertEqual((saved["schema_version"], saved["coins"], saved["hunger"]), (4, 234, 41))
         self.assertEqual(saved["inventory"], {"future_item": 2})
         self.assertEqual(saved["window"], data["window"])
         self.assertTrue(saved["future_data"]["keep"])
@@ -423,7 +423,7 @@ class RenderingPhysicsTests(unittest.TestCase):
         self.renderer.paint(painter, self.engine, QPointF(PetWindow.ANCHOR_X, PetWindow.ANCHOR_Y))
         painter.end()
         self.assertEqual(image.pixelColor(0, 0).alpha(), 0)
-        self.assertTrue(any(image.pixelColor(x, y).alpha() > 0 for x in range(120, 330) for y in range(140, 180)))
+        self.assertTrue(any(image.pixelColor(x, y).alpha() > 0 for x in range(int(PetWindow.ANCHOR_X)-104, int(PetWindow.ANCHOR_X)+106) for y in range(int(PetWindow.ANCHOR_Y)-148, int(PetWindow.ANCHOR_Y)-108)))
         self.assertTrue(image.save(str(ARTIFACTS / "strawberry-particles.png")))
 
     def test_dizzy_expression_lasts_three_seconds(self):
