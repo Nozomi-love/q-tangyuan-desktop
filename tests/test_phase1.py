@@ -584,6 +584,9 @@ class InputTests(unittest.TestCase):
         event = QMouseEvent(kind, local, point, button, buttons, Qt.KeyboardModifier.NoModifier)
         with patch("pet_window.time.perf_counter", return_value=at):
             APP.sendEvent(self.window, event)
+        if kind == QEvent.Type.MouseButtonRelease:
+            with patch("pet_window.time.perf_counter", return_value=at + 0.25):
+                self.window.confirm_pending_clicks()
 
     def test_small_pointer_jitter_is_one_click(self) -> None:
         self.send(QEvent.Type.MouseButtonPress, self.start, 100)

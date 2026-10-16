@@ -26,6 +26,7 @@ except ModuleNotFoundError as error:
         ) from error
     raise
 
+from dashboard import DashboardWindow
 from models import GameRules, PetData, PetModel
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from pet_window import PetWindow
@@ -75,6 +76,9 @@ class PetApplication:
         app.setWindowIcon(self.icon)
         self.window.setWindowIcon(self.icon)
         self._build_menu()
+        self.dashboard = DashboardWindow(self.model)
+        self.dashboard.setWindowIcon(self.icon)
+        self._connect_dashboard()
 
         self.model.state_changed.connect(self._state_changed)
         self.model.starvation_changed.connect(self.window.set_starving)
@@ -82,7 +86,17 @@ class PetApplication:
         self.model.upgraded.connect(self._upgraded)
         self.model.collectible_changed.connect(self._collectible_changed)
         self.model.fed.connect(self._fed)
+        self.model.buff_changed.connect(self.window.set_buff)
+        self.model.achievement_unlocked.connect(self._achievement_unlocked)
+        self.model.dizzy_requested.connect(self._dizzy)
         self.window.clicked.connect(self.model.poke)
+        self.window.dashboard_requested.connect(self.dashboard.summon)
+        self.window.drag_landed.connect(self.model.record_drop)
+        self.window.shaken.connect(self.model.record_shake)
+        interactions = self.model.catalog.interactions
+        self.window.shake_min_speed = interactions["shake_min_speed"]
+        self.window.shake_distance = interactions["shake_distance"]
+        self.window.shake_reversals = interactions["shake_reversals"]
         self.window.collectible_clicked.connect(self.model.claim_collectible)
         self.window.pinned_changed.connect(self.pin_action.setChecked)
         self.window.position_changed.connect(self._save_position)
@@ -100,6 +114,7 @@ class PetApplication:
 
         self.window.restore_position(position)
         self.window.set_starving(self.model.starving)
+        self.window.set_buff(self.model.buff_view())
         self.window.show_collectible(self.model.has_collectible)
         self._restoring = False
         self._dirty = True
@@ -118,9 +133,12 @@ class PetApplication:
         self.save_timer.setInterval(200)
         self.save_timer.timeout.connect(self._save)
         self.dev_action.setChecked(accelerated)
+        self._sync_settings()
         app.aboutToQuit.connect(self.stop)
         self.window.show()
         self._save()
+        for achievement in self.model.initial_achievements:
+            self._achievement_unlocked(achievement)
         if self._save_blocked:
             self.window.show_message("存档读取失败，原文件已保留；本次进度不写入。", "hungry")
         elif accelerated:
@@ -146,7 +164,7 @@ class PetApplication:
         self.pet_action = self.menu.addAction("")
         self.pin_action = self.menu.addAction("📌 固定当前位置（可拖动调整）")
         self.pin_action.setCheckable(True)
-        self.dashboard_action = self.menu.addAction("🏠 打开主面板（Phase 3 启用）")
+        self.dashboard_action = self.menu.addAction("🏠 打开主面板")
         self.menu.addSeparator()
         self.debug_menu = self.menu.addMenu("🧪 调试与外观")
         self.hunger_zero_action = self.debug_menu.addAction("[调试] 饥饿值归零")
@@ -168,11 +186,35 @@ class PetApplication:
         self.gift_action.triggered.connect(self.model.offer_collectible)
         self.hunger_zero_action.triggered.connect(lambda: self.model.set_hunger(0))
         self.hunger_full_action.triggered.connect(lambda: self.model.set_hunger(100))
-        self.dashboard_action.triggered.connect(lambda: self.window.show_message("🏠 主面板将在 Phase 3 开放，现在可以右键喂食和摸头～"))
+        self.dashboard_action.triggered.connect(lambda: self.dashboard.summon())
         self.reset_action.triggered.connect(self.window.reset_to_primary)
         self.reload_action.triggered.connect(self._reload_skins)
         self.quit_action.triggered.connect(self.app.quit)
         self.menu.aboutToShow.connect(self._refresh_menu)
+
+    def _connect_dashboard(self) -> None:
+        self.dashboard.pin_requested.connect(self.pin_action.setChecked)
+        self.dashboard.dev_requested.connect(self.dev_action.setChecked)
+        self.dashboard.flat_requested.connect(self.flat_action.setChecked)
+        self.dashboard.reset_requested.connect(self.window.reset_to_primary)
+        self.dashboard.hunger_zero_requested.connect(lambda: self.model.set_hunger(0))
+        self.dashboard.hunger_full_requested.connect(lambda: self.model.set_hunger(100))
+        self.dashboard.gift_requested.connect(self.model.offer_collectible)
+        self.dashboard.reload_requested.connect(self._reload_skins)
+        for action in (self.pin_action, self.dev_action, self.flat_action):
+            action.toggled.connect(self._sync_settings)
+
+    def _sync_settings(self, _enabled: bool = False) -> None:
+        self.dashboard.set_settings(self.window.engine.pinned, self.dev_action.isChecked(), self.flat_action.isChecked())
+
+    def _achievement_unlocked(self, achievement: dict) -> None:
+        self.window.show_message(f"🏆 解锁成就：《{achievement['name']}》！可前往主面板领奖", "achievement")
+        if hasattr(self, "save_timer"):
+            self.save_timer.start()
+
+    def _dizzy(self) -> None:
+        self.window.engine.get_dizzy()
+        self.window.show_message("要被戳成糯米糍啦 @﹏@", "special")
 
     def _refresh_menu(self) -> None:
         data, rules = self.model.data, self.model.rules
@@ -216,6 +258,7 @@ class PetApplication:
 
     def _set_accelerated(self, enabled: bool) -> None:
         self.model.set_rules(self._load_rules(enabled))
+        self.dashboard.refresh()
         self._dirty = True
         self._refresh_menu()
         rules = self.model.rules
@@ -248,6 +291,7 @@ class PetApplication:
         self.icon = create_tray_icon(self.window.renderer)
         self.app.setWindowIcon(self.icon)
         self.window.setWindowIcon(self.icon)
+        self.dashboard.setWindowIcon(self.icon)
         self.tray.setIcon(self.icon)
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
@@ -265,15 +309,21 @@ class PetApplication:
         self.menu.hide()
         self.tray.hide()
         self.window.hide()
+        self.dashboard.hide()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Q弹汤圆 · Phase 2")
+    parser = argparse.ArgumentParser(description="Q弹汤圆 · Phase 3")
     parser.add_argument("--smoke-test", action="store_true",
                         help="启动真实窗口与托盘，2 秒后输出诊断并自动退出")
     parser.add_argument("--dev-mode", action="store_true", help="开启养成计时加速：饥饿 2 秒、拾币 10 秒")
     parser.add_argument("--demo", action="store_true", help="创建独立演示存档，不影响正式玩家数据")
+    parser.add_argument("--resume-demo", type=Path, help="继续已有演示存档（仅允许 tests/artifacts 内的 save_data.json）")
     args = parser.parse_args()
+    if args.resume_demo is not None:
+        args.resume_demo = args.resume_demo.resolve()
+        if args.demo or not args.resume_demo.is_relative_to((PROJECT_ROOT / "tests" / "artifacts").resolve()) or args.resume_demo.name != "save_data.json" or not args.resume_demo.is_file():
+            parser.error("--resume-demo 需要 tests/artifacts 内已有的独立演示存档，且不能与 --demo 同时使用")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     # Qt 6 already enables high DPI. Never multiply globalPosition or screen
@@ -299,6 +349,9 @@ def main() -> int:
     if args.demo:
         save_path = PROJECT_ROOT / "tests" / "artifacts" / datetime.now().strftime("demo-%Y%m%d-%H%M%S-%f") / "save_data.json"
         print(f"演示存档：{save_path}", flush=True)
+    elif args.resume_demo is not None:
+        save_path = args.resume_demo
+        print(f"继续演示存档：{save_path}", flush=True)
     controller = PetApplication(app, save_path=None if args.smoke_test else save_path, accelerated=args.dev_mode)
     if args.smoke_test:
         def finish_smoke() -> None:
@@ -317,8 +370,9 @@ def main() -> int:
                 "visible": window.isVisible(),
                 "pinned": window.engine.pinned,
                 "growth": controller.model.snapshot(),
+                "dashboard_tabs": controller.dashboard.tabs.count(),
             }
-            print("PHASE2_SMOKE_OK " + json.dumps(diagnostics, ensure_ascii=False), flush=True)
+            print("PHASE3_SMOKE_OK " + json.dumps(diagnostics, ensure_ascii=False), flush=True)
             app.quit()
         QTimer.singleShot(2000, finish_smoke)
 

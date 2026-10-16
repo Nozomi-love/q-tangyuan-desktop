@@ -26,6 +26,7 @@ class SpeechBubble(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFont(QFont("Microsoft YaHei UI", 10))
+        self._notifications = deque()
         self._text = ""
         self._tone = "normal"
         self._expires = 0.0
@@ -42,14 +43,22 @@ class SpeechBubble(QWidget):
 
     def set_collectible(self, available: bool) -> None:
         self._gift = available
-        if available and self._tone != "level":
+        if available and self._tone not in ("level", "achievement", "special"):
             self._expires = 0.0
         self._refresh()
 
     def show_message(self, text: str, tone: str = "normal", duration: float = 2.5) -> None:
         now = time.perf_counter()
-        if self._tone == "level" and self._expires > now and tone != "level":
-            return
+        priority = {"achievement": 2, "level": 3, "special": 4}
+        current = priority.get(self._tone, 0) if self._expires > now else 0
+        incoming = priority.get(tone, 0)
+        if current:
+            if incoming == 0:
+                return
+            if incoming <= current:
+                self._notifications.append((text, tone, duration))
+                return
+            self._notifications.appendleft((self._text, self._tone, max(1.0, self._expires - now)))
         self._text, self._tone = text, tone
         self._born = now
         self._expires = now + duration + 0.3
@@ -61,8 +70,12 @@ class SpeechBubble(QWidget):
 
     def _refresh(self) -> None:
         now = time.perf_counter()
+        if self._expires <= now and self._notifications:
+            self._text, self._tone, duration = self._notifications.popleft()
+            self._born = now
+            self._expires = now + duration + 0.3
         has_message = self._expires > now
-        show_gift = self._gift and (not has_message or self._tone not in ("level", "reward"))
+        show_gift = self._gift and (not has_message or self._tone not in ("level", "reward", "achievement", "special"))
         visible = has_message or self._gift
         if not visible:
             self.hide()
@@ -118,7 +131,7 @@ class SpeechBubble(QWidget):
         panel = QRectF(self.rect()).adjusted(5, 5, -5, -5)
         gift = self._showing_gift
         accent = QColor("#e9b763" if gift else "#d5a9bd" if self._tone == "level" else "#dacbd5")
-        if gift or self._tone == "level":
+        if gift or self._tone in ("level", "achievement", "special"):
             glow = QColor(accent)
             glow.setAlpha(int(40 + 20 * math.sin(time.perf_counter() * 3)))
             painter.setPen(QPen(glow, 8))
@@ -159,6 +172,9 @@ class SpeechBubble(QWidget):
 class PetWindow(QWidget):
     clicked = Signal()
     collectible_clicked = Signal()
+    dashboard_requested = Signal()
+    drag_landed = Signal()
+    shaken = Signal()
     drag_started = Signal()
     landed = Signal(float)
     context_menu_requested = Signal(QPoint)
@@ -168,14 +184,15 @@ class PetWindow(QWidget):
 
     FRAME_PERIOD = 1.0 / 60.0
     DRAG_THRESHOLD = 5.0
-    CANVAS_WIDTH = 384
-    CANVAS_HEIGHT = 288
-    ANCHOR_X = 192.0
-    ANCHOR_Y = 244.0
+    CANVAS_WIDTH = 448
+    CANVAS_HEIGHT = 352
+    ANCHOR_X = 224.0
+    ANCHOR_Y = 288.0
+    DOUBLE_CLICK_SECONDS = 0.2
 
     def __init__(self, skin_directory: Path) -> None:
         super().__init__()
-        self.setWindowTitle("Q弹汤圆 · Phase 2")
+        self.setWindowTitle("Q弹汤圆 · Phase 3")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -196,6 +213,20 @@ class PetWindow(QWidget):
         self.renderer = SkinRenderer(skin_directory)
         self.bubble = SpeechBubble(self)
         self.bubble.claimed.connect(self.collectible_clicked.emit)
+        self._pending_pokes = deque()
+        self.click_timer = QTimer(self)
+        self.click_timer.setSingleShot(True)
+        self.click_timer.timeout.connect(self.confirm_pending_clicks)
+        self._press_time = 0.0
+        self._awaiting_drop = False
+        self.shake_min_speed = 700.0
+        self.shake_distance = 400.0
+        self.shake_reversals = 3
+        self._shake_total = 0.0
+        self._shake_turns = 0
+        self._shake_direction = 0
+        self._shake_last = None
+        self._shake_emitted = False
         self._pressed = False
         self._press_global = QPointF()
         self._drag_offset = QPointF()
@@ -269,6 +300,7 @@ class PetWindow(QWidget):
         self._samples.clear()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.active_screen = primary
+        self._awaiting_drop = False
         self.engine.reset(self.work_area(primary))
         self._sync_window()
         self.show()
@@ -307,6 +339,10 @@ class PetWindow(QWidget):
                           area.top + state["y_ratio"] * area.height)
         self._sync_window()
         self.pinned_changed.emit(True)
+
+    def set_buff(self, buff: dict) -> None:
+        self.engine.set_buff(buff)
+        self._sync_window()
 
     def set_test_flat(self, enabled: bool) -> None:
         self.engine.set_flat(enabled)
@@ -359,6 +395,9 @@ class PetWindow(QWidget):
         impact = self.engine.advance(dt)
         if impact is not None:
             self.landed.emit(impact)
+            if self._awaiting_drop:
+                self._awaiting_drop = False
+                self.drag_landed.emit()
         self._sync_window()
         self.frame_count += 1
         self._next_frame += self.FRAME_PERIOD
@@ -390,6 +429,7 @@ class PetWindow(QWidget):
             event.ignore()
             return
         self._pressed = True
+        self._press_time = time.perf_counter()
         self._press_global = QPointF(event.globalPosition())
         self._drag_offset = QPointF(
             self.engine.x - event.globalPosition().x(),
@@ -423,6 +463,11 @@ class PetWindow(QWidget):
             delta = global_point - self._press_global
             if math.hypot(delta.x(), delta.y()) < self.DRAG_THRESHOLD:
                 return
+            self._awaiting_drop = False
+            self._shake_total = 0.0
+            self._shake_turns = self._shake_direction = 0
+            self._shake_last = (self._press_time, self._press_global.x())
+            self._shake_emitted = False
             self.engine.begin_drag()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             self.drag_started.emit()
@@ -430,6 +475,22 @@ class PetWindow(QWidget):
         # instead of being trapped by the previous display's collision wall.
         self._adopt_screen(self._screen_for_point(global_point))
         vx, _ = self._pointer_velocity()
+        now = time.perf_counter()
+        if self._shake_last is not None:
+            last_at, last_x = self._shake_last
+            dx = global_point.x() - last_x
+            speed = abs(dx) / max(0.001, now - last_at)
+            if speed >= self.shake_min_speed and abs(dx) >= 5:
+                direction = 1 if dx > 0 else -1
+                self._shake_total += abs(dx)
+                if self._shake_direction and direction != self._shake_direction:
+                    self._shake_turns += 1
+                self._shake_direction = direction
+                if (not self._shake_emitted and self._shake_total >= self.shake_distance
+                        and self._shake_turns >= self.shake_reversals):
+                    self._shake_emitted = True
+                    self.shaken.emit()
+            self._shake_last = (now, global_point.x())
         self.engine.drag_to(
             global_point.x() + self._drag_offset.x(),
             global_point.y() + self._drag_offset.y(),
@@ -458,19 +519,51 @@ class PetWindow(QWidget):
         self._pressed = False
         if self.engine.dragging:
             vx, vy = self._pointer_velocity()
+            self._awaiting_drop = not self.engine.pinned and self.engine.y + self.engine.bounds_offsets()[3] < self.engine.area.bottom - 20
             self.engine.release_drag(vx, vy)
             self.position_changed.emit()
         else:
-            self.engine.click()
-            self.clicked.emit()
+            self.engine.held = False
+            if self._pending_pokes:
+                previous_time, previous_point = self._pending_pokes[-1]
+                delta = self._press_global - previous_point
+                if (0 <= self._press_time - previous_time <= self.DOUBLE_CLICK_SECONDS
+                        and math.hypot(delta.x(), delta.y()) <= 8):
+                    self._pending_pokes.pop()
+                    self.click_timer.stop()
+                    self.dashboard_requested.emit()
+                else:
+                    self._pending_pokes.append((time.perf_counter(), QPointF(event.globalPosition())))
+            else:
+                self._pending_pokes.append((time.perf_counter(), QPointF(event.globalPosition())))
+            if self._pending_pokes:
+                self.click_timer.start(max(1, math.ceil((self._pending_pokes[0][0] + self.DOUBLE_CLICK_SECONDS - time.perf_counter()) * 1000)))
         self._samples.clear()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._sync_window()
         event.accept()
 
+    def confirm_pending_clicks(self) -> None:
+        now = time.perf_counter()
+        # A second press can precede the deadline while its release follows it.
+        if self._pressed and not self.engine.dragging and self._pending_pokes:
+            when, point = self._pending_pokes[-1]
+            delta = self._press_global - point
+            if 0 <= self._press_time - when <= self.DOUBLE_CLICK_SECONDS and math.hypot(delta.x(), delta.y()) <= 8:
+                self.click_timer.start(20)
+                return
+        while self._pending_pokes and now >= self._pending_pokes[0][0] + self.DOUBLE_CLICK_SECONDS:
+            self._pending_pokes.popleft()
+            if not self.engine.held:
+                self.engine.click()
+            self.clicked.emit()
+        if self._pending_pokes:
+            self.click_timer.start(max(1, math.ceil((self._pending_pokes[0][0] + self.DOUBLE_CLICK_SECONDS - now) * 1000)))
+        self._sync_window()
+
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        # The second press remains a poke until the Phase 3 dashboard exists.
-        # Flips will use a separate menu entry.
+        # Native Qt double-click timing may be longer; use the same application
+        # 200 ms rule for native and synthetic press/release events.
         self.mousePressEvent(event)
 
     def event(self, event: QEvent) -> bool:
@@ -479,6 +572,7 @@ class PetWindow(QWidget):
         if event.type() == QEvent.Type.UngrabMouse and getattr(self, "_pressed", False):
             self._pressed = False
             if self.engine.dragging:
+                self._awaiting_drop = not self.engine.pinned and self.engine.y + self.engine.bounds_offsets()[3] < self.engine.area.bottom - 20
                 self.engine.release_drag(0.0, 0.0)
                 self.position_changed.emit()
             else:
@@ -493,6 +587,8 @@ class PetWindow(QWidget):
 
     def stop(self) -> None:
         self.timer.stop()
+        self.click_timer.stop()
+        self._pending_pokes.clear()
         self.bubble.stop()
         self._pressed = False
         self.engine.held = self.engine.dragging = False

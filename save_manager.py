@@ -40,7 +40,7 @@ class SaveManager:
             if not isinstance(data, dict):
                 raise ValueError("存档根节点必须是对象")
             version = data.get("schema_version", 1)
-            if type(version) is not int or version not in (1, 2):
+            if type(version) is not int or version not in (1, 2, 3):
                 raise ValueError("不支持的存档版本")
             return raw, data
         except (UnicodeError, ValueError) as error:
@@ -119,15 +119,17 @@ class SaveManager:
             data["window"] = {**old_window, **window}
         if game is not None:
             data = self._merge(data, game)
-        data["schema_version"] = 2 if game is not None else old_version
+            # An expired/replaced Buff must not be resurrected by recursive merge.
+            data["active_buff"] = deepcopy(game["active_buff"])
+        data["schema_version"] = 3 if game is not None else old_version
         payload = (json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
         if before == payload:
             self._expected = before
             return
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            if before is not None and old_version == 1 and game is not None:
-                # Back up the player's old position save before its first upgrade.
+            if before is not None and old_version < 3 and game is not None:
+                # Back up the player's old save before its first upgrade.
                 stamp_time = datetime.now(timezone(timedelta(hours=8)))
                 while True:
                     stamp = stamp_time.strftime("%Y%m%d-%H%M%S-%f")[:-3]

@@ -10,10 +10,191 @@
     "gift_seconds": 10,
     "hungry_notice_seconds": 8
   },
-  "white_sugar": {
-    "name": "白砂糖",
-    "cost": 10,
-    "hunger": 25,
-    "exp": 10
+  "buff_seconds": 60,
+  "development_buff_seconds": 15,
+  "items": {
+    "water": {
+      "name": "温开水",
+      "icon": "💧",
+      "cost": 5,
+      "hunger": 10,
+      "exp": 5
+    },
+    "sugar": {
+      "name": "白砂糖",
+      "icon": "🍬",
+      "cost": 10,
+      "hunger": 25,
+      "exp": 10
+    },
+    "osmanthus": {
+      "name": "桂花酒酿",
+      "icon": "🍶",
+      "cost": 25,
+      "hunger": 50,
+      "exp": 25
+    },
+    "sesame": {
+      "name": "黑芝麻糊",
+      "icon": "🥣",
+      "cost": 35,
+      "hunger": 40,
+      "exp": 20,
+      "buff": {
+        "name": "芝麻胖团",
+        "color": "#45424a",
+        "scale": 1.2,
+        "description": "深灰芝麻色调，整体放大 1.2 倍"
+      }
+    },
+    "strawberry": {
+      "name": "草莓果酱",
+      "icon": "🍓",
+      "cost": 35,
+      "hunger": 40,
+      "exp": 20,
+      "buff": {
+        "name": "粉红甜心",
+        "color": "#f58fb1",
+        "scale": 1,
+        "description": "柔和粉红染色，周身缓缓升起粉红光点"
+      }
+    },
+    "matcha": {
+      "name": "宇治抹茶粉",
+      "icon": "🍵",
+      "cost": 35,
+      "hunger": 40,
+      "exp": 20,
+      "buff": {
+        "name": "抹茶清香",
+        "color": "#78ad76",
+        "scale": 1,
+        "description": "清新的抹茶绿色调"
+      }
+    },
+    "chili": {
+      "name": "变态辣油",
+      "icon": "🌶️",
+      "cost": 45,
+      "hunger": 30,
+      "exp": 35,
+      "buff": {
+        "name": "辣得狂奔",
+        "color": "#f25a4c",
+        "scale": 1,
+        "behavior_seconds": 12,
+        "description": "火红染色；前 12 秒沿任务栏轻跳小跑，固定时原位跺脚"
+      }
+    }
+  },
+  "achievements": [
+    {
+      "id": "first_poke",
+      "tier": 1,
+      "name": "Q弹初体验",
+      "metric": "total_clicks",
+      "target": 1,
+      "coins": 30,
+      "title": "",
+      "description": "左键戳一戳 1 次（双击和拖拽不计）"
+    },
+    {
+      "id": "first_drop",
+      "tier": 1,
+      "name": "高空抛物",
+      "metric": "total_drops",
+      "target": 1,
+      "coins": 30,
+      "title": "",
+      "description": "从地面上方至少 20 像素松手，并实际落回任务栏 1 次"
+    },
+    {
+      "id": "first_feed",
+      "tier": 1,
+      "name": "第一口甜",
+      "metric": "total_feeds",
+      "target": 1,
+      "coins": 50,
+      "title": "",
+      "description": "投喂任意食物 1 次"
+    },
+    {
+      "id": "first_pet",
+      "tier": 1,
+      "name": "温柔摸头",
+      "metric": "total_pets",
+      "target": 1,
+      "coins": 30,
+      "title": "",
+      "description": "成功摸摸头 1 次"
+    },
+    {
+      "id": "flavors_three",
+      "tier": 2,
+      "name": "百味汤圆",
+      "metric": "flavors_seen",
+      "target": 3,
+      "coins": 100,
+      "title": "美食鉴赏家",
+      "description": "体验 3 种不同风味，重复口味不累加"
+    },
+    {
+      "id": "gifts_three",
+      "tier": 2,
+      "name": "勤俭持家",
+      "metric": "total_gifts",
+      "target": 3,
+      "coins": 80,
+      "title": "",
+      "description": "领取挂机礼包 3 次（含超时自动收好）"
+    },
+    {
+      "id": "level_three",
+      "tier": 2,
+      "name": "形影不离",
+      "metric": "affection_level",
+      "target": 3,
+      "coins": 100,
+      "title": "糯米团长",
+      "description": "好感度达到 Lv.3"
+    },
+    {
+      "id": "rapid_pokes",
+      "tier": 3,
+      "name": "无情铁手",
+      "metric": "rapid_poke_peak",
+      "target": 15,
+      "coins": 120,
+      "title": "无情铁手",
+      "description": "5 秒内完成 15 次独立戳戳（每次间隔约 0.25 秒）"
+    },
+    {
+      "id": "shake",
+      "tier": 3,
+      "name": "天旋地转",
+      "metric": "total_shakes",
+      "target": 1,
+      "coins": 80,
+      "title": "",
+      "description": "同次拖拽快速摇晃：700px/s、累计 400px、至少 3 次换向"
+    },
+    {
+      "id": "rescue",
+      "tier": 3,
+      "name": "绝处逢生",
+      "metric": "starvation_recoveries",
+      "target": 1,
+      "coins": 80,
+      "title": "",
+      "description": "真实饥饿为 0 时投喂恢复"
+    }
+  ],
+  "interactions": {
+    "rapid_window_seconds": 5,
+    "rapid_target": 15,
+    "shake_min_speed": 700,
+    "shake_distance": 400,
+    "shake_reversals": 3
   }
 }

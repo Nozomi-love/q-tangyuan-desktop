@@ -289,7 +289,7 @@ class MigrationTests(unittest.TestCase):
         pet, position = self.manager.load_all()
         self.manager.update_game(pet.to_dict(), position)
         saved = json.loads(self.file.read_bytes())
-        self.assertEqual(saved["schema_version"], 2)
+        self.assertEqual(saved["schema_version"], 3)
         self.assertEqual(saved["window"], original["window"])
         self.assertEqual(saved["inventory"], original["inventory"])
         self.assertEqual(saved["stats"]["future_stat"], 12)
@@ -421,6 +421,7 @@ class UIIntegrationTests(unittest.TestCase):
     def test_actual_pet_mouse_click_changes_stats_but_drag_does_not(self):
         at = self.window.local_foot() + QPointF(0, -50)
         QTest.mouseClick(self.window, Qt.MouseButton.LeftButton, pos=at.toPoint())
+        QTest.qWait(240)
         self.assertEqual(self.controller.model.data.stats["total_clicks"], 1)
         start = self.window.mapToGlobal(at)
         self.window.mousePressEvent(QMouseEvent(QEvent.Type.MouseButtonPress, at, start, Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))

@@ -111,6 +111,7 @@ def worker(mode: str, file: Path) -> int:
             for _ in range(20):
                 at = window.local_foot() + QPointF(0, -50)
                 QTest.mouseClick(window, Qt.MouseButton.LeftButton, pos=at.toPoint())
+                QTest.qWait(240)
             assert model.data.stats["total_clicks"] == 20
             assert model.data.affection_exp == 40
             assert model.data.daily_stats["poke_coin_drops"] > 0

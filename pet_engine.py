@@ -88,6 +88,10 @@ class PetEngine:
         self.starving = False
         self._celebration_hops = 0
         self._next_celebration_at = 0.0
+        self.buff: dict = {}
+        self.dizzy_until = 0.0
+        self._next_spicy_at = 0.0
+        self._run_direction = -1.0
         self.pinned = False
         self.happy_until = 0.0
         self.last_drag_time = 0.0
@@ -100,6 +104,8 @@ class PetEngine:
 
     @property
     def state(self) -> PetState:
+        if self.elapsed < self.dizzy_until:
+            return PetState.DIZZY
         if self.starving:
             return PetState.FLAT
         if self.dragging:
@@ -117,8 +123,8 @@ class PetEngine:
         # Breathing and jelly motion conserve projected area. Hunger is a
         # separate deformation: flatten without excessive 2.5x widening.
         return Pose(
-            (1.14 if self.flat else 1.0) / dynamic_height,
-            dynamic_height * (0.4 if self.flat else 1.0),
+            (1.14 if self.flat else 1.0) / dynamic_height * self.buff.get("scale", 1.0),
+            dynamic_height * (0.4 if self.flat else 1.0) * self.buff.get("scale", 1.0),
             self.angle,
         )
 
@@ -211,6 +217,18 @@ class PetEngine:
         self._celebration_hops = 3
         self._next_celebration_at = self.elapsed
 
+    def set_buff(self, buff: dict) -> None:
+        was_running = self.buff.get("behavior_remaining", 0) > 0
+        self.buff = dict(buff)
+        if was_running and not self.buff.get("behavior_remaining", 0):
+            self.vx = 0.0
+        if self.grounded and not self.pinned:
+            self._align_with_floor()
+            self._confine_horizontal()
+
+    def get_dizzy(self) -> None:
+        self.dizzy_until = self.elapsed + 3.0
+
     def hold(self) -> None:
         self.held = True
 
@@ -294,6 +312,23 @@ class PetEngine:
             self._celebration_hops -= 1
             self._next_celebration_at = self.elapsed + 0.4
         duration = min(elapsed_seconds, self.MAX_FRAME_DELTA)
+        if self.buff:
+            self.buff["remaining_seconds"] = max(0.0, self.buff.get("remaining_seconds", 0) - duration)
+            self.buff["behavior_remaining"] = max(0.0, self.buff.get("behavior_remaining", 0) - duration)
+            if self.buff["remaining_seconds"] <= 0:
+                self.set_buff({})
+        running = self.buff.get("behavior_remaining", 0) > 0 and not self.flat
+        if running and not self.held:
+            if self.pinned:
+                if self.elapsed >= self._next_spicy_at:
+                    self.rebound()
+                    self._next_spicy_at = self.elapsed + 0.16
+            else:
+                self.vx = self._run_direction * 280.0
+                if self.grounded and self.elapsed >= self._next_spicy_at:
+                    self.vy = -155.0
+                    self.grounded = False
+                    self._next_spicy_at = self.elapsed + 0.22
         steps = max(1, math.ceil(duration / self.MAX_STEP))
         dt = duration / steps
         impact: float | None = None
@@ -347,6 +382,8 @@ class PetEngine:
                     self._squash_on_landing(impact)
                     self._align_with_floor()
             self._confine_horizontal()
+            if running and abs(self.vx) > 1:
+                self._run_direction = 1.0 if self.vx > 0 else -1.0
         return impact
 
 
@@ -362,6 +399,7 @@ class SkinRenderer:
     def __init__(self, skin_directory: Path) -> None:
         self.skin_directory = Path(skin_directory)
         self.pixmaps: dict[PetState, QPixmap] = {}
+        self.tint_cache: dict[tuple[PetState, str], QPixmap] = {}
         self.images: dict[PetState, QImage] = {}
         self.draw_rects: dict[PetState, QRectF] = {}
         self.source_paths: dict[PetState, Path] = {}
@@ -484,6 +522,7 @@ class SkinRenderer:
 
     def reload(self) -> None:
         self.pixmaps.clear()
+        self.tint_cache.clear()
         self.images.clear()
         self.draw_rects.clear()
         self.source_paths.clear()
@@ -582,6 +621,19 @@ class SkinRenderer:
         u, v = min(u, image.width() - 1), min(v, image.height() - 1)
         return image.pixelColor(u, v).alpha() > 12
 
+    def tinted_pixmap(self, state: PetState, color: str) -> QPixmap:
+        key = (state, color)
+        if key not in self.tint_cache:
+            image = self.pixmaps[state].copy()
+            tint = QColor(color)
+            tint.setAlphaF(0.35)
+            overlay = QPainter(image)
+            overlay.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
+            overlay.fillRect(image.rect(), tint)
+            overlay.end()
+            self.tint_cache[key] = image
+        return self.tint_cache[key]
+
     def paint(self, painter: QPainter, engine: PetEngine, foot: QPointF) -> None:
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -589,11 +641,31 @@ class SkinRenderer:
         painter.setTransform(self.body_transform(engine, foot), combine=True)
         source = self.source_state(engine.state)
         if source is not None:
-            pixmap = self.pixmaps[source]
+            color = engine.buff.get("color")
+            pixmap = self.tinted_pixmap(source, color) if color else self.pixmaps[source]
             painter.drawPixmap(self.draw_rects[source], pixmap, QRectF(pixmap.rect()))
         else:
             self.paint_fallback(painter)
+            if engine.buff.get("color"):
+                tint = QColor(engine.buff["color"])
+                tint.setAlphaF(0.35)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(tint)
+                painter.drawEllipse(self.body_rect())
         painter.restore()
+        if engine.buff.get("item_id") == "strawberry":
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            for index in range(9):
+                phase = (engine.elapsed * 0.20 + index / 9) % 1.0
+                x = foot.x() + math.sin(index * 2.4) * (70 + phase * 12)
+                y = foot.y() - 8 - phase * 145
+                color = QColor("#efa3c2")
+                color.setAlphaF(0.5 * math.sin(math.pi * phase))
+                painter.setBrush(color)
+                painter.drawEllipse(QPointF(x, y), 2.0 + index % 3, 2.0 + index % 3)
+            painter.restore()
 
     @staticmethod
     def paint_fallback(painter: QPainter) -> None:
