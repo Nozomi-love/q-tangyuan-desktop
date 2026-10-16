@@ -25,6 +25,7 @@ except ModuleNotFoundError as error:
 
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from pet_window import PetWindow
+from save_manager import SaveDataError, SaveManager
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -48,8 +49,11 @@ def create_tray_icon(renderer: SkinRenderer | None = None) -> QIcon:
 class PetApplication:
     """Own the overlay, shared menu, and tray for their entire lifetime."""
 
-    def __init__(self, app: QApplication) -> None:
+    def __init__(self, app: QApplication, save_path: Path | None = PROJECT_ROOT / "data" / "save_data.json") -> None:
         self.app = app
+        self.save_manager = SaveManager(save_path) if save_path is not None else None
+        self._restoring = True
+        self._stopped = False
         self.window = PetWindow(PROJECT_ROOT / "assets" / "skins" / "default")
         self.icon = create_tray_icon(self.window.renderer)
         app.setWindowIcon(self.icon)
@@ -57,18 +61,24 @@ class PetApplication:
 
         self.menu = QMenu(self.window)
         self.reset_action = QAction("重置回主屏幕右下角", self.menu)
+        self.pin_action = QAction("固定当前位置（可拖动调整）", self.menu)
+        self.pin_action.setCheckable(True)
         self.flat_action = QAction("切换测试饿扁状态", self.menu)
         self.flat_action.setCheckable(True)
         self.reload_action = QAction("重新加载表情 PNG", self.menu)
         self.quit_action = QAction("退出程序", self.menu)
 
         self.menu.addAction(self.reset_action)
+        self.menu.addAction(self.pin_action)
         self.menu.addAction(self.flat_action)
         self.menu.addAction(self.reload_action)
         self.menu.addSeparator()
         self.menu.addAction(self.quit_action)
 
         self.reset_action.triggered.connect(self.window.reset_to_primary)
+        self.pin_action.toggled.connect(self.window.set_pinned)
+        self.window.pinned_changed.connect(self.pin_action.setChecked)
+        self.window.position_changed.connect(self._save_position)
         self.flat_action.toggled.connect(self.window.set_test_flat)
         self.reload_action.triggered.connect(self._reload_skins)
         self.quit_action.triggered.connect(app.quit)
@@ -84,8 +94,26 @@ class PetApplication:
         else:
             logging.warning("系统托盘当前不可用；右键汤圆仍可重置、切换饿扁和退出。")
 
+        self._restore_position()
+        self._restoring = False
         app.aboutToQuit.connect(self.stop)
         self.window.show()
+
+    def _restore_position(self) -> None:
+        if self.save_manager is None:
+            return
+        try:
+            self.window.restore_position(self.save_manager.load_window_state())
+        except SaveDataError as error:
+            logging.warning("无法恢复固定位置：%s", error)
+
+    def _save_position(self) -> None:
+        if self.save_manager is None or self._restoring or self._stopped:
+            return
+        try:
+            self.save_manager.update_window(self.window.capture_position())
+        except SaveDataError as error:
+            logging.warning("固定位置尚未保存：%s", error)
 
     def _reload_skins(self) -> None:
         self.window.reload_skins()
@@ -99,6 +127,10 @@ class PetApplication:
             self.window.reset_to_primary()
 
     def stop(self) -> None:
+        if self._stopped:
+            return
+        self._save_position()
+        self._stopped = True
         self.window.stop()
         self.menu.hide()
         self.tray.hide()
@@ -131,7 +163,7 @@ def main() -> int:
         app.exit(1)
 
     sys.excepthook = report_exception
-    controller = PetApplication(app)
+    controller = PetApplication(app, save_path=None) if args.smoke_test else PetApplication(app)
     if args.smoke_test:
         def finish_smoke() -> None:
             window = controller.window
@@ -147,6 +179,7 @@ def main() -> int:
                 "loaded_png_states": sorted(state.value for state in window.renderer.pixmaps),
                 "tray_available": QSystemTrayIcon.isSystemTrayAvailable(),
                 "visible": window.isVisible(),
+                "pinned": window.engine.pinned,
             }
             print("PHASE1_SMOKE_OK " + json.dumps(diagnostics, ensure_ascii=False), flush=True)
             app.quit()

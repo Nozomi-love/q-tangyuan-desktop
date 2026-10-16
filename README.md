@@ -1,8 +1,8 @@
 # Q弹汤圆 · Phase 1
 
-本地离线桌宠与免费养成项目，使用 Python 3.10+、PySide6 6.8.3。当前已完成桌宠物理与四张元宝汤圆表情适配。
+本地离线桌宠与免费养成项目，使用 Python 3.10+、PySide6 6.8.3。当前已完成桌宠物理、四张元宝汤圆表情适配与固定位置记忆。
 
-[GitHub 私有仓库](https://github.com/Nozomi-love/q-tangyuan-desktop) · [项目规范](docs/项目规范.md) · [开发日志](docs/开发日志.md) · [素材记录](docs/素材记录.md)
+[GitHub 私有仓库](https://github.com/Nozomi-love/q-tangyuan-desktop) · [项目规范](docs/项目规范.md) · [开发日志](docs/开发日志.md) · [素材记录](docs/素材记录.md) · [目录说明](docs/目录说明.md)
 
 ![四种表情的实际渲染预览](docs/images/phase1-artwork.png)
 
@@ -20,6 +20,17 @@
     .\.venv\Scripts\python.exe main.py
 
 资源相对于 main.py 定位。修改程序代码后请重启旧桌宠进程；只更换图片或 expressions.json 时，可使用“重新加载表情 PNG”。
+
+## 固定位置
+
+1. 右键桌宠或托盘，勾选“固定当前位置（可拖动调整）”。
+2. 左键拖到想要的位置，松手后留在那里。
+3. 固定时仍会呼吸、切换表情和果冻回弹，点击不再跳离固定锚点。
+4. 取消勾选后恢复重力与抛投。
+5. 固定开关和位置自动保存，下次启动会恢复。位置按所在显示器工作区比例记录，适配分辨率变化；显示器不存在时回退主屏并限制在可见区域。
+6. “重置回主屏幕右下角”保留固定开关，将固定位置一起移到主屏右下角。
+
+位置保存在 data/save_data.json，不上传 GitHub。写入时保留其他数据字段，校验失败或写入失败会在终端提示并保留原文件。测试脚本使用独立测试存档；启动冒烟模式不读写用户位置设置。
 
 ## 默认表情
 
@@ -64,21 +75,24 @@ Phase 1 双击表现为连续戳一戳；后续主面板接入双击打开，空
 | --- | --- |
 | main.py | 应用控制器、托盘、共享菜单、异常退出与启动诊断 |
 | pet_engine.py | 状态、形变、弹簧、重力/碰撞、图片预处理和渲染 |
-| pet_window.py | 透明 Tool 窗口、60 Hz 调度、Qt 坐标映射、多屏和鼠标事件 |
+| pet_window.py | 透明 Tool 窗口、60 Hz 调度、Qt 坐标映射、多屏、固定位置与鼠标事件 |
+| save_manager.py | 固定开关/位置持久化、原子写入、保留其他存档字段 |
 | requirements.txt | 固定 Qt 依赖 |
 | styles/theme.qss | 柔和菜单样式 |
 | assets/skins/default/expressions.json | 默认表情文件名与加载方式 |
-| tests/test_phase1.py | 34 项物理、渲染与交互回归测试 |
+| tests/test_phase1.py | 51 项物理、渲染与交互回归测试 |
 | tests/verify_native.py | Windows 原生属性、托盘动作与退出验证 |
 | tests/verify_artwork.py | 四表情、去白底、白色身体、原图散列和预览验证 |
+| tests/verify_pinning.py | 两个独立原生进程验证关闭/重启后的固定位置 |
 
-后续核心模块为 models.py、save_manager.py、dashboard.py。运行存档、虚拟环境、测试产物和备份不提交到 Git。
+后续核心模块为 models.py、dashboard.py。运行存档、虚拟环境、测试产物和备份不提交到 Git。
 
 ## 验证
 
     .\.venv\Scripts\python.exe -B tests\test_phase1.py
     .\.venv\Scripts\python.exe -B tests\verify_artwork.py
     .\.venv\Scripts\python.exe -B tests\verify_native.py
+    .\.venv\Scripts\python.exe -B tests\verify_pinning.py
     .\.venv\Scripts\python.exe -B main.py --smoke-test
 
 行为测试可设置 QT_QPA_PLATFORM=offscreen。原生验证适用于 Windows，自动打开本程序窗口并退出。测试产物保留于 tests/artifacts/。

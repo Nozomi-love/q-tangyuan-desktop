@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pet_engine import PetEngine, PetState, SkinRenderer, WorkArea
 from pet_window import PetWindow
+from save_manager import SaveDataError, SaveManager
 
 APP = QApplication.instance() or QApplication(["phase1-tests"])
 APP.setQuitOnLastWindowClosed(False)
@@ -202,6 +203,57 @@ class PhysicsTests(unittest.TestCase):
             self.assertGreaterEqual(self.engine.y + top, -0.001)
             self.assertLessEqual(self.engine.y + bottom, 1000.001)
 
+    def test_pin_stops_fall_and_unpin_restores_gravity(self) -> None:
+        self.engine.place(750, 350)
+        self.engine.vx, self.engine.vy = 300, 800
+        self.engine.set_pinned(True)
+        advance_for(self.engine, 2)
+        self.assertEqual((self.engine.x, self.engine.y), (750, 350))
+        self.assertEqual((self.engine.vx, self.engine.vy), (0, 0))
+        self.engine.set_pinned(False)
+        self.engine.advance(1 / 60)
+        self.assertGreater(self.engine.y, 350)
+
+    def test_pinned_click_animates_without_moving_anchor(self) -> None:
+        self.engine.place(750, 350)
+        self.engine.set_pinned(True)
+        self.engine.click()
+        self.assertEqual(self.engine.state, PetState.HAPPY)
+        self.assertLess(self.engine.pose.scale_y, 0.8)
+        advance_for(self.engine, 2)
+        self.assertEqual((self.engine.x, self.engine.y), (750, 350))
+        self.assertEqual(self.engine.state, PetState.IDLE)
+
+    def test_pinned_drag_changes_location_without_throwing(self) -> None:
+        self.engine.set_pinned(True)
+        self.engine.begin_drag()
+        self.engine.drag_to(600, 400, 1200)
+        self.engine.release_drag(1200, -600)
+        advance_for(self.engine, 2)
+        self.assertEqual((self.engine.x, self.engine.y), (600, 400))
+        self.assertEqual((self.engine.vx, self.engine.vy), (0, 0))
+        self.assertTrue(self.engine.pinned)
+
+    def test_pinned_work_area_change_keeps_pet_accessible(self) -> None:
+        self.engine.place(1400, 800)
+        self.engine.set_pinned(True)
+        area = WorkArea(-1280, -50, 1280, 780)
+        self.engine.set_work_area(area)
+        left, top, right, bottom = self.engine.bounds_offsets()
+        self.assertGreaterEqual(self.engine.x + left, area.left)
+        self.assertLessEqual(self.engine.x + right, area.right)
+        self.assertGreaterEqual(self.engine.y + top, area.top)
+        self.assertLessEqual(self.engine.y + bottom, area.bottom)
+        self.assertTrue(self.engine.pinned)
+
+    def test_reset_keeps_pin_mode_at_primary_corner(self) -> None:
+        self.engine.set_pinned(True)
+        self.engine.place(500, 400)
+        self.engine.reset()
+        advance_for(self.engine, 1)
+        self.assertTrue(self.engine.pinned)
+        self.assertEqual(self.engine.y, self.engine.area.bottom)
+
 
 class RendererTests(unittest.TestCase):
     @classmethod
@@ -377,6 +429,138 @@ class RendererTests(unittest.TestCase):
         self.assertEqual(len(renderer.pixmaps), 0)
 
 
+class SaveTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = ARTIFACTS / self._testMethodName
+        self.directory.mkdir()
+        self.file = self.directory / "save_data.json"
+        self.manager = SaveManager(self.file)
+        self.state = {"pinned": True, "screen": "display", "x_ratio": 0.5, "y_ratio": 0.4}
+
+    def test_missing_save_returns_default(self) -> None:
+        self.assertEqual(self.manager.load_window_state(), {})
+        self.assertFalse(self.file.exists())
+
+    def test_window_round_trip_preserves_game_and_other_settings(self) -> None:
+        old = {"schema_version": 1, "coins": 88, "inventory": {"food": 2},
+               "window": {"future_option": "keep"}}
+        self.file.write_text(json.dumps(old), encoding="utf-8")
+        self.manager.update_window(self.state)
+        saved = json.loads(self.file.read_text(encoding="utf-8"))
+        self.assertEqual(saved["coins"], 88)
+        self.assertEqual(saved["inventory"], {"food": 2})
+        self.assertEqual(saved["window"]["future_option"], "keep")
+        self.assertTrue(self.manager.load_window_state()["pinned"])
+
+    def test_corrupt_save_is_not_overwritten(self) -> None:
+        self.file.write_bytes(b"broken json")
+        with self.assertRaises(SaveDataError):
+            self.manager.load_window_state()
+        with self.assertRaises(SaveDataError):
+            self.manager.update_window(self.state)
+        self.assertEqual(self.file.read_bytes(), b"broken json")
+
+    def test_future_version_is_not_overwritten(self) -> None:
+        raw = b'{"schema_version": 99, "important": "keep"}'
+        self.file.write_bytes(raw)
+        with self.assertRaises(SaveDataError):
+            self.manager.update_window(self.state)
+        self.assertEqual(self.file.read_bytes(), raw)
+
+    def test_invalid_coordinates_are_rejected(self) -> None:
+        for bad in (float("nan"), float("inf"), -0.1, 1.1, True):
+            with self.assertRaises(SaveDataError):
+                self.manager.update_window({**self.state, "x_ratio": bad})
+        self.assertFalse(self.file.exists())
+
+    def test_failed_atomic_replace_preserves_previous_save(self) -> None:
+        self.manager.update_window(self.state)
+        previous = self.file.read_bytes()
+        with patch("save_manager.os.replace", side_effect=PermissionError("test lock")):
+            with self.assertRaises(SaveDataError):
+                self.manager.update_window({**self.state, "pinned": False})
+        self.assertEqual(self.file.read_bytes(), previous)
+
+    def test_nonstandard_nan_in_save_is_rejected(self) -> None:
+        raw = b'{"schema_version": 1, "coins": NaN}'
+        self.file.write_bytes(raw)
+        with self.assertRaises(SaveDataError):
+            self.manager.update_window(self.state)
+        self.assertEqual(self.file.read_bytes(), raw)
+
+    def test_concurrent_change_is_not_overwritten(self) -> None:
+        self.manager.update_window(self.state)
+        other = b'{"schema_version":1,"coins":999}'
+        with patch("save_manager.os.fsync", side_effect=lambda _: self.file.write_bytes(other)):
+            with self.assertRaises(SaveDataError):
+                self.manager.update_window({**self.state, "pinned": False})
+        self.assertEqual(self.file.read_bytes(), other)
+
+
+class PositionIntegrationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = ARTIFACTS / self._testMethodName
+        self.directory.mkdir()
+        self.save_file = self.directory / "save_data.json"
+        self.controllers = []
+
+    def make_controller(self):
+        from main import PetApplication
+        controller = PetApplication(APP, save_path=self.save_file)
+        controller.window.timer.stop()
+        self.controllers.append(controller)
+        return controller
+
+    def tearDown(self) -> None:
+        for controller in self.controllers:
+            controller.stop()
+            controller.window.deleteLater()
+        APP.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+    def test_pin_menu_and_restart_restore_position(self) -> None:
+        first = self.make_controller()
+        area = first.window.engine.area
+        first.window.engine.place(area.left + area.width * 0.55,
+                                  area.top + area.height * 0.45)
+        first.pin_action.trigger()
+        saved_position = (first.window.engine.x, first.window.engine.y)
+        first.stop()
+        second = self.make_controller()
+        self.assertTrue(second.pin_action.isChecked())
+        self.assertTrue(second.window.engine.pinned)
+        self.assertAlmostEqual(second.window.engine.x, saved_position[0])
+        self.assertAlmostEqual(second.window.engine.y, saved_position[1])
+        advance_for(second.window.engine, 1)
+        self.assertEqual((second.window.engine.x, second.window.engine.y), saved_position)
+
+    def test_unpin_is_saved_and_next_start_uses_gravity(self) -> None:
+        first = self.make_controller()
+        first.window.engine.place(400, 300)
+        first.pin_action.trigger()
+        first.pin_action.trigger()
+        first.window.engine.advance(1 / 60)
+        self.assertGreater(first.window.engine.y, 300)
+        first.stop()
+        second = self.make_controller()
+        self.assertFalse(second.pin_action.isChecked())
+        self.assertFalse(second.window.engine.pinned)
+
+    def test_removed_display_falls_back_to_primary_and_clamps_position(self) -> None:
+        SaveManager(self.save_file).update_window({
+            "pinned": True, "screen": "no-longer-connected",
+            "x_ratio": 0.99, "y_ratio": 0.01,
+        })
+        controller = self.make_controller()
+        engine = controller.window.engine
+        self.assertEqual(controller.window.active_screen, APP.primaryScreen())
+        left, top, right, bottom = engine.bounds_offsets()
+        self.assertGreaterEqual(engine.x + left, engine.area.left)
+        self.assertLessEqual(engine.x + right, engine.area.right)
+        self.assertGreaterEqual(engine.y + top, engine.area.top)
+        self.assertLessEqual(engine.y + bottom, engine.area.bottom)
+        self.assertTrue(controller.pin_action.isChecked())
+
+
 class InputTests(unittest.TestCase):
     def setUp(self) -> None:
         self.window = PetWindow(ARTIFACTS / "no-default-skin")
@@ -450,6 +634,19 @@ class InputTests(unittest.TestCase):
         self.assertFalse(self.window._pressed)
         self.assertFalse(self.window.engine.held)
         self.assertFalse(self.window.engine.dragging)
+
+
+    def test_pinned_drag_updates_fixed_position(self) -> None:
+        self.window.set_pinned(True)
+        self.send(QEvent.Type.MouseButtonPress, self.start, 100)
+        moved = self.start + QPointF(-100, -180)
+        self.send(QEvent.Type.MouseMove, moved, 100.05)
+        self.send(QEvent.Type.MouseButtonRelease, moved, 100.07)
+        position = self.window.engine.x, self.window.engine.y
+        advance_for(self.window.engine, 1)
+        self.assertEqual((self.window.engine.x, self.window.engine.y), position)
+        self.assertEqual(len(self.clicks), 0)
+        self.assertTrue(self.window.engine.pinned)
 
 
 if __name__ == "__main__":

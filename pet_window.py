@@ -21,6 +21,8 @@ class PetWindow(QWidget):
     landed = Signal(float)
     context_menu_requested = Signal(QPoint)
     close_requested = Signal()
+    pinned_changed = Signal(bool)
+    position_changed = Signal()
 
     FRAME_PERIOD = 1.0 / 60.0
     DRAG_THRESHOLD = 5.0
@@ -88,6 +90,7 @@ class PetWindow(QWidget):
         if self.active_screen in QGuiApplication.screens():
             self.engine.set_work_area(self.work_area(self.active_screen))
             self._sync_window()
+            self.position_changed.emit()
 
     def _screen_removed(self, screen: QScreen) -> None:
         self._watched_screens = [s for s in self._watched_screens if s is not screen]
@@ -126,6 +129,40 @@ class PetWindow(QWidget):
         self._sync_window()
         self.show()
         self.raise_()
+        self.position_changed.emit()
+
+    def set_pinned(self, enabled: bool) -> None:
+        if self.engine.pinned == bool(enabled):
+            return
+        self.engine.set_pinned(enabled)
+        self._sync_window()
+        self.pinned_changed.emit(self.engine.pinned)
+        self.position_changed.emit()
+
+    def capture_position(self) -> dict:
+        area = self.engine.area
+        return {
+            "pinned": self.engine.pinned,
+            "screen": self.active_screen.name(),
+            "x_ratio": min(1.0, max(0.0, (self.engine.x - area.left) / area.width)),
+            "y_ratio": min(1.0, max(0.0, (self.engine.y - area.top) / area.height)),
+        }
+
+    def restore_position(self, state: dict) -> None:
+        if not state.get("pinned", False):
+            return
+        screens = QGuiApplication.screens()
+        screen = next((s for s in screens if s.name() == state.get("screen")),
+                      QGuiApplication.primaryScreen())
+        if screen is None:
+            return
+        self._adopt_screen(screen)
+        area = self.engine.area
+        self.engine.set_pinned(True)
+        self.engine.place(area.left + state["x_ratio"] * area.width,
+                          area.top + state["y_ratio"] * area.height)
+        self._sync_window()
+        self.pinned_changed.emit(True)
 
     def set_test_flat(self, enabled: bool) -> None:
         self.engine.set_flat(enabled)
@@ -260,6 +297,7 @@ class PetWindow(QWidget):
         if self.engine.dragging:
             vx, vy = self._pointer_velocity()
             self.engine.release_drag(vx, vy)
+            self.position_changed.emit()
         else:
             self.engine.click()
             self.clicked.emit()
@@ -280,6 +318,7 @@ class PetWindow(QWidget):
             self._pressed = False
             if self.engine.dragging:
                 self.engine.release_drag(0.0, 0.0)
+                self.position_changed.emit()
             else:
                 self.engine.held = False
             self._samples.clear()

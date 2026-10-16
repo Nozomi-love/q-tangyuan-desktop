@@ -24,10 +24,10 @@ QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
 app = QApplication(["phase1-native-verification"])
 app.setQuitOnLastWindowClosed(False)
 app.setStyleSheet((ROOT / "styles/theme.qss").read_text(encoding="utf-8"))
-controller = PetApplication(app)
-window = controller.window
 destination = ROOT / "tests" / "artifacts" / datetime.now().strftime("native-%Y%m%d-%H%M%S-%f")
 destination.mkdir(parents=True, exist_ok=False)
+controller = PetApplication(app, save_path=destination / "save_data.json")
+window = controller.window
 result: dict[str, object] = {}
 failures: list[str] = []
 started = time.perf_counter()
@@ -68,6 +68,17 @@ def verify() -> None:
         controller.reset_action.trigger()
         assert not window.engine.held
         assert abs(window.engine.y - window.engine.area.bottom) < 0.01
+        area = window.engine.area
+        window.engine.place(area.left + area.width * 0.5, area.top + area.height * 0.4)
+        controller.pin_action.trigger()
+        anchor = window.engine.x, window.engine.y
+        window.engine.click()
+        window.engine.advance(0.1)
+        assert (window.engine.x, window.engine.y) == anchor
+        controller.pin_action.trigger()
+        window.engine.advance(0.1)
+        assert window.engine.y > anchor[1]
+        controller.reset_action.trigger()
         controller.reload_action.trigger()
 
         result.update({
@@ -77,7 +88,7 @@ def verify() -> None:
             "native_extended_style": hex(style),
             "topmost_tool_layered": True,
             "mapped_foot_matches_work_area": True,
-            "tray_actions_checked": ["flat_on", "flat_off", "reset", "reload", "quit"],
+            "tray_actions_checked": ["flat_on", "flat_off", "pin_on", "pin_off", "reset", "reload", "quit"],
             "frames_before_actions": window.frame_count,
             "elapsed_before_actions": round(time.perf_counter() - started, 3),
             "snapshots": [str(destination / "idle.png"), str(destination / "flat.png")],

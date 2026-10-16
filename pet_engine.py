@@ -85,6 +85,7 @@ class PetEngine:
         self.held = False
         self.grounded = True
         self.flat = False
+        self.pinned = False
         self.happy_until = 0.0
         self.last_drag_time = 0.0
         self.landing_count = 0
@@ -151,12 +152,28 @@ class PetEngine:
             return
         old_bottom = self.area.bottom
         self.area = area
+        if self.pinned:
+            self._confine_drag()
+            return
         if self.grounded and area.bottom > old_bottom + 0.5:
             self.grounded = False
         if not self.held:
             self._confine_horizontal()
             if self.grounded:
                 self._align_with_floor()
+
+    def set_pinned(self, enabled: bool) -> None:
+        self.pinned = bool(enabled)
+        self.vx = self.vy = 0.0
+        self.target_angle = 0.0
+        self.grounded = False
+
+    def place(self, x: float, y: float) -> None:
+        self.x, self.y = x, y
+        self.vx = self.vy = 0.0
+        self.angle = self.target_angle = 0.0
+        self.grounded = False
+        self._confine_drag()
 
     def set_flat(self, enabled: bool) -> None:
         self.flat = bool(enabled)
@@ -186,6 +203,9 @@ class PetEngine:
         self.dragging = self.held = False
         self.grounded = False
         self.target_angle = 0.0
+        if self.pinned:
+            self.vx = self.vy = 0.0
+            return
         self.vx = clamp(pointer_vx, -self.MAX_THROW_SPEED, self.MAX_THROW_SPEED) * self.DRAG_INHERITANCE
         self.vy = clamp(pointer_vy, -self.MAX_THROW_SPEED, self.MAX_THROW_SPEED) * self.DRAG_INHERITANCE
 
@@ -194,8 +214,9 @@ class PetEngine:
         self.happy_until = self.elapsed + 0.8
         self.spring = min(self.spring, -0.29)
         self.spring_velocity = 0.0
-        self.grounded = False
-        self.vy = min(self.vy, -self.CLICK_JUMP_SPEED)
+        if not self.pinned:
+            self.grounded = False
+            self.vy = min(self.vy, -self.CLICK_JUMP_SPEED)
 
     def _squash_on_landing(self, speed: float) -> None:
         if speed >= 60.0:
@@ -251,6 +272,9 @@ class PetEngine:
             if self.held:
                 if self.dragging:
                     self._confine_drag()
+                continue
+
+            if self.pinned:
                 continue
 
             if self.grounded:
