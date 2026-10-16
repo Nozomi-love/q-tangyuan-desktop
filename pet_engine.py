@@ -92,6 +92,9 @@ class PetEngine:
         self._trick_started = 0.0
         self._trick_duration = 0.0
         self._trick_jump_height = 0.0
+        self._roll_rect = QRectF()
+        self._roll_start_distance = 0.0
+        self._roll_revolutions = 1
         self.ball_x = self.ball_y = 0.0
         self.ball_vx = self.ball_vy = 0.0
         self.buff: dict = {}
@@ -125,7 +128,9 @@ class PetEngine:
     @property
     def pose(self) -> Pose:
         breath = 1.0 + 0.033 * math.sin(math.tau * self.elapsed / 3.2)
-        dynamic_height = breath * clamp(1.0 + self.spring, 0.55, 1.38)
+        # Rolling keeps a stable envelope so the whole skin and accessories fit
+        # beside each edge; the jelly spring resumes when the tour finishes.
+        dynamic_height = breath if self._trick == "screen_roll" else breath * clamp(1.0 + self.spring, 0.55, 1.38)
         # Breathing and jelly motion conserve projected area. Hunger is a
         # separate deformation: flatten without excessive 2.5x widening.
         return Pose(
@@ -167,6 +172,8 @@ class PetEngine:
     @property
     def visual_offset(self) -> QPointF:
         # A visual jump preserves the saved foot anchor even when pinned.
+        if self._trick == "screen_roll":
+            return self._roll_offset()
         if self._trick == "flip":
             return QPointF(0, -self._trick_jump_height * math.sin(math.pi * self.trick_progress))
         if self._trick == "ball":
@@ -176,18 +183,80 @@ class PetEngine:
 
     @property
     def visual_angle(self) -> float:
+        if self._trick == "screen_roll":
+            progress = clamp((self.trick_progress * 12.0 - 1.0) / 10.0, 0.0, 1.0)
+            smooth = progress * progress * (3.0 - 2.0 * progress)
+            return 360.0 * self._roll_revolutions * smooth
         if self._trick == "flip":
             progress = self.trick_progress
             smooth = progress * progress * (3.0 - 2.0 * progress)
             return 360.0 * smooth
         return 0.0
 
-    def perform_trick(self, trick: str) -> bool:
-        durations = {"flip": 1.1, "clone": 2.5, "ball": 5.0}
+    def _roll_point(self, distance: float) -> QPointF:
+        rect = self._roll_rect
+        width, height = rect.width(), rect.height()
+        distance %= 2.0 * (width + height)
+        if distance <= width:
+            return QPointF(rect.left() + distance, rect.top())
+        distance -= width
+        if distance <= height:
+            return QPointF(rect.right(), rect.top() + distance)
+        distance -= height
+        if distance <= width:
+            return QPointF(rect.right() - distance, rect.bottom())
+        return QPointF(rect.left(), rect.bottom() - (distance - width))
+
+    def _roll_offset(self) -> QPointF:
+        """Approach the nearest edge, complete one clockwise lap, return home."""
+        origin = QPointF(self.x, self.y - self.BODY_HEIGHT / 2 * self.pose.scale_y)
+        edge = self._roll_point(self._roll_start_distance)
+        progress = self.trick_progress
+        if progress < 1.0 / 12.0:
+            mix = progress * 12.0
+            mix = mix * mix * (3.0 - 2.0 * mix)
+            center = origin + (edge - origin) * mix
+        elif progress > 11.0 / 12.0:
+            mix = (progress * 12.0 - 11.0)
+            mix = mix * mix * (3.0 - 2.0 * mix)
+            center = edge + (origin - edge) * mix
+        else:
+            lap = (progress * 12.0 - 1.0) / 10.0
+            perimeter = 2.0 * (self._roll_rect.width() + self._roll_rect.height())
+            center = self._roll_point(self._roll_start_distance + lap * perimeter)
+        return center - origin
+
+    def _prepare_screen_roll(self, padding: float) -> bool:
+        if not math.isfinite(padding) or padding < 1:
+            return False
+        rect = QRectF(self.area.left + padding, self.area.top + padding,
+                      self.area.width - padding * 2, self.area.height - padding * 2)
+        if rect.width() < 20 or rect.height() < 20:
+            return False
+        origin = QPointF(self.x, self.y - self.BODY_HEIGHT / 2 * self.pose.scale_y)
+        x = clamp(origin.x(), rect.left(), rect.right())
+        y = clamp(origin.y(), rect.top(), rect.bottom())
+        width, height = rect.width(), rect.height()
+        choices = [(QPointF(x, rect.top()), x - rect.left()),
+                   (QPointF(rect.right(), y), width + y - rect.top()),
+                   (QPointF(x, rect.bottom()), width + height + rect.right() - x),
+                   (QPointF(rect.left(), y), width * 2 + height + rect.bottom() - y)]
+        _point, distance = min(choices, key=lambda pair: (pair[0] - origin).manhattanLength())
+        self._roll_rect, self._roll_start_distance = rect, distance
+        perimeter = 2.0 * (width + height)
+        self._roll_revolutions = max(4, round(perimeter / (math.tau * self.BODY_HEIGHT / 2)))
+        return True
+
+    def perform_trick(self, trick: str, *, roll_padding: float = 140.0) -> bool:
+        durations = {"flip": 1.1, "clone": 2.5, "ball": 5.0, "screen_roll": 12.0}
         if (trick not in durations or self._trick or self.held or self.dragging
                 or self.flat or not (self.grounded or self.pinned)):
             return False
+        if trick == "screen_roll" and not self._prepare_screen_roll(roll_padding):
+            return False
         self._trick = trick
+        if trick == "screen_roll":
+            self.angle = self.target_angle = 0.0
         self._trick_started = self.elapsed
         self._trick_duration = durations[trick]
         self._trick_jump_height = min(170.0, max(0.0,
@@ -243,6 +312,8 @@ class PetEngine:
         if area == self.area:
             return
         old_bottom = self.area.bottom
+        if self._trick == "screen_roll":
+            self.cancel_trick()
         self.area = area
         if self.pinned:
             self._confine_drag()
@@ -255,6 +326,8 @@ class PetEngine:
                 self._align_with_floor()
 
     def set_pinned(self, enabled: bool) -> None:
+        if self._trick == "screen_roll":
+            self.cancel_trick()
         self.pinned = bool(enabled)
         self.vx = self.vy = 0.0
         self.target_angle = 0.0
@@ -904,6 +977,18 @@ class SkinRenderer(QObject):
             transform.translate(0, PetEngine.BODY_HEIGHT / 2)
         return transform
 
+    def screen_roll_padding(self) -> float:
+        """A rotation envelope for every expression, current ornaments and 1.2x Buff."""
+        radius = 0.0
+        center_y = -PetEngine.BODY_HEIGHT / 2
+        for state in PetState:
+            rect = self.visible_rect(state).united(self.accessory_bounds(state))
+            for x in (rect.left(), rect.right()):
+                for y in (rect.top(), rect.bottom()):
+                    radius = max(radius, math.hypot(x, y - center_y))
+        # 1.033 breathing with inverse width, maximum 1.2 Buff, plus antialiasing.
+        return max(120.0, radius * 1.06 * 1.2 + 8.0)
+
     def hit_test(self, engine: PetEngine, foot: QPointF, point: QPointF) -> bool:
         inverse, invertible = self.body_transform(engine, foot).inverted()
         if not invertible:
@@ -982,7 +1067,8 @@ class SkinRenderer(QObject):
             result = result.united(QRectF(foot.x() + engine.ball_x - 14,
                                           foot.y() + engine.ball_y - 14, 28, 28))
         if engine.buff.get("item_id") == "strawberry":
-            result = result.united(QRectF(foot.x() - 90, foot.y() - 165, 180, 170))
+            offset = engine.visual_offset
+            result = result.united(QRectF(foot.x() + offset.x() - 90, foot.y() + offset.y() - 165, 180, 170))
         return result.adjusted(-3, -3, 3, 3)
 
     def paint(self, painter: QPainter, engine: PetEngine, foot: QPointF) -> None:
@@ -999,7 +1085,7 @@ class SkinRenderer(QObject):
             painter.setPen(Qt.PenStyle.NoPen)
             for index in range(9):
                 phase = (engine.elapsed * 0.20 + index / 9) % 1.0
-                x = foot.x() + math.sin(index * 2.4) * (70 + phase * 12)
+                x = foot.x() + engine.visual_offset.x() + math.sin(index * 2.4) * (70 + phase * 12)
                 y = foot.y() - 8 - phase * 145 + engine.visual_offset.y()
                 color = QColor("#efa3c2")
                 color.setAlphaF(0.5 * math.sin(math.pi * phase))

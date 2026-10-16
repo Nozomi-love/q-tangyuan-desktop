@@ -2,7 +2,7 @@
 
 本地离线桌宠与免费养成项目，Python 3.10+、PySide6 6.8.3。已完成桌宠物理、四张用户图片适配、固定位置记忆，以及完整养成、五页主面板、三级食物与赠礼商城 / 背包、限时风味、三阶十一成就、等级奖励、通用挂件/特技与本地 PNG/GIF/动作包衣橱。
 
-[GitHub 私有仓库](https://github.com/Nozomi-love/q-tangyuan-desktop) · [项目规范](docs/项目规范.md) · [开发日志](docs/开发日志.md) · [目录说明](docs/目录说明.md) · [本次更新验收指南](docs/养成平衡更新验收.md) · [Phase 4 记录](docs/Phase4验收.md) · [Phase 3 记录](docs/Phase3验收.md) · [Phase 2 记录](docs/Phase2验收.md) · [素材记录](docs/素材记录.md)
+[GitHub 私有仓库](https://github.com/Nozomi-love/q-tangyuan-desktop) · [项目规范](docs/项目规范.md) · [开发日志](docs/开发日志.md) · [目录说明](docs/目录说明.md) · [绕屏特技验收](docs/绕屏特技验收.md) · [养成平衡验收](docs/养成平衡更新验收.md) · [Phase 4 记录](docs/Phase4验收.md) · [Phase 3 记录](docs/Phase3验收.md) · [Phase 2 记录](docs/Phase2验收.md) · [素材记录](docs/素材记录.md)
 
 ![五个主标签与三个装扮子页（Windows 150% 原生截图）](docs/images/balance-dressing.png)
 
@@ -47,7 +47,7 @@
 
 主标签为【状态与背包】【免费商城】【成就图鉴】【装扮】【设置】，与标题下横线两端对齐。【装扮】内再分【皮肤衣橱】【挂件装扮】【特技与等级奖励】；固定、复位、计时加速和调试统一放在独立【设置】页。Windows 分数缩放下标签文字单次绘制，避免原生样式重复描字。
 
-商城读取 config/catalog.json 的 7 款食物与 3 款礼物，可过滤分类，按三级展示。购买放入背包，或直接购买并投喂 / 赠送；背包使用不再次扣币。**所有食物只恢复饱食度，不增加好感；礼物只增加好感，不恢复饱食度。**
+商城读取 config/catalog.json 的 7 款食物、3 款礼物及永久特技，可过滤分类，食物与礼物按三级展示。购买放入背包，或直接购买并投喂 / 赠送；背包使用不再次扣币。**所有食物只恢复饱食度，不增加好感；礼物只增加好感，不恢复饱食度。**
 
 | 食物等级 | 食物 | 价格 | 饱食度 | 风味 |
 | --- | --- | --- | --- | --- |
@@ -60,6 +60,8 @@
 | Ⅰ级 | 🌟 折纸星星 | 20 币 | +20 |
 | Ⅱ级 | 💐 小花束 | 70 币 | +80 |
 | Ⅲ级 | 🎁 八音盒 | 180 币 | +240 |
+
+商城筛选【永久特技】可花 **120 糯米币** 学会【🛞 绕屏滚一圈】，购买一次永久拥有，不消耗背包。之后从商城“立即表演”、装扮→特技与等级奖励或右键→表演特技发动。约12秒沿当前屏幕 availableGeometry 四边顺时针滚一圈，再回原位；冷却20秒（从发动计起），不增加EXP。固定开关和位置记忆保持，途中点击可提前回家；换装、工作区变化、切换固定、复位或饿扁也会结束。默认PNG和自定义GIF统一支持皇冠、风味染色与1.2倍。见绕屏特技验收指南。
 
 成功赠送单独累计 stats.total_presents；投喂和挂机礼包仍分别计数。饱食度为 0 时送礼也不能解除饿扁，投喂食物才恢复。礼物不替换当前风味；满级依旧停止积累经验。
 
@@ -102,7 +104,7 @@
 
 勾选“固定当前位置（可拖动调整）”，拖到目标位置松手即可；取消后恢复重力。点击、呼吸和表情仍可使用。复位保留固定开关，移到主屏右下角。
 
-存档位于 data/save_data.json，统一包含养成数据、背包、风味剩余时间、体验过的口味、成就达成 / 领取、称号、每日与累计统计、计时余量、未领礼包、当前皮肤 ID、挂件与偏移、提前导入权限，以及 window 显示器 / 相对位置 / 固定开关。启动自动读取，互动后短暂合并保存，在线每 15 秒自动保存，安全退出时再保存。
+存档位于 data/save_data.json，统一包含养成数据、背包、风味剩余时间、体验过的口味、成就达成 / 领取、称号、每日与累计统计、计时余量、未领礼包、当前皮肤 ID、挂件与偏移、提前导入权限、purchased_tricks永久特技购买记录，以及 window 显示器 / 相对位置 / 固定开关。启动自动读取，互动后短暂合并保存，在线每 15 秒自动保存，安全退出时再保存。
 
 版本 1 / 2 / 3 / 4 存档在首次正常启动时平滑升级到版本 5：先按原字节创建同目录时间戳备份并回读，再保留原窗口设置和未知字段、补充养成默认值。旧“汤圆守护神”称号及佩戴状态自动改为“阿一古”，补充累计赠礼次数。普通运行不会反复补发初始 100 币。损坏、未来版本或无法读取的存档保留原文件，本次仅内存体验并提示；并发写入和过期会话不会覆盖其他进程的较新进度。
 
@@ -169,6 +171,8 @@ GIF 内存策略依据 Qt 官方 [QMovie 文档](https://doc.qt.io/qt-6.8/qmovie
     .\.venv\Scripts\python.exe -B -X utf8 tests\test_phase4_skins.py
     .\.venv\Scripts\python.exe -B -X utf8 tests\test_phase4_dashboard.py
     .\.venv\Scripts\python.exe -B -X utf8 tests\test_phase4_rendering.py
+    .\.venv\Scripts\python.exe -B -X utf8 tests\test_phase4_screen_roll.py
+    .\.venv\Scripts\python.exe -B -X utf8 tests\verify_screen_roll_native.py
     .\.venv\Scripts\python.exe -B -X utf8 tests\test_phase4_balance.py
     .\.venv\Scripts\python.exe -B -X utf8 tests\verify_balance_native.py
     .\.venv\Scripts\python.exe -B -X utf8 tests\verify_phase4_native.py
@@ -181,7 +185,7 @@ GIF 内存策略依据 Qt 官方 [QMovie 文档](https://doc.qt.io/qt-6.8/qmovie
 
 行为测试可使用 QT_QPA_PLATFORM=offscreen；原生检查在 Windows 打开本程序窗口并自动退出，需在正常桌面会话运行。结果和截图保留在 tests/artifacts/，不递归清理。
 
-验证环境：Windows、Python 3.12.6、Qt 6.8.3、单屏 150% 缩放。本次完整 287 项回归通过（262 项已有行为 + 25 项养成与布局专项）。Windows 原生双进程验证五页导航、三级食物与礼物、旧称号与版本 5 迁移、背包 / 赠礼计数 / 皇冠偏移恢复；700 / 900 / 1100 逻辑像素宽度下导航两端与横线完全对齐。GIF 皇冠三特技、Phase 2 真实加速计时和 Phase 3 商城 / 辣油 / 成就恢复均通过。普通与 --demo --dev-mode 冒烟退出 0、stderr 空（冒烟关闭正式存档读写）。8 小时衰减以模型时间推进验证，未实际等待 8 小时；多块实体显示器、其他系统及 Python 3.10 未实测。
+验证环境：Windows、Python3.12.6、Qt6.8.3、单屏150%缩放。本轮完整310项回归通过（287项已有行为+23项绕屏专项），24份Python文件通过3.10语法解析。原生双进程验证商城120币购买一次、GIF皇冠叠加1.2倍、真实约12秒完成四边、点击取消不误戳、固定位置/原生窗口回归原点、重启保留购买/皮肤/挂件，退出0、stderr空；普通与--demo --dev-mode冒烟通过。8小时衰减仍采用模型推进验证；负坐标屏幕使用模拟；多块实体屏、其他系统及Python3.10运行未实测。早先阶段的原生检查和差异见开发日志。
 
 ## 持续版本记录
 

@@ -87,6 +87,16 @@ class Catalog:
         self.interactions = dict(source["interactions"])
         self.perks = deepcopy(source.get("perks", {}))
         self.milestones = deepcopy(source.get("milestones", []))
+        self.trick_products = deepcopy(source.get("trick_products", {}))
+        if not isinstance(self.trick_products, dict):
+            raise ValueError("特技商品必须为对象")
+        for trick_id, product in self.trick_products.items():
+            if trick_id not in ("screen_roll",) or not isinstance(product, dict):
+                raise ValueError("商城特技配置无效")
+            for key in ("name", "icon", "description"):
+                if not isinstance(product.get(key), str) or not product[key]:
+                    raise ValueError("特技商品名称、图标和说明不能为空")
+            _integer(product.get("cost"), "特技价格", 1)
         for perk_id, perk in self.perks.items():
             if not isinstance(perk_id, str) or not isinstance(perk, dict) or not isinstance(perk.get("name"), str):
                 raise ValueError("等级特权配置无效")
@@ -156,6 +166,7 @@ class PetData:
     equipped_title: str = "糯米团子"
     titles: list[str] = field(default_factory=lambda: ["糯米团子"])
     inventory: dict = field(default_factory=dict)
+    purchased_tricks: list[str] = field(default_factory=list)
     flavors_seen: list[str] = field(default_factory=list)
     unlocked_achievements: list[str] = field(default_factory=list)
     claimed_achievements: list[str] = field(default_factory=list)
@@ -206,11 +217,13 @@ class PetData:
         for key in ("name", "equipped_title"):
             if not isinstance(getattr(item, key), str) or not 1 <= len(getattr(item, key)) <= 40:
                 raise ValueError(f"{key} 需要 1～40 个字符")
-        for key in ("titles", "flavors_seen", "unlocked_achievements", "claimed_achievements"):
+        for key in ("titles", "flavors_seen", "unlocked_achievements", "claimed_achievements", "purchased_tricks"):
             value = getattr(item, key)
             if (not isinstance(value, list) or not all(isinstance(v, str) for v in value)
                     or len(set(value)) != len(value)):
                 raise ValueError(f"{key} 必须为不重复的字符串列表")
+        if any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", trick) for trick in item.purchased_tricks):
+            raise ValueError("已购特技 ID 无效")
         item.titles = list(dict.fromkeys(GUARDIAN_TITLE if title in LEGACY_GUARDIAN_TITLES else title for title in item.titles))
         if item.equipped_title in LEGACY_GUARDIAN_TITLES:
             item.equipped_title = GUARDIAN_TITLE
@@ -285,8 +298,9 @@ class PetModel(QObject):
         self._roll_day()
         self.set_rules(self.rules)
         self.debug_unlock_all = False
-        self.trick_cooldowns = {"flip": 0.0, "clone": 0.0, "ball": 0.0}
+        self.trick_cooldowns = {"flip": 0.0, "clone": 0.0, "ball": 0.0, "screen_roll": 0.0}
         self.trick_busy = 0.0
+        self._active_trick_id = ""
         self._known_perks = set()
         self._refresh_perks(announce=False)
         self.initial_achievements = self._detect_achievements()
@@ -588,18 +602,53 @@ class PetModel(QObject):
         self._publish(self.starving, message="🎨 已换上新外观，挂件和小特技也能一起用哦～" if changed else "")
         return True
 
+    def has_trick(self, trick_id: str) -> bool:
+        if trick_id in self.catalog.trick_products:
+            return trick_id in self.data.purchased_tricks
+        return self.has_perk("trick_" + trick_id)
+
+    def trick_name(self, trick_id: str) -> str:
+        product = self.catalog.trick_products.get(trick_id)
+        if product:
+            return f"{product['icon']} {product['name']}"
+        return self.catalog.perks.get("trick_" + trick_id, {}).get("name", trick_id)
+
+    def buy_trick(self, trick_id: str) -> bool:
+        product = self.catalog.trick_products.get(trick_id)
+        if product is None or trick_id not in self.trick_cooldowns:
+            self.feedback.emit("这项特技暂未上架。", "normal")
+            return False
+        if trick_id in self.data.purchased_tricks:
+            self.feedback.emit("这项特技已经永久解锁啦，无需重复购买。", "normal")
+            return False
+        if self.data.coins < product["cost"]:
+            self.feedback.emit("糯米币不够啦，再攒一点就能学会这个特技～", "normal")
+            return False
+        self.data.coins -= product["cost"]
+        self.data.purchased_tricks.append(trick_id)
+        self._publish(self.starving, message=f"🎪 已永久学会【{product['name']}】，现在可以表演啦！", tone="reward")
+        return True
+
+    def finish_trick(self, trick_id: str) -> None:
+        if trick_id == self._active_trick_id and self.trick_busy > 0:
+            self.trick_busy = 0.0
+            self._active_trick_id = ""
+            self._publish(self.starving)
+
     def can_perform_trick(self, trick_id: str) -> bool:
-        return (trick_id in self.trick_cooldowns and self.has_perk("trick_" + trick_id)
+        return (trick_id in self.trick_cooldowns and self.has_trick(trick_id)
                 and self.trick_cooldowns[trick_id] <= 0 and self.trick_busy <= 0 and not self.starving)
 
     def record_trick(self, trick_id: str) -> bool:
         if not self.can_perform_trick(trick_id):
             return False
-        duration = {"flip": 1.1, "clone": 2.5, "ball": 5.0}[trick_id]
+        duration = {"flip": 1.1, "clone": 2.5, "ball": 5.0, "screen_roll": 12.0}[trick_id]
         self.trick_busy = duration
-        self.trick_cooldowns[trick_id] = max(5.0, duration)
+        self._active_trick_id = trick_id
+        self.trick_cooldowns[trick_id] = 20.0 if trick_id == "screen_roll" else max(5.0, duration)
         levels = self._add_exp(5) if trick_id == "flip" else []
-        text = {"flip": "🌀 看我翻个跟头！好感 +5", "clone": "✨ 看我的糯米分身术！", "ball": "⚽ 芝麻小球，接住啦！"}[trick_id]
+        text = {"flip": "🌀 看我翻个跟头！好感 +5", "clone": "✨ 看我的糯米分身术！", "ball": "⚽ 芝麻小球，接住啦！",
+                "screen_roll": "🛞 出发！绕屏滚一圈，再回到你身边～"}[trick_id]
         self._publish(self.starving, levels, text, "special")
         return True
 

@@ -102,6 +102,7 @@ class PetApplication:
         self.model.dizzy_requested.connect(self._dizzy)
         self.model.appearance_changed.connect(self.window.set_accessories)
         self.model.perks_unlocked.connect(self._perks_unlocked)
+        self.window.trick_finished.connect(self.model.finish_trick)
         self.window.clicked.connect(self.model.poke)
         self.window.dashboard_requested.connect(self.dashboard.summon)
         self.window.drag_landed.connect(self.model.record_drop)
@@ -182,8 +183,8 @@ class PetApplication:
         self.dashboard_action = self.menu.addAction("🏠 打开主面板")
         self.trick_menu = self.menu.addMenu("🎪 表演特技")
         self.trick_actions = {}
-        for trick_id in ("flip", "clone", "ball"):
-            action = self.trick_menu.addAction(self.model.catalog.perks["trick_" + trick_id]["name"])
+        for trick_id in self.model.trick_cooldowns:
+            action = self.trick_menu.addAction(self.model.trick_name(trick_id))
             action.triggered.connect(lambda checked=False, tid=trick_id: self._perform_trick(tid))
             self.trick_actions[trick_id] = action
         self.menu.addSeparator()
@@ -260,10 +261,13 @@ class PetApplication:
         self.pet_action.setEnabled(remaining == 0)
         self.gift_action.setEnabled(not self.model.has_collectible)
         for trick_id, action in self.trick_actions.items():
-            perk = self.model.catalog.perks["trick_" + trick_id]
             remaining = math.ceil(self.model.trick_cooldowns[trick_id])
-            suffix = " · Lv.{} 解锁".format(perk["level"]) if not self.model.has_perk("trick_" + trick_id) else (f" · {remaining}s" if remaining else "")
-            action.setText(perk["name"] + suffix)
+            if not self.model.has_trick(trick_id):
+                product = self.model.catalog.trick_products.get(trick_id)
+                suffix = f" · 商城{product['cost']}币解锁" if product else " · Lv.{} 解锁".format(self.model.catalog.perks["trick_" + trick_id]["level"])
+            else:
+                suffix = f" · {remaining}s" if remaining else ""
+            action.setText(self.model.trick_name(trick_id) + suffix)
             action.setEnabled(self.model.can_perform_trick(trick_id))
 
     def _state_changed(self, _state: dict) -> None:

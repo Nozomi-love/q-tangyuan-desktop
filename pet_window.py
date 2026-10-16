@@ -221,6 +221,7 @@ class PetWindow(QWidget):
         self.click_timer.timeout.connect(self.confirm_pending_clicks)
         self._press_time = 0.0
         self._awaiting_drop = False
+        self._reported_trick = ""
         self.shake_min_speed = 700.0
         self.shake_distance = 400.0
         self.shake_reversals = 3
@@ -349,6 +350,8 @@ class PetWindow(QWidget):
             candidate.deleteLater()
             return False
         old = self.renderer
+        if self.engine.active_trick == "screen_roll":
+            self.engine.cancel_trick()
         candidate.set_accessories(old.accessories)
         self.renderer = candidate
         candidate.frame_changed.connect(self.update)
@@ -358,11 +361,16 @@ class PetWindow(QWidget):
         return True
 
     def set_accessories(self, accessories: dict) -> None:
+        before = dict(self.renderer.accessories)
         self.renderer.set_accessories(accessories)
+        if self.engine.active_trick == "screen_roll" and before != self.renderer.accessories:
+            self.engine.cancel_trick()
         self._sync_window()
 
     def perform_trick(self, trick: str) -> bool:
-        if not self.engine.perform_trick(trick):
+        started = (self.engine.perform_trick(trick, roll_padding=self.renderer.screen_roll_padding())
+                   if trick == "screen_roll" else self.engine.perform_trick(trick))
+        if not started:
             return False
         self._awaiting_drop = False
         self._sync_window()
@@ -405,8 +413,17 @@ class PetWindow(QWidget):
         return self.mapFromGlobal(QPointF(self.engine.x, self.engine.y))
 
     def _sync_window(self) -> None:
-        self.move(math.floor(self.engine.x - self.ANCHOR_X),
-                  math.floor(self.engine.y - self.ANCHOR_Y))
+        active = self.engine.active_trick
+        previous, self._reported_trick = self._reported_trick, active
+        if previous and not active:
+            self.trick_finished.emit(previous)
+        offset = self.engine.visual_offset if active == "screen_roll" else QPointF()
+        # Follow the rolling drawing with the native window instead of enlarging
+        # one transparent window across the desktop. Saved x/y stay at home.
+        anchor_y = (self.CANVAS_HEIGHT / 2 + self.engine.BODY_HEIGHT / 2 * self.engine.pose.scale_y
+                    if active == "screen_roll" else self.ANCHOR_Y)
+        self.move(math.floor(self.engine.x + offset.x() - self.ANCHOR_X),
+                  math.floor(self.engine.y + offset.y() - anchor_y))
         self._position_bubble()
         self.update()
 
@@ -421,10 +438,7 @@ class PetWindow(QWidget):
             self.reset_to_primary()
         else:
             self.engine.set_work_area(self.work_area(self.active_screen))
-        trick = self.engine.active_trick
         impact = self.engine.advance(dt)
-        if trick and not self.engine.active_trick:
-            self.trick_finished.emit(trick)
         if impact is not None:
             self.landed.emit(impact)
             if self._awaiting_drop:
@@ -459,6 +473,12 @@ class PetWindow(QWidget):
             return
         if event.button() != Qt.MouseButton.LeftButton or not self._inside_body(event.position()):
             event.ignore()
+            return
+        if self.engine.active_trick == "screen_roll":
+            self.engine.cancel_trick()
+            self.engine.rebound()
+            self._sync_window()
+            event.accept()
             return
         self._pressed = True
         self._press_time = time.perf_counter()

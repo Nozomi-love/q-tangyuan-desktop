@@ -188,7 +188,7 @@ class DashboardWindow(QMainWindow):
         header = QHBoxLayout()
         header.addWidget(label("食物补充饱食度 · 礼物积累好感", "sectionTitle"), 1)
         self.shop_filter = QComboBox()
-        self.shop_filter.addItems(["全部商品", "三级食物", "三级礼物"])
+        self.shop_filter.addItems(["全部商品", "三级食物", "三级礼物", "永久特技"])
         self.shop_filter.currentIndexChanged.connect(self._filter_shop)
         header.addWidget(self.shop_filter)
         page.addLayout(header)
@@ -236,11 +236,34 @@ class DashboardWindow(QMainWindow):
                 group_layout.addLayout(grid)
             page.addWidget(group)
             self.shop_groups[category] = group
+        special = QGroupBox("🎪 永久特技")
+        special_layout = QVBoxLayout(special)
+        self.shop_trick_buttons = {}
+        for trick_id, product in self.model.catalog.trick_products.items():
+            panel, content = card()
+            content.addWidget(label(f"{product['icon']} {product['name']}", "sectionTitle"))
+            content.addWidget(label(product["description"], "muted"))
+            status = label("")
+            content.addWidget(status)
+            actions = QHBoxLayout()
+            buy = QPushButton("购买特技")
+            buy.setProperty("primary", True)
+            buy.clicked.connect(lambda checked=False, key=trick_id: self.model.buy_trick(key))
+            perform = QPushButton("立即表演")
+            perform.clicked.connect(lambda checked=False, key=trick_id: self.trick_requested.emit(key))
+            actions.addWidget(buy)
+            actions.addWidget(perform)
+            content.addLayout(actions)
+            special_layout.addWidget(panel)
+            self.shop_trick_buttons[trick_id] = (buy, perform, status)
+        page.addWidget(special)
+        self.shop_groups["trick"] = special
         page.addStretch()
 
     def _filter_shop(self, index: int) -> None:
+        category_filter = {1: "food", 2: "gift", 3: "trick"}.get(index)
         for category, group in self.shop_groups.items():
-            group.setVisible(index == 0 or category == ("food" if index == 1 else "gift"))
+            group.setVisible(index == 0 or category == category_filter)
 
     def _build_achievements(self) -> None:
         page = self._page("成就图鉴")
@@ -400,6 +423,9 @@ class DashboardWindow(QMainWindow):
             "clone": ("✨ Q弹影分身", "Lv.4 · 两个分身弹跳 2.5 秒后合体"),
             "ball": ("⚽ 玩芝麻弹力球", "Lv.5 · 顶球互动 5 秒"),
         }
+        for key, product in self.model.catalog.trick_products.items():
+            self.trick_descriptions[key] = (self.model.trick_name(key),
+                                            f"商城永久解锁 · {product['cost']} 糯米币 · 约12秒 · 冷却20秒")
         for key, (title, description) in self.trick_descriptions.items():
             row = QHBoxLayout()
             row.addWidget(label(description, "muted"), 1)
@@ -558,13 +584,23 @@ class DashboardWindow(QMainWindow):
         self.offset_value.setText(f"{value:+d} px" if value else "0 px")
         self.offset_slider.blockSignals(False)
         for key, button in self.trick_buttons.items():
-            unlocked = self._has_perk(f"trick_{key}")
+            unlocked = self.model.has_trick(key)
             cooldown = float(self.model.trick_cooldowns.get(key, 0))
             title = self.trick_descriptions[key][0]
             suffix = f" · {math.ceil(cooldown)} 秒" if cooldown > 0 else " · 未解锁" if not unlocked else ""
             button.setText(title + suffix)
             button.setEnabled(self.model.can_perform_trick(key))
-        self.trick_status.setText("肚子饿扁啦，投喂恢复后就能表演。" if self.model.starving else "正在表演中，稍候再来一个～" if self.model.trick_busy > 0 else "当前外观可以使用所有已解锁特技；固定模式也能表演。")
+        for key, (buy, perform, status) in self.shop_trick_buttons.items():
+            product = self.model.catalog.trick_products[key]
+            owned = key in data.purchased_tricks
+            buy.setText("✅ 已永久解锁" if owned else f"购买特技 · {product['cost']} 币")
+            buy.setEnabled(not owned and data.coins >= product["cost"])
+            perform.setEnabled(self.model.can_perform_trick(key))
+            remaining = math.ceil(self.model.trick_cooldowns[key])
+            status.setText("已学会 · 随时从商城、装扮特技页或右键菜单发动" if owned else f"{product['cost']} 糯米币 · 购买一次永久拥有")
+            if owned and remaining:
+                status.setText(f"休息中 · 还需 {remaining} 秒；表演中点击汤圆可提前回家")
+        self.trick_status.setText("肚子饿扁啦，投喂恢复后就能表演。" if self.model.starving else "正在表演中，稍候再来一个～" if self.model.trick_busy > 0 else "当前外观可以使用所有已解锁特技；绕屏后回到原位，途中点击可结束。")
         self.perk_summary.setText(f"当前好感 Lv.{data.affection_level} / 30 · 六级领齐基础奖励，后续继续积累陪伴。" + (" 开发模式已临时解锁全部特权。" if self.model.debug_unlock_all else ""))
         milestones = {milestone["level"]: milestone for milestone in self.model.perk_status()}
         for level, widget in self.milestone_widgets.items():
