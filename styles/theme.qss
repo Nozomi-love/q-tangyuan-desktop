@@ -1,0 +1,28 @@
+/* Phase 1 menus; the same soft palette will extend to the dashboard. */
+QMenu {
+    background-color: #fffaf5;
+    color: #574e55;
+    border: 1px solid #e6d9df;
+    border-radius: 12px;
+    padding: 8px;
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+}
+QMenu::item {
+    padding: 9px 24px 9px 15px;
+    border-radius: 7px;
+    min-width: 176px;
+}
+QMenu::item:selected {
+    background-color: #f3e3ec;
+    color: #7a4968;
+}
+QMenu::item:checked {
+    background-color: #ecedf8;
+    color: #62668e;
+}
+QMenu::separator {
+    height: 1px;
+    background: #eadddf;
+    margin: 6px 10px;
+}

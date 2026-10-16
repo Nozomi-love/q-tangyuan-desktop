@@ -1,0 +1,2 @@
+# Phase 1: Python 3.10+ / Qt Widgets
+PySide6==6.8.3

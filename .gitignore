@@ -1,0 +1,14 @@
+.venv/
+.runtime_tmp/
+__pycache__/
+*.py[cod]
+tests/artifacts/
+data/save_data.json
+data/*.tmp
+
+# Local backups, editor state, and credentials
+*.bak.*
+.env
+.env.*
+!.env.example
+*.log
