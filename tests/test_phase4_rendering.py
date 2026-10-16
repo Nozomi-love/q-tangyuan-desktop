@@ -12,7 +12,7 @@ import sys
 import unittest
 from uuid import uuid4
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QElapsedTimer, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QMovie, QPainter, QPen
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -423,8 +423,12 @@ class LayerAndSkinTests(unittest.TestCase):
         self.assertIn(PetState.IDLE, renderer.pixmaps)
         self.assertAlmostEqual(renderer.anchor_rect(PetState.IDLE).top(), -116)
         self.assertEqual(renderer.anchor_rect(PetState.IDLE).bottom(), 0)
-        QTest.qWait(100)
-        self.assertIsNotNone(renderer._visible_alpha_box(renderer.images[PetState.IDLE]))
+        deadline = QElapsedTimer()
+        deadline.start()
+        while renderer._visible_alpha_box(renderer.images[PetState.IDLE]) is None and deadline.elapsed() < 1000:
+            QTest.qWait(10)
+        self.assertIsNotNone(renderer._visible_alpha_box(renderer.images[PetState.IDLE]),
+                             "QMovie must present a visible frame after its transparent opening frame")
 
     def test_tiny_gif_body_cannot_magnify_transparent_canvas_without_bound(self):
         folder = self.make_skin(animated=True)

@@ -22,20 +22,20 @@ class PerkTests(unittest.TestCase):
                 self.assertEqual(pet.has_perk(key), level >= perk['level'])
 
     def test_upgrade_unlock_signal_and_guardian_once(self):
-        pet = PetModel(PetData(affection_level=5, affection_exp=249))
+        pet = PetModel(PetData(affection_level=5, affection_exp=2499))
         events=[]
         pet.perks_unlocked.connect(events.append)
         pet.poke()
         self.assertEqual(pet.data.affection_level,6)
-        self.assertIn('✨ 汤圆守护神',pet.data.titles)
+        self.assertIn('阿一古',pet.data.titles)
         self.assertEqual(len(events),1)
         pet.poke()
         self.assertEqual(len(events),1)
-        self.assertEqual(pet.data.titles.count('✨ 汤圆守护神'),1)
+        self.assertEqual(pet.data.titles.count('阿一古'),1)
 
     def test_existing_level_restores_rewards_without_coin_grant(self):
         pet = PetModel(PetData(affection_level=6, coins=17))
-        self.assertIn('✨ 汤圆守护神',pet.data.titles)
+        self.assertIn('阿一古',pet.data.titles)
         self.assertEqual(pet.data.coins,17)
         self.assertTrue(pet.has_perk('accessory_bow'))
 

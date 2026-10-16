@@ -86,9 +86,14 @@ def worker(mode: str, file: Path) -> int:
         assert window.engine.starving and window.engine.state == PetState.FLAT
         snapshot("starving")
         controller.feed_action.trigger()
-        assert model.data.hunger == 25 and not window.engine.flat
+        assert model.data.hunger == 15 and not window.engine.flat
+        assert model.data.affection_level == 1
+        assert model.data.affection_exp == 48
+        # Exercise the new gift-only upgrade path without hundreds of native clicks.
+        model.data.affection_exp = 499
+        assert model.buy_item("paper_star", True)
         assert model.data.affection_level == 2
-        assert model.data.coins == before + gift - 10 + 30
+        assert model.data.coins == before + gift - 10 - 20 + 30
         assert window.engine._celebration_hops > 0
         assert "Lv.2" in bubble._text
         snapshot("level-up-and-recovered")

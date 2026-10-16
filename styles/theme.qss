@@ -10,9 +10,14 @@ QLabel#muted { color: #928089; font-size: 12px; }
 QLabel#balance { color: #8b6243; font-size: 16px; font-weight: 600; padding: 12px; background: #f9e9cf; border-radius: 12px; }
 QLabel#buffBadge { background: #f8e8ed; color: #9a5876; border-radius: 9px; padding: 9px 12px; }
 QTabWidget::pane { border: none; background: transparent; }
+QTabBar { background: #faf3ed; font-weight: 600; }
+QFrame#navDivider { background: #e4d6d0; border: none; }
 QTabBar::tab { background: #f2e7df; color: #8e737c; border: none; border-radius: 10px; margin-right: 8px; padding: 11px 18px; }
 QTabBar::tab:selected { background: #eac5d5; color: #74475d; font-weight: 600; }
 QTabBar::tab:hover { background: #efd8e1; }
+QTabBar::tab:last { margin-right: 0px; }
+QTabWidget#dressTabs QTabBar::tab { padding: 9px 14px; background: #f1e7e3; }
+QTabWidget#dressTabs QTabBar::tab:selected { background: #e8cad7; color: #74475d; }
 QPushButton { background: #f5ece6; border: 1px solid #e7d6cf; border-radius: 9px; padding: 9px 13px; min-height: 18px; }
 QPushButton:hover { background: #f2dce6; border-color: #dca9be; }
 QPushButton:pressed { background: #e8bdcf; }

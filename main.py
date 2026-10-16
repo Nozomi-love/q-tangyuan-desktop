@@ -96,6 +96,7 @@ class PetApplication:
         self.model.upgraded.connect(self._upgraded)
         self.model.collectible_changed.connect(self._collectible_changed)
         self.model.fed.connect(self._fed)
+        self.model.gifted.connect(self.window.engine.rebound)
         self.model.buff_changed.connect(self.window.set_buff)
         self.model.achievement_unlocked.connect(self._achievement_unlocked)
         self.model.dizzy_requested.connect(self._dizzy)
@@ -250,9 +251,9 @@ class PetApplication:
         data, rules = self.model.data, self.model.rules
         exp = "MAX" if data.affection_level == 30 else f"{data.affection_exp}/{self.model.exp_required}"
         self.level_info.setText(f"🍡 等级: Lv.{data.affection_level} (EXP: {exp})")
-        self.hunger_info.setText(f"🍙 饥饿度: {data.hunger:g}/100" + (" · 饿扁啦" if self.model.starving else ""))
+        self.hunger_info.setText(f"🍙 饱食度: {data.hunger:g}/100" + (" · 饿扁啦" if self.model.starving else ""))
         self.coins_info.setText(f"🪙 糯米币: {data.coins}")
-        self.feed_action.setText(f"🍬 快捷投喂白砂糖 (-{rules.sugar_cost}币, 饥饿+{rules.sugar_hunger:g}, 好感+{rules.sugar_exp})")
+        self.feed_action.setText(f"🍬 快捷投喂白砂糖 (-{rules.sugar_cost}币, 饱食度+{rules.sugar_hunger:g})")
         self.feed_action.setEnabled(data.coins >= rules.sugar_cost)
         remaining = math.ceil(data.timers["pet_cooldown_remaining"])
         self.pet_action.setText("👋 摸摸头 (好感+3)" + (f" · 冷却 {remaining} 秒" if remaining else ""))

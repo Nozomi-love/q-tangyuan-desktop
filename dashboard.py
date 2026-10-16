@@ -1,12 +1,13 @@
-"""Four-tab dashboard bound to the same PetModel as the desktop overlay."""
+"""Five-tab dashboard bound to the same PetModel as the desktop overlay."""
 from __future__ import annotations
 
 import math
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QCloseEvent, QGuiApplication
+from PySide6.QtGui import QColor, QCloseEvent, QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
-    QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QTabWidget, QVBoxLayout, QWidget,
+    QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QStyle, QStyleOptionTab,
+    QStylePainter, QTabBar, QTabWidget, QVBoxLayout, QWidget,
 )
 from models import PetModel
 
@@ -27,6 +28,29 @@ def card() -> tuple[QFrame, QVBoxLayout]:
     layout.setContentsMargins(18, 16, 18, 16)
     layout.setSpacing(10)
     return widget, layout
+
+
+class NavigationTabBar(QTabBar):
+    """Keep QSS shapes while painting each caption once at fractional Windows DPI."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setExpanding(True)
+        self.setDrawBase(False)
+
+    def paintEvent(self, event) -> None:
+        painter = QStylePainter(self)
+        painter.fillRect(self.rect(), QColor("#faf3ed"))
+        for index in range(self.count()):
+            option = QStyleOptionTab()
+            self.initStyleOption(option, index)
+            painter.drawControl(QStyle.ControlElement.CE_TabBarTabShape, option)
+            painter.setFont(self.font())
+            painter.setPen(QColor("#74475d" if index == self.currentIndex() else "#8e737c"))
+            area = self.tabRect(index).adjusted(8, 0, -8, 0)
+            text = self.fontMetrics().elidedText(self.tabText(index), Qt.TextElideMode.ElideRight, area.width())
+            painter.drawText(area, Qt.AlignmentFlag.AlignCenter, text)
+        painter.end()
 
 
 class DashboardWindow(QMainWindow):
@@ -74,8 +98,17 @@ class DashboardWindow(QMainWindow):
         self.balance.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         header.addWidget(self.balance)
         layout.addLayout(header)
+        self.nav_divider = QFrame()
+        self.nav_divider.setObjectName("navDivider")
+        self.nav_divider.setFixedHeight(1)
+        layout.addWidget(self.nav_divider)
         self.tabs = QTabWidget()
+        self.tabs.setObjectName("mainTabs")
+        self.tabs.setTabBar(NavigationTabBar(self.tabs))
         self.tabs.setDocumentMode(True)
+        self.tabs.tabBar().setExpanding(True)
+        self.tabs.tabBar().setDrawBase(False)
+        self.tabs.tabBar().setAutoFillBackground(True)
         layout.addWidget(self.tabs, 1)
         self.inventory_widgets = {}
         self.shop_buttons = {}
@@ -85,6 +118,7 @@ class DashboardWindow(QMainWindow):
         self._build_status()
         self._build_shop()
         self._build_achievements()
+        self._build_customization()
         self._build_settings()
         self.notice = label("所有商品仅消耗游戏内糯米币 · 本地离线保存", "muted")
         layout.addWidget(self.notice)
@@ -92,7 +126,7 @@ class DashboardWindow(QMainWindow):
         model.feedback.connect(self._feedback)
         self.refresh()
 
-    def _page(self, title: str) -> QVBoxLayout:
+    def _page(self, title: str, tabs: QTabWidget | None = None) -> QVBoxLayout:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -100,10 +134,10 @@ class DashboardWindow(QMainWindow):
         content = QWidget()
         content.setObjectName("page")
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(4, 16, 10, 12)
+        layout.setContentsMargins(0, 16, 0, 12)
         layout.setSpacing(14)
         scroll.setWidget(content)
-        self.tabs.addTab(scroll, title)
+        (self.tabs if tabs is None else tabs).addTab(scroll, title)
         return layout
 
     def _build_status(self) -> None:
@@ -132,14 +166,14 @@ class DashboardWindow(QMainWindow):
         profile_layout.addWidget(self.stats_label)
         page.addWidget(profile)
         page.addWidget(label("我的背包", "sectionTitle"))
-        self.empty_inventory = label("背包还是空的，去免费商城挑一份甜甜的食物吧～", "muted")
+        self.empty_inventory = label("背包还是空的，去商城挑选食物或一份心意礼物吧～", "muted")
         page.addWidget(self.empty_inventory)
         for item_id, item in self.model.catalog.items.items():
             row, content = card()
             line = QHBoxLayout()
             text = label("")
             line.addWidget(text, 1)
-            button = QPushButton("投喂 / 使用")
+            button = QPushButton("赠送" if item["category"] == "gift" else "投喂")
             button.clicked.connect(lambda checked=False, key=item_id: self.model.use_item(key))
             line.addWidget(button)
             content.addLayout(line)
@@ -151,38 +185,62 @@ class DashboardWindow(QMainWindow):
 
     def _build_shop(self) -> None:
         page = self._page("免费商城")
-        page.addWidget(label("一口甜甜，换一整天好心情", "sectionTitle"))
-        page.addWidget(label("购买会放进背包；购买并投喂会立即使用。风味之间互相替换，同种风味刷新倒计时。", "muted"))
-        grid = QGridLayout()
-        grid.setSpacing(14)
-        for index, (item_id, item) in enumerate(self.model.catalog.items.items()):
-            panel, content = card()
-            content.addWidget(label(f"{item['icon']} {item['name']}", "sectionTitle"))
-            details = label("")
-            self.shop_details[item_id] = details
-            content.addWidget(details)
-            buff = item.get("buff")
-            description = f"【{buff['name']}】{buff['description']}" if buff else "温柔补充能量，没有额外风味效果。"
-            description_label = label(description, "muted")
-            description_label.setMinimumHeight(58)
-            content.addWidget(description_label, 1)
-            time_label = label("", "muted")
-            content.addWidget(time_label)
-            actions = QHBoxLayout()
-            buy = QPushButton("购买")
-            feed = QPushButton("购买并投喂")
-            feed.setProperty("primary", True)
-            buy.clicked.connect(lambda checked=False, key=item_id: self.model.buy_item(key))
-            feed.clicked.connect(lambda checked=False, key=item_id: self.model.buy_item(key, feed_now=True))
-            actions.addWidget(buy)
-            actions.addWidget(feed)
-            content.addLayout(actions)
-            grid.addWidget(panel, index // 2, index % 2)
-            self.shop_buttons[item_id] = (buy, feed, time_label)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        page.addLayout(grid)
+        header = QHBoxLayout()
+        header.addWidget(label("食物补充饱食度 · 礼物积累好感", "sectionTitle"), 1)
+        self.shop_filter = QComboBox()
+        self.shop_filter.addItems(["全部商品", "三级食物", "三级礼物"])
+        self.shop_filter.currentIndexChanged.connect(self._filter_shop)
+        header.addWidget(self.shop_filter)
+        page.addLayout(header)
+        page.addWidget(label("购买放入背包，或立即投喂 / 赠送。食物不增加好感；礼物不恢复饱食度。", "muted"))
+        self.shop_groups = {}
+        for category, title in (("food", "🍡 每日食物"), ("gift", "🎁 心意礼物")):
+            group = QGroupBox(title)
+            group_layout = QVBoxLayout(group)
+            group_layout.setSpacing(14)
+            definitions = self.model.catalog.food_tiers if category == "food" else self.model.catalog.gift_tiers
+            for tier in (1, 2, 3):
+                definition = definitions[str(tier)]
+                group_layout.addWidget(label(f"{('Ⅰ', 'Ⅱ', 'Ⅲ')[tier - 1]}级 · {definition['name']}", "sectionTitle"))
+                grid = QGridLayout()
+                grid.setSpacing(12)
+                items = [(key, item) for key, item in self.model.catalog.items.items()
+                         if item["category"] == category and item["tier"] == tier]
+                for index, (item_id, item) in enumerate(items):
+                    panel, content = card()
+                    content.addWidget(label(f"{item['icon']} {item['name']}", "sectionTitle"))
+                    details = label("")
+                    self.shop_details[item_id] = details
+                    content.addWidget(details)
+                    buff = item.get("buff")
+                    description = (f"【{buff['name']}】{buff['description']}" if buff else
+                                   "把心意送给汤圆，慢慢积累好感。" if category == "gift" else "安心补充能量，饱食度最多恢复到 100。")
+                    description_label = label(description, "muted")
+                    description_label.setMinimumHeight(48)
+                    content.addWidget(description_label, 1)
+                    time_label = label("", "muted")
+                    content.addWidget(time_label)
+                    actions = QHBoxLayout()
+                    buy = QPushButton("购买")
+                    use = QPushButton("购买并赠送" if category == "gift" else "购买并投喂")
+                    use.setProperty("primary", True)
+                    buy.clicked.connect(lambda checked=False, key=item_id: self.model.buy_item(key))
+                    use.clicked.connect(lambda checked=False, key=item_id: self.model.buy_item(key, feed_now=True))
+                    actions.addWidget(buy)
+                    actions.addWidget(use)
+                    content.addLayout(actions)
+                    grid.addWidget(panel, index // 2, index % 2)
+                    self.shop_buttons[item_id] = (buy, use, time_label)
+                grid.setColumnStretch(0, 1)
+                grid.setColumnStretch(1, 1)
+                group_layout.addLayout(grid)
+            page.addWidget(group)
+            self.shop_groups[category] = group
         page.addStretch()
+
+    def _filter_shop(self, index: int) -> None:
+        for category, group in self.shop_groups.items():
+            group.setVisible(index == 0 or category == ("food" if index == 1 else "gift"))
 
     def _build_achievements(self) -> None:
         page = self._page("成就图鉴")
@@ -231,8 +289,20 @@ class DashboardWindow(QMainWindow):
         for tier, group in self.tier_groups.items():
             group.setVisible(index == 0 or index == tier)
 
-    def _build_settings(self) -> None:
-        page = self._page("装扮与设置")
+    def _build_customization(self) -> None:
+        self.dress_tabs = QTabWidget()
+        self.dress_tabs.setObjectName("dressTabs")
+        self.dress_tabs.setTabBar(NavigationTabBar(self.dress_tabs))
+        self.dress_tabs.setDocumentMode(True)
+        self.dress_tabs.tabBar().setExpanding(True)
+        self.dress_tabs.tabBar().setDrawBase(False)
+        self.dress_tabs.tabBar().setAutoFillBackground(True)
+        dressing = QWidget()
+        dressing_layout = QVBoxLayout(dressing)
+        dressing_layout.setContentsMargins(0, 12, 0, 0)
+        dressing_layout.addWidget(self.dress_tabs)
+        self.tabs.addTab(dressing, "装扮")
+        page = self._page("皮肤衣橱", self.dress_tabs)
         wardrobe, content = card()
         content.addWidget(label("🎨 皮肤衣橱与自定义导入", "sectionTitle"))
         content.addWidget(label("本地 PNG / 动态 GIF 和多状态动作包，都能共享果冻形变、风味染色、挂件与特技。", "muted"))
@@ -277,7 +347,9 @@ class DashboardWindow(QMainWindow):
         self.skin_disclaimer = label("ℹ️ 免责声明：本软件为纯本地渲染工具，自定义导入的图片/GIF仅保存在您的电脑本地，不会上传至任何服务器。请确保所导入素材仅供个人学习欣赏或已取得合法授权。", "disclaimer")
         content.addWidget(self.skin_disclaimer)
         page.addWidget(wardrobe)
+        page.addStretch()
 
+        page = self._page("挂件装扮", self.dress_tabs)
         accessories, body = card()
         body.addWidget(label("👑 独立挂件与周身特效", "sectionTitle"))
         body.addWidget(label("挂件随外观一起呼吸、回弹、旋转；头顶、面部、周身三个位置可同时搭配。", "muted"))
@@ -316,7 +388,9 @@ class DashboardWindow(QMainWindow):
         body.addLayout(offset)
         body.addWidget(label("负值向上，正值向下；范围 -30～+30 px，适配不同高矮的自定义图片。", "muted"))
         page.addWidget(accessories)
+        page.addStretch()
 
+        page = self._page("特技与等级奖励", self.dress_tabs)
         tricks, body = card()
         body.addWidget(label("🎪 表演特技", "sectionTitle"))
         body.addWidget(label("也可以右键桌宠，在“表演特技”中触发。双击仍然打开主面板。", "muted"))
@@ -361,11 +435,14 @@ class DashboardWindow(QMainWindow):
         self.debug_unlock_check.hide()
         body.addWidget(self.debug_unlock_check)
         page.addWidget(milestones)
+        page.addStretch()
 
+    def _build_settings(self) -> None:
+        page = self._page("设置")
         settings, content = card()
         content.addWidget(label("桌面陪伴设置", "sectionTitle"))
         self.pin_check = QCheckBox("固定当前位置（仍可拖动调整）")
-        self.dev_check = QCheckBox("开发测试加速（饥饿 / 礼包加速；新风味 15 秒）")
+        self.dev_check = QCheckBox("开发测试加速（饱食度 2 秒 / 点；正常模式满值持续 8 小时）")
         self.flat_check = QCheckBox("手动测试饿扁（不改变真实饥饿）")
         self.pin_check.toggled.connect(self.pin_requested.emit)
         self.dev_check.toggled.connect(self.dev_requested.emit)
@@ -527,17 +604,18 @@ class DashboardWindow(QMainWindow):
         self.exp_bar.setValue(required if data.affection_level == 30 else data.affection_exp)
         self.exp_bar.setFormat("满级 · 陪伴仍在继续" if data.affection_level == 30 else f"好感经验 {data.affection_exp} / {required}")
         self.hunger_bar.setValue(round(data.hunger))
-        self.hunger_bar.setFormat(f"饥饿 {data.hunger:g} / 100" + (" · 饿扁啦，喂一口就恢复" if self.model.starving else ""))
+        self.hunger_bar.setFormat(f"饱食度 {data.hunger:g} / 100" + (" · 饿扁啦，喂一口就恢复" if self.model.starving else ""))
         buff = self.model.buff_view()
         self.buff_label.setText(f"{buff['name']} · 剩余 {math.ceil(buff['remaining_seconds'])} 秒" + (f" · 狂奔 / 跺脚 {math.ceil(buff['behavior_remaining'])} 秒" if buff.get("behavior_remaining") else "") if buff else "原味白汤圆 · 当前没有风味 Buff")
         stats = data.stats
-        self.stats_label.setText(f"累计戳戳 {stats['total_clicks']} 次  ·  投喂 {stats['total_feeds']} 次  ·  挂机收礼 {stats['total_gifts']} 次\n在线陪伴 {int(stats['total_idle_seconds'] // 60)} 分钟  ·  摸头 {stats['total_pets']} 次  ·  高空落地 {stats['total_drops']} 次")
+        self.stats_label.setText(f"累计戳戳 {stats['total_clicks']} 次  ·  投喂 {stats['total_feeds']} 次  ·  挂机礼包 {stats['total_gifts']} 次  ·  赠礼 {stats['total_presents']} 次\n在线陪伴 {int(stats['total_idle_seconds'] // 60)} 分钟  ·  摸头 {stats['total_pets']} 次  ·  高空落地 {stats['total_drops']} 次")
         owned = False
         for item_id, (row, text, button) in self.inventory_widgets.items():
             item, count = self.model.item(item_id), data.inventory.get(item_id, 0)
             row.setVisible(count > 0)
             button.setEnabled(count > 0)
-            text.setText(f"{item['icon']} {item['name']} × {count}\n饥饿 +{item['hunger']:g} · 好感 +{item['exp']}")
+            effect = f"好感 +{item['exp']}" if item["category"] == "gift" else f"饱食度 +{item['hunger']:g}"
+            text.setText(f"{item['icon']} {item['name']} × {count}  ·  {item['tier']}级{'礼物' if item['category'] == 'gift' else '食物'}\n{effect}")
             owned = owned or count > 0
         self.empty_inventory.setVisible(not owned)
         unknown = [f"{key} ×{count}" for key, count in data.inventory.items() if key not in self.model.catalog.items and count > 0]
@@ -545,10 +623,11 @@ class DashboardWindow(QMainWindow):
         self.unknown_inventory.setVisible(bool(unknown))
         for item_id, (buy, feed, text) in self.shop_buttons.items():
             item = self.model.item(item_id)
-            self.shop_details[item_id].setText(f"{item['cost']} 糯米币   ·   饥饿 +{item['hunger']:g}   ·   好感 +{item['exp']}")
+            effect = f"好感 +{item['exp']}" if item["category"] == "gift" else f"饱食度 +{item['hunger']:g}"
+            self.shop_details[item_id].setText(f"{item['cost']} 糯米币   ·   {effect}")
             buy.setEnabled(data.coins >= item["cost"])
             feed.setEnabled(data.coins >= item["cost"])
-            text.setText(f"风味持续 {self.model.rules.buff_seconds:g} 秒" if "buff" in item else "可随时投喂，饥饿最多恢复到 100")
+            text.setText(f"风味持续 {self.model.rules.buff_seconds:g} 秒" if "buff" in item else "赠送只增加好感，不影响饱食度" if item["category"] == "gift" else "食物只恢复饱食度，不增加好感")
         ready = set(data.unlocked_achievements) - set(data.claimed_achievements)
         self.achievement_summary.setText(f"成就 {len(data.unlocked_achievements)}/{len(self.model.catalog.achievements)} · 待领取 {len(ready)}")
         for achievement in self.model.catalog.achievements:

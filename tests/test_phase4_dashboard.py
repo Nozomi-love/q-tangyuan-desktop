@@ -34,9 +34,9 @@ class WardrobeDashboardTests(unittest.TestCase):
         self.model._publish(self.model.starving)
         self.window.refresh()
 
-    def test_four_tabs_and_wardrobe_disclaimer(self):
-        self.assertEqual(self.window.tabs.count(), 4)
-        self.assertEqual(self.window.tabs.tabText(3), "装扮与设置")
+    def test_five_tabs_and_wardrobe_disclaimer(self):
+        self.assertEqual(self.window.tabs.count(), 5)
+        self.assertEqual(self.window.tabs.tabText(3), "装扮")
         self.assertEqual(self.window.skin_disclaimer.text(), "ℹ️ 免责声明：本软件为纯本地渲染工具，自定义导入的图片/GIF仅保存在您的电脑本地，不会上传至任何服务器。请确保所导入素材仅供个人学习欣赏或已取得合法授权。")
         self.assertEqual(self.window.skin_disclaimer.textFormat(), Qt.TextFormat.PlainText)
         self.assertTrue(self.window.skin_disclaimer.wordWrap())
@@ -226,8 +226,8 @@ class WardrobeDashboardTests(unittest.TestCase):
         self.level(6)
         self.assertEqual(set(self.window.milestone_widgets), set(range(1, 7)))
         self.assertTrue(all(widget.property("unlocked") for widget in self.window.milestone_widgets.values()))
-        self.assertIn("汤圆守护神", self.window.milestone_widgets[6].text())
-        self.assertIn("✨ 汤圆守护神", self.model.data.titles)
+        self.assertIn("阿一古", self.window.milestone_widgets[6].text())
+        self.assertIn("阿一古", self.model.data.titles)
 
     def test_original_settings_refresh_is_signal_silent(self):
         outputs = []

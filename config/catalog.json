@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "timing": {
-    "hunger_seconds": 180,
+    "hunger_seconds": 288,
     "gift_seconds": 90,
     "hungry_notice_seconds": 45
   },
@@ -16,76 +16,117 @@
     "water": {
       "name": "温开水",
       "icon": "💧",
-      "cost": 5,
-      "hunger": 10,
-      "exp": 5
+      "cost": 10,
+      "hunger": 15,
+      "exp": 0,
+      "category": "food",
+      "tier": 1
     },
     "sugar": {
       "name": "白砂糖",
       "icon": "🍬",
       "cost": 10,
-      "hunger": 25,
-      "exp": 10
+      "hunger": 15,
+      "exp": 0,
+      "category": "food",
+      "tier": 1
     },
     "osmanthus": {
       "name": "桂花酒酿",
       "icon": "🍶",
-      "cost": 25,
-      "hunger": 50,
-      "exp": 25
+      "cost": 45,
+      "hunger": 65,
+      "exp": 0,
+      "category": "food",
+      "tier": 3
     },
     "sesame": {
       "name": "黑芝麻糊",
       "icon": "🥣",
-      "cost": 35,
-      "hunger": 40,
-      "exp": 20,
+      "cost": 25,
+      "hunger": 35,
+      "exp": 0,
       "buff": {
         "name": "芝麻胖团",
         "color": "#45424a",
         "scale": 1.2,
         "description": "深灰芝麻色调，整体放大 1.2 倍"
-      }
+      },
+      "category": "food",
+      "tier": 2
     },
     "strawberry": {
       "name": "草莓果酱",
       "icon": "🍓",
-      "cost": 35,
-      "hunger": 40,
-      "exp": 20,
+      "cost": 25,
+      "hunger": 35,
+      "exp": 0,
       "buff": {
         "name": "粉红甜心",
         "color": "#f58fb1",
         "scale": 1,
         "description": "柔和粉红染色，周身缓缓升起粉红光点"
-      }
+      },
+      "category": "food",
+      "tier": 2
     },
     "matcha": {
       "name": "宇治抹茶粉",
       "icon": "🍵",
-      "cost": 35,
-      "hunger": 40,
-      "exp": 20,
+      "cost": 25,
+      "hunger": 35,
+      "exp": 0,
       "buff": {
         "name": "抹茶清香",
         "color": "#78ad76",
         "scale": 1,
         "description": "清新的抹茶绿色调"
-      }
+      },
+      "category": "food",
+      "tier": 2
     },
     "chili": {
       "name": "变态辣油",
       "icon": "🌶️",
       "cost": 45,
-      "hunger": 30,
-      "exp": 35,
+      "hunger": 65,
+      "exp": 0,
       "buff": {
         "name": "辣得狂奔",
         "color": "#f25a4c",
         "scale": 1,
         "behavior_seconds": 12,
         "description": "火红染色；前 12 秒沿任务栏轻跳小跑，固定时原位跺脚"
-      }
+      },
+      "category": "food",
+      "tier": 3
+    },
+    "paper_star": {
+      "name": "折纸星星",
+      "icon": "🌟",
+      "category": "gift",
+      "tier": 1,
+      "hunger": 0,
+      "exp": 20,
+      "cost": 20
+    },
+    "flower_bouquet": {
+      "name": "小花束",
+      "icon": "💐",
+      "category": "gift",
+      "tier": 2,
+      "hunger": 0,
+      "exp": 80,
+      "cost": 70
+    },
+    "music_box": {
+      "name": "八音盒",
+      "icon": "🎁",
+      "category": "gift",
+      "tier": 3,
+      "hunger": 0,
+      "exp": 240,
+      "cost": 180
     }
   },
   "achievements": [
@@ -264,9 +305,10 @@
       "item": "bow"
     },
     "title_guardian": {
-      "name": "✨ 汤圆守护神",
+      "name": "✨ 阿一古",
       "level": 6,
-      "kind": "title"
+      "kind": "title",
+      "title": "阿一古"
     }
   },
   "milestones": [
@@ -309,11 +351,45 @@
     },
     {
       "level": 6,
-      "label": "汤圆守护神",
+      "label": "阿一古",
       "perks": [
         "accessory_bow",
         "title_guardian"
       ]
     }
-  ]
+  ],
+  "food_tiers": {
+    "1": {
+      "name": "基础食物",
+      "hunger": 15,
+      "cost": 10
+    },
+    "2": {
+      "name": "精制食物",
+      "hunger": 35,
+      "cost": 25
+    },
+    "3": {
+      "name": "丰盛食物",
+      "hunger": 65,
+      "cost": 45
+    }
+  },
+  "gift_tiers": {
+    "1": {
+      "name": "小小心意",
+      "exp": 20,
+      "cost": 20
+    },
+    "2": {
+      "name": "温暖心意",
+      "exp": 80,
+      "cost": 70
+    },
+    "3": {
+      "name": "珍藏心意",
+      "exp": 240,
+      "cost": 180
+    }
+  }
 }

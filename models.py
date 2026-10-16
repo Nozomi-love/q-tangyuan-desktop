@@ -16,6 +16,11 @@ from typing import Callable
 from PySide6.QtCore import QObject, Signal
 
 
+EXP_PER_LEVEL = 500
+GUARDIAN_TITLE = "阿一古"
+LEGACY_GUARDIAN_TITLES = {"✨ 汤圆守护神", "汤圆守护神"}
+
+
 def _number(value, name: str, low: float = 0, high: float = math.inf) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{name} 必须为数值")
@@ -32,13 +37,13 @@ def _integer(value, name: str, low: int = 0, high: int | None = None) -> int:
 
 @dataclass(frozen=True)
 class GameRules:
-    hunger_seconds: float = 180.0
+    hunger_seconds: float = 288.0
     gift_seconds: float = 90.0
     hungry_notice_seconds: float = 45.0
     gift_lifetime: float = 30.0
     sugar_cost: int = 10
-    sugar_hunger: float = 25.0
-    sugar_exp: int = 10
+    sugar_hunger: float = 15.0
+    sugar_exp: int = 0
     pet_cooldown: float = 10.0
     buff_seconds: float = 60.0
 
@@ -48,7 +53,7 @@ class GameRules:
         _number(self.gift_lifetime, "gift_lifetime", 0.1, 30)
         _number(self.buff_seconds, "buff_seconds", 1, 3600)
         _integer(self.sugar_cost, "sugar_cost", 1)
-        _integer(self.sugar_exp, "sugar_exp", 1)
+        _integer(self.sugar_exp, "食物好感经验", 0, 0)
         _number(self.sugar_hunger, "sugar_hunger", 1, 100)
 
     @classmethod
@@ -68,6 +73,16 @@ class Catalog:
     """Validated, data-driven food and achievement definitions."""
     def __init__(self, source: dict) -> None:
         self.items = deepcopy(source["items"])
+        self.food_tiers = deepcopy(source.get("food_tiers", {}))
+        self.gift_tiers = deepcopy(source.get("gift_tiers", {}))
+        for tiers, metric in ((self.food_tiers, "hunger"), (self.gift_tiers, "exp")):
+            if set(tiers) != {"1", "2", "3"}:
+                raise ValueError("食物和礼物均需要三个等级")
+            for tier in tiers.values():
+                if not isinstance(tier.get("name"), str):
+                    raise ValueError("等级名称无效")
+                _integer(tier["cost"], "等级价格", 1)
+                _integer(tier[metric], "等级效果", 1, 100 if metric == "hunger" else 10000)
         self.achievements = deepcopy(source["achievements"])
         self.interactions = dict(source["interactions"])
         self.perks = deepcopy(source.get("perks", {}))
@@ -91,6 +106,16 @@ class Catalog:
             _integer(item["cost"], "商品价格", 1)
             _integer(item["exp"], "商品经验", 0)
             _number(item["hunger"], "商品饥饿恢复", 0, 100)
+            category = item.get("category")
+            if category not in ("food", "gift"):
+                raise ValueError("商品类型必须为 food 或 gift")
+            tier = _integer(item.get("tier"), "商品等级", 1, 3)
+            definition = (self.food_tiers if category == "food" else self.gift_tiers)[str(tier)]
+            metric = "hunger" if category == "food" else "exp"
+            if item["cost"] != definition["cost"] or item[metric] != definition[metric]:
+                raise ValueError("商品价格和效果必须与等级配置一致")
+            if (category == "food" and item["exp"] != 0) or (category == "gift" and (item["hunger"] != 0 or "buff" in item)):
+                raise ValueError("食物只恢复饱食度，礼物只增加好感度")
             if "buff" in item:
                 buff = item["buff"]
                 if not isinstance(buff, dict) or not isinstance(buff.get("name"), str):
@@ -147,7 +172,7 @@ class PetData:
     })
     stats: dict = field(default_factory=lambda: {
         "total_clicks": 0, "total_feeds": 0, "total_idle_seconds": 0.0,
-        "total_gifts": 0, "total_pets": 0, "total_drops": 0, "total_shakes": 0,
+        "total_gifts": 0, "total_presents": 0, "total_pets": 0, "total_drops": 0, "total_shakes": 0,
         "starvation_recoveries": 0, "rapid_poke_peak": 0, "customizations": 0,
     })
     timers: dict = field(default_factory=lambda: {
@@ -186,6 +211,9 @@ class PetData:
             if (not isinstance(value, list) or not all(isinstance(v, str) for v in value)
                     or len(set(value)) != len(value)):
                 raise ValueError(f"{key} 必须为不重复的字符串列表")
+        item.titles = list(dict.fromkeys(GUARDIAN_TITLE if title in LEGACY_GUARDIAN_TITLES else title for title in item.titles))
+        if item.equipped_title in LEGACY_GUARDIAN_TITLES:
+            item.equipped_title = GUARDIAN_TITLE
         if "糯米团子" not in item.titles or item.equipped_title not in item.titles:
             raise ValueError("佩戴称号需要先解锁")
         if not set(item.claimed_achievements).issubset(item.unlocked_achievements):
@@ -203,13 +231,13 @@ class PetData:
         item.hunger = _number(item.hunger, "hunger", 0, 100)
         _integer(item.affection_level, "affection_level", 1, 30)
         _integer(item.affection_exp, "affection_exp", 0,
-                 item.affection_level * 50 - 1 if item.affection_level < 30 else 0)
+                 item.affection_level * EXP_PER_LEVEL - 1 if item.affection_level < 30 else 0)
         today = item.daily_stats.get("date")
         if not isinstance(today, str) or date.fromisoformat(today).isoformat() != today:
             raise ValueError("每日日期需要 YYYY-MM-DD")
         attempts = _integer(item.daily_stats["poke_attempts"], "poke_attempts", 0, 20)
         _integer(item.daily_stats["poke_coin_drops"], "poke_coin_drops", 0, attempts)
-        for key in ("total_clicks", "total_feeds", "total_gifts", "total_pets", "total_drops", "total_shakes", "starvation_recoveries", "rapid_poke_peak", "customizations"):
+        for key in ("total_clicks", "total_feeds", "total_gifts", "total_presents", "total_pets", "total_drops", "total_shakes", "starvation_recoveries", "rapid_poke_peak", "customizations"):
             _integer(item.stats[key], key)
         _number(item.stats["total_idle_seconds"], "total_idle_seconds")
         for key in ("hunger_elapsed", "coin_elapsed", "hungry_notice_elapsed", "pet_cooldown_remaining"):
@@ -233,6 +261,7 @@ class PetModel(QObject):
     feedback = Signal(str, str)
     collectible_changed = Signal(bool)
     fed = Signal()
+    gifted = Signal()
     achievement_unlocked = Signal(dict)
     buff_changed = Signal(dict)
     dizzy_requested = Signal()
@@ -272,7 +301,7 @@ class PetModel(QObject):
 
     @property
     def exp_required(self) -> int:
-        return self.data.affection_level * 50
+        return self.data.affection_level * EXP_PER_LEVEL
 
     def snapshot(self) -> dict:
         return self.data.to_dict()
@@ -380,7 +409,7 @@ class PetModel(QObject):
     def buy_item(self, item_id: str, feed_now: bool = False) -> bool:
         item = self.item(item_id)
         if item is None:
-            self.feedback.emit("这件食物暂时没有上架。", "normal")
+            self.feedback.emit("这件商品暂时没有上架。", "normal")
             return False
         if self.data.coins < item["cost"]:
             self.feedback.emit("糯米币不够啦，戳戳或等一会儿拾币吧～", "hungry")
@@ -397,7 +426,7 @@ class PetModel(QObject):
     def use_item(self, item_id: str) -> bool:
         item = self.item(item_id)
         if item is None or self.data.inventory.get(item_id, 0) <= 0:
-            self.feedback.emit("背包里还没有这件食物。", "normal")
+            self.feedback.emit("背包里还没有这件物品。", "normal")
             return False
         previous = self.starving
         self.data.inventory[item_id] -= 1
@@ -408,6 +437,12 @@ class PetModel(QObject):
         return self.buy_item("sugar", feed_now=True)
 
     def _consume(self, item_id: str, item: dict, previous: bool) -> None:
+        if item["category"] == "gift":
+            self.data.stats["total_presents"] += 1
+            levels = self._add_exp(item["exp"])
+            self._publish(previous, levels, "{} 收到{}啦，心里暖暖的！好感 +{}".format(item["icon"], item["name"], item["exp"]), "reward")
+            self.gifted.emit()
+            return
         gained = min(item["hunger"], 100 - self.data.hunger)
         self.data.hunger = min(100.0, self.data.hunger + item["hunger"])
         self.data.stats["total_feeds"] += 1
@@ -420,11 +455,8 @@ class PetModel(QObject):
             if item_id not in self.data.flavors_seen:
                 self.data.flavors_seen.append(item_id)
             self.buff_changed.emit(self.buff_view())
-        levels = self._add_exp(item["exp"])
-        self._publish(previous, message=f"{item['icon']} {item['name']}甜甜香香！饥饿 +{gained:g}，好感 +{item['exp']}")
+        self._publish(previous, message=f"{item['icon']} {item['name']}甜甜香香！饱食度 +{gained:g}")
         self.fed.emit()
-        for level in levels:
-            self.upgraded.emit(level)
 
     def buff_view(self) -> dict:
         buff = self.data.active_buff
@@ -485,8 +517,8 @@ class PetModel(QObject):
         available = {key for key in self.catalog.perks if self.has_perk(key)}
         newly = available - self._known_perks
         self._known_perks = available
-        if "title_guardian" in available and "✨ 汤圆守护神" not in self.data.titles:
-            self.data.titles.append("✨ 汤圆守护神")
+        if "title_guardian" in available and GUARDIAN_TITLE not in self.data.titles:
+            self.data.titles.append(GUARDIAN_TITLE)
         if newly and announce:
             self.perks_unlocked.emit([self.catalog.perks[key]["name"] for key in self.catalog.perks if key in newly])
 

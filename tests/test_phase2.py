@@ -95,12 +95,12 @@ class GrowthTests(unittest.TestCase):
         self.assertEqual(pet.data.daily_stats["poke_coin_drops"], 1)
         self.assertEqual(pet.data.stats["total_clicks"], 21)
 
-    def test_hunger_drops_only_after_full_three_minutes(self):
-        self.model.advance(179.9)
+    def test_hunger_drops_only_after_full_288_seconds(self):
+        self.model.advance(287.9)
         self.assertEqual(self.model.data.hunger, 80)
         self.model.advance(0.1)
         self.assertEqual(self.model.data.hunger, 79)
-        self.assertAlmostEqual(self.model.data.stats["total_idle_seconds"], 180)
+        self.assertAlmostEqual(self.model.data.stats["total_idle_seconds"], 288)
 
     def test_zero_hunger_never_loses_levels_exp_or_coins(self):
         self.model.data.affection_level = 3
@@ -108,7 +108,7 @@ class GrowthTests(unittest.TestCase):
         events = []
         self.model.starvation_changed.connect(events.append)
         self.model.set_hunger(1)
-        self.model.advance(180)
+        self.model.advance(288)
         self.assertTrue(self.model.starving)
         self.assertEqual(events, [True])
         self.model.advance(360)
@@ -130,7 +130,7 @@ class GrowthTests(unittest.TestCase):
         self.model.starvation_changed.connect(states.append)
         self.model.set_hunger(0)
         self.assertTrue(self.model.feed_sugar())
-        self.assertEqual((self.model.data.coins, self.model.data.hunger, self.model.data.affection_exp), (90, 25, 10))
+        self.assertEqual((self.model.data.coins, self.model.data.hunger, self.model.data.affection_exp), (90, 15, 0))
         self.assertEqual(self.model.data.stats["total_feeds"], 1)
         self.assertEqual(states, [True, False])
         self.model.set_hunger(99)
@@ -154,7 +154,7 @@ class GrowthTests(unittest.TestCase):
         self.assertEqual(self.model.data.affection_exp, 6)
 
     def test_level_up_remainder_award_and_signal(self):
-        pet = PetModel(PetData(affection_exp=49), rng=FixedRandom(1))
+        pet = PetModel(PetData(affection_exp=499), rng=FixedRandom(1))
         levels = []
         pet.upgraded.connect(levels.append)
         pet.poke()
@@ -162,20 +162,23 @@ class GrowthTests(unittest.TestCase):
         self.assertEqual(levels, [2])
 
     def test_max_level_stops_exp_and_repeated_upgrade_rewards(self):
-        pet = PetModel(PetData(affection_level=29, affection_exp=1449), rng=FixedRandom(1))
+        pet = PetModel(PetData(affection_level=29, affection_exp=14499), rng=FixedRandom(1))
         pet.poke()
         self.assertEqual((pet.data.affection_level, pet.data.affection_exp, pet.data.coins), (30, 0, 130))
         for _ in range(100):
             pet.poke()
         self.assertEqual((pet.data.affection_level, pet.data.affection_exp, pet.data.coins), (30, 0, 130))
 
-    def test_multiple_levels_from_one_feed_reward_each_level(self):
-        pet = PetModel(rules=GameRules(sugar_exp=301))
+    def test_multiple_gifts_reward_each_reached_level_once(self):
+        pet = PetModel(PetData(coins=10000, affection_exp=499))
         levels = []
         pet.upgraded.connect(levels.append)
-        pet.feed_sugar()
-        self.assertEqual(levels, [2, 3, 4])
-        self.assertEqual((pet.data.affection_level, pet.data.affection_exp, pet.data.coins), (4, 1, 180))
+        for _ in range(6):
+            self.assertTrue(pet.buy_item("music_box", True))
+        self.assertEqual(levels, [2, 3])
+        self.assertEqual((pet.data.affection_level, pet.data.affection_exp, pet.data.coins), (3, 439, 8980))
+        self.assertEqual(pet.data.stats["total_presents"], 6)
+        self.assertEqual(pet.data.stats["total_feeds"], 0)
 
     def test_gift_appears_at_ninety_seconds_and_claims_once(self):
         self.model.advance(89.9)
@@ -226,7 +229,7 @@ class GrowthTests(unittest.TestCase):
         self.assertAlmostEqual(restored.data.pending_reward["remaining_seconds"], 17.5)
         restored.advance(17.5)
         self.assertEqual(restored.data.coins, 113)
-        restored.advance(60)
+        restored.advance(168)
         self.assertEqual(restored.data.hunger, 79)
         self.assertTrue(restored.has_collectible)
 
@@ -246,7 +249,7 @@ class GrowthTests(unittest.TestCase):
     def test_catalog_normal_and_accelerated_intervals(self):
         normal = GameRules.from_catalog(ROOT / "config/catalog.json")
         fast = GameRules.from_catalog(ROOT / "config/catalog.json", True)
-        self.assertEqual((normal.hunger_seconds, normal.gift_seconds), (180, 90))
+        self.assertEqual((normal.hunger_seconds, normal.gift_seconds), (288, 90))
         pet = PetModel(rules=fast)
         pet.advance(10)
         self.assertEqual(pet.data.hunger, 75)
@@ -267,7 +270,7 @@ class GrowthTests(unittest.TestCase):
 
     def test_bad_growth_values_are_rejected(self):
         for value in ({"coins": True}, {"hunger": float("nan")}, {"hunger": -1},
-                      {"affection_level": 31}, {"affection_exp": 50},
+                      {"affection_level": 31}, {"affection_exp": 500},
                       {"daily_stats": {"date": "bad"}}, {"stats": {"total_clicks": -1}},
                       {"pending_reward": {"coins": 4}}, {"timers": {"coin_elapsed": True}}):
             with self.subTest(value=value), self.assertRaises(ValueError):
@@ -289,7 +292,7 @@ class MigrationTests(unittest.TestCase):
         pet, position = self.manager.load_all()
         self.manager.update_game(pet.to_dict(), position)
         saved = json.loads(self.file.read_bytes())
-        self.assertEqual(saved["schema_version"], 4)
+        self.assertEqual(saved["schema_version"], 5)
         self.assertEqual(saved["window"], original["window"])
         self.assertEqual(saved["inventory"], original["inventory"])
         self.assertEqual(saved["stats"]["future_stat"], 12)
@@ -364,7 +367,7 @@ class UIIntegrationTests(unittest.TestCase):
         self.controller.feed_action.trigger()
         self.assertFalse(self.window.engine.flat)
         self.assertEqual(self.window.engine.state, PetState.HAPPY)
-        self.assertIn("25/100", self.controller.hunger_info.text())
+        self.assertIn("15/100", self.controller.hunger_info.text())
         self.assertIn("90", self.controller.coins_info.text())
         self.assertLess(self.window.engine.spring, 0)
 
@@ -395,7 +398,7 @@ class UIIntegrationTests(unittest.TestCase):
         self.window.engine.release_drag(0, 0)
 
     def test_level_feedback_has_priority_and_queues_celebration(self):
-        self.controller.model.data.affection_exp = 49
+        self.controller.model.data.affection_exp = 499
         self.controller.model.rng = FixedRandom(1)
         self.window.clicked.emit()
         self.assertEqual(self.controller.model.data.affection_level, 2)

@@ -401,7 +401,7 @@ class SkinImportTests(unittest.TestCase):
         data, window = manager.load_all()
         manager.update_game(data.to_dict(), window)
         migrated = json.loads(save.read_text(encoding="utf-8"))
-        self.assertEqual(migrated["schema_version"], 4)
+        self.assertEqual(migrated["schema_version"], 5)
         self.assertEqual(migrated["coins"], 234)
         self.assertTrue(migrated["future"]["retained"])
         backups = list(self.work.glob("save_data.json.bak.*"))

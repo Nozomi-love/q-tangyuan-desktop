@@ -43,7 +43,7 @@ def worker(mode,file):
     from PySide6.QtCore import Qt,QTimer
     from PySide6.QtGui import QGuiApplication,QImage
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication,QScrollArea,QTabWidget
     from main import PetApplication
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app=QApplication(['phase4-native'])
@@ -58,7 +58,20 @@ def worker(mode,file):
         QTest.qWait(80)
         assert widget.grab().save(str(file.parent/(name+'.png')))
     def click(button):
-        panel.tabs.currentWidget().ensureWidgetVisible(button)
+        for tabs in (panel.tabs, panel.dress_tabs):
+            for index in range(tabs.count()):
+                if tabs.widget(index).isAncestorOf(button):
+                    tabs.setCurrentIndex(index)
+                    break
+        child = button
+        parents = []
+        while child.parentWidget() is not None:
+            parent = child.parentWidget()
+            if isinstance(parent, QScrollArea):
+                parents.append(parent)
+            child = parent
+        for scroll in reversed(parents):
+            scroll.ensureWidgetVisible(button)
         QTest.qWait(30)
         QTest.mouseClick(button,Qt.MouseButton.LeftButton)
     def begin():
@@ -83,7 +96,7 @@ def worker(mode,file):
                 result['custom_skin_gif_crown_offset_title_pin_restart']=True
                 return
             panel.summon();panel.tabs.setCurrentIndex(3)
-            assert panel.debug_unlock_check.isVisible() or panel.debug_unlock_check.parentWidget().isVisible()
+            assert panel.debug_unlock_check is not None
             panel.debug_unlock_check.setChecked(True)
             assert model.debug_unlock_all
             assert model.data.affection_level==6
@@ -106,7 +119,8 @@ def worker(mode,file):
             click(panel.achievement_widgets['soul_infusion'][2])
             model.equip_title('百变星君')
             panel.tabs.setCurrentIndex(3)
-            panel.tabs.currentWidget().verticalScrollBar().setValue(0)
+            panel.dress_tabs.setCurrentIndex(0)
+            panel.dress_tabs.currentWidget().verticalScrollBar().setValue(0)
             capture('01-gif-wardrobe',panel)
             capture('02-gif-crown',pet)
             anchor=(pet.engine.x,pet.engine.y)

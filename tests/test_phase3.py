@@ -42,20 +42,20 @@ def simulate(engine: PetEngine, seconds: float):
 
 
 class CommerceTests(unittest.TestCase):
-    def test_exact_seven_foods_and_sugar_rules_share_config(self):
+    def test_seven_foods_three_gifts_and_sugar_rules_share_config(self):
         pet = wealthy()
-        self.assertEqual(len(pet.catalog.items), 7)
+        self.assertEqual(len(pet.catalog.items), 10)
         rules = GameRules.from_catalog(ROOT / "config/catalog.json")
-        self.assertEqual((rules.sugar_cost, rules.sugar_hunger, rules.sugar_exp), (10, 25, 10))
-        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [5, 10, 25, 35, 35, 35, 45])
+        self.assertEqual((rules.sugar_cost, rules.sugar_hunger, rules.sugar_exp), (10, 15, 0))
+        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [10, 10, 45, 25, 25, 25, 45, 20, 70, 180])
 
     def test_purchase_stores_without_feeding_and_use_does_not_recharge(self):
         pet = wealthy()
         self.assertTrue(pet.buy_item("water"))
-        self.assertEqual((pet.data.coins, pet.data.hunger, pet.data.affection_exp), (995, 80, 0))
+        self.assertEqual((pet.data.coins, pet.data.hunger, pet.data.affection_exp), (990, 80, 0))
         self.assertEqual(pet.data.inventory, {"water": 1})
         self.assertTrue(pet.use_item("water"))
-        self.assertEqual((pet.data.coins, pet.data.hunger, pet.data.affection_exp), (995, 90, 5))
+        self.assertEqual((pet.data.coins, pet.data.hunger, pet.data.affection_exp), (990, 95, 0))
         self.assertEqual(pet.data.inventory["water"], 0)
         self.assertFalse(pet.use_item("water"))
         self.assertEqual(pet.data.stats["total_feeds"], 1)
@@ -70,7 +70,8 @@ class CommerceTests(unittest.TestCase):
                 self.assertEqual(pet.data.coins, 1000 - item["cost"])
                 self.assertEqual(pet.data.hunger, item["hunger"])
                 self.assertEqual(pet.data.affection_exp, item["exp"])
-                self.assertEqual(pet.data.stats["total_feeds"], 1)
+                self.assertEqual(pet.data.stats["total_feeds"], int(item["category"] == "food"))
+                self.assertEqual(pet.data.stats["total_presents"], int(item["category"] == "gift"))
                 self.assertEqual(pet.data.inventory, {})
 
     def test_invalid_or_unaffordable_purchase_is_noop(self):
@@ -196,7 +197,7 @@ class AchievementTests(unittest.TestCase):
         self.assertIn("gifts_three", pet.data.unlocked_achievements)
 
     def test_level_three_achievement_and_title(self):
-        pet = PetModel(PetData(coins=1000, affection_level=2, affection_exp=99))
+        pet = PetModel(PetData(coins=1000, affection_level=2, affection_exp=999))
         pet.poke()
         self.assertEqual(pet.data.affection_level, 3)
         self.assertTrue(pet.claim_achievement("level_three"))
@@ -272,7 +273,7 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(pet.data.claimed_achievements, [])
         self.manager.update_game(pet.snapshot(), window)
         saved = json.loads(self.file.read_bytes())
-        self.assertEqual((saved["schema_version"], saved["coins"], saved["hunger"]), (4, 234, 41))
+        self.assertEqual((saved["schema_version"], saved["coins"], saved["hunger"]), (5, 234, 41))
         self.assertEqual(saved["inventory"], {"future_item": 2})
         self.assertEqual(saved["window"], data["window"])
         self.assertTrue(saved["future_data"]["keep"])
@@ -462,8 +463,8 @@ class DashboardInputTests(unittest.TestCase):
         with patch("pet_window.time.perf_counter", return_value=at):
             APP.sendEvent(self.window, event)
 
-    def test_dashboard_has_four_tabs_menu_summons_and_close_only_hides(self):
-        self.assertEqual(self.dashboard.tabs.count(), 4)
+    def test_dashboard_has_five_tabs_menu_summons_and_close_only_hides(self):
+        self.assertEqual(self.dashboard.tabs.count(), 5)
         self.assertFalse(self.dashboard.isVisible())
         self.controller.dashboard_action.trigger()
         self.assertTrue(self.dashboard.isVisible())
@@ -571,14 +572,14 @@ class DashboardInputTests(unittest.TestCase):
         self.assertEqual(self.model.data.stats["total_drops"], 1)
 
     def test_sugar_card_and_quick_feed_share_changed_rules(self):
-        self.model.set_rules(GameRules(sugar_cost=17, sugar_hunger=30, sugar_exp=6))
+        self.model.set_rules(GameRules(sugar_cost=17, sugar_hunger=30, sugar_exp=0))
         self.dashboard.refresh()
         self.assertIn("17 糯米币", self.dashboard.shop_details["sugar"].text())
-        self.assertIn("饥饿 +30", self.dashboard.shop_details["sugar"].text())
-        self.assertIn("好感 +6", self.dashboard.shop_details["sugar"].text())
+        self.assertIn("饱食度 +30", self.dashboard.shop_details["sugar"].text())
+        self.assertNotIn("好感", self.dashboard.shop_details["sugar"].text())
         self.model.feed_sugar()
         self.assertEqual(self.model.data.coins, 983)
-        self.assertEqual(self.model.data.affection_exp, 6)
+        self.assertEqual(self.model.data.affection_exp, 0)
 
     def test_shop_buttons_inventory_use_and_live_balance(self):
         self.dashboard.summon()
@@ -586,7 +587,7 @@ class DashboardInputTests(unittest.TestCase):
         buy, feed, _ = self.dashboard.shop_buttons["sesame"]
         QTest.mouseClick(buy, Qt.MouseButton.LeftButton)
         self.assertEqual(self.model.data.inventory["sesame"], 1)
-        self.assertIn("965", self.dashboard.balance.text())
+        self.assertIn("975", self.dashboard.balance.text())
         self.dashboard.tabs.setCurrentIndex(0)
         QTest.mouseClick(self.dashboard.inventory_widgets["sesame"][2], Qt.MouseButton.LeftButton)
         self.assertEqual(self.model.data.inventory["sesame"], 0)
@@ -599,7 +600,7 @@ class DashboardInputTests(unittest.TestCase):
 
     def test_settings_pin_dev_flat_and_debug_buttons_are_connected(self):
         self.dashboard.summon()
-        self.dashboard.tabs.setCurrentIndex(3)
+        self.dashboard.tabs.setCurrentIndex(4)
         self.dashboard.pin_check.setChecked(False)
         self.assertFalse(self.window.engine.pinned)
         self.controller.pin_action.setChecked(True)

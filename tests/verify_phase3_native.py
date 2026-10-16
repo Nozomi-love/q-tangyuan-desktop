@@ -1,4 +1,4 @@
-"""Native four-tab, commerce, effects and two-process persistence verification."""
+"""Native five-tab, commerce, effects and two-process persistence verification."""
 from __future__ import annotations
 
 import argparse
@@ -58,7 +58,7 @@ def worker(mode: str, file: Path) -> int:
     def begin():
         try:
             assert QGuiApplication.platformName() == "windows"
-            assert panel.tabs.count() == 4
+            assert panel.tabs.count() == 5
             assert window.engine.pinned
             if mode == "read":
                 saved = json.loads(file.read_text(encoding="utf-8"))
@@ -116,7 +116,7 @@ def worker(mode: str, file: Path) -> int:
             ensure_button(panel.achievement_widgets["flavors_three"][3])
             assert model.data.equipped_title == "美食鉴赏家"
             capture("06-achievements", 2)
-            capture("07-settings", 3)
+            capture("07-settings", 4)
             panel.hide()
             # Real 250 ms input cadence demonstrates the rapid-poke easter egg.
             for _ in range(15):
@@ -134,8 +134,11 @@ def worker(mode: str, file: Path) -> int:
             for _ in range(3):
                 model.offer_collectible()
                 model.claim_collectible()
-            while model.data.affection_level < 3:
-                model.buy_item("osmanthus", True)
+            # Seed the upgrade boundary; food deliberately grants no experience.
+            model.data.affection_level = 2
+            model.data.affection_exp = 999
+            assert model.buy_item("paper_star", True)
+            assert model.data.affection_level == 3
             # Fast native pointer events, alternating direction three times.
             origin = QPointF(window.engine.x, window.engine.y - 50)
             pointer(QEvent.Type.MouseButtonPress, origin)
@@ -181,7 +184,7 @@ def worker(mode: str, file: Path) -> int:
             window.engine.place(area.left + area.width * 0.55, area.top + area.height * 0.48)
             window._sync_window()
             controller._save()
-            result.update(four_tabs=True, double_click_without_poke=True, close_hides_only=True,
+            result.update(five_tabs=True, double_click_without_poke=True, close_hides_only=True,
                           commerce_buttons=True, title_controls=True, real_rapid_pokes=True,
                           shake_and_real_drop=True, spicy_free_and_fixed=True, all_ten_achievements_claimed=True,
                           frames=window.frame_count, growth=model.snapshot())
