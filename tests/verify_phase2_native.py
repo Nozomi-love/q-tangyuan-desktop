@@ -30,6 +30,8 @@ def worker(mode: str, file: Path) -> int:
     app.setStyleSheet((ROOT / "styles/theme.qss").read_text(encoding="utf-8"))
     controller = PetApplication(app, save_path=file, accelerated=mode == "write")
     window, model, bubble = controller.window, controller.model, controller.window.bubble
+    controller.model.set_overlay_visible(True)
+    controller.dashboard.hide()
     failures = []
     result = {"mode": mode, "platform": QGuiApplication.platformName(),
               "dpr": window.devicePixelRatioF(), "screens": len(QGuiApplication.screens())}

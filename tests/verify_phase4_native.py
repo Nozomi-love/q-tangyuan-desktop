@@ -51,6 +51,8 @@ def worker(mode,file):
     app.setStyleSheet((ROOT/'styles/theme.qss').read_text(encoding='utf-8'))
     controller=PetApplication(app,save_path=file,skins_root=file.parent/'skins',dev_mode=mode=='write')
     pet,model,panel=controller.window,controller.model,controller.dashboard
+    controller.model.set_overlay_visible(True)
+    controller.dashboard.hide()
     result={'mode':mode,'platform':QGuiApplication.platformName(),'dpr':pet.devicePixelRatioF()}
     errors=[]
     sys.excepthook=lambda typ,val,tb:(errors.append(''.join(traceback.format_exception(typ,val,tb))),app.exit(1))
@@ -58,10 +60,13 @@ def worker(mode,file):
         QTest.qWait(80)
         assert widget.grab().save(str(file.parent/(name+'.png')))
     def click(button):
-        for tabs in (panel.tabs, panel.shop_tabs, panel.dress_tabs):
+        for tabs in (panel.tabs, panel.market_tabs, panel.shop_tabs, panel.dress_tabs):
             for index in range(tabs.count()):
                 if tabs.widget(index).isAncestorOf(button):
-                    tabs.setCurrentIndex(index)
+                    if tabs is panel.tabs:
+                        panel.show_section(("bag","shop","achievements","dress","settings","furniture")[index], animate=False)
+                    else:
+                        tabs.setCurrentIndex(index)
                     break
         child = button
         parents = []
@@ -70,7 +75,7 @@ def worker(mode,file):
             if isinstance(parent, QScrollArea):
                 parents.append(parent)
             child = parent
-        for scroll in reversed(parents):
+        for scroll in parents:
             scroll.ensureWidgetVisible(button)
         QTest.qWait(30)
         QTest.mouseClick(button,Qt.MouseButton.LeftButton)
@@ -89,13 +94,13 @@ def worker(mode,file):
                 QTest.qWait(350)
                 assert any(m.state().name=='Running' for m in pet.renderer.movies.values())
                 assert model.data.coins==saved['coins']
-                panel.summon(); panel.tabs.setCurrentIndex(3)
+                panel.summon(); panel.show_section("dress", animate=False)
                 capture('restart-wardrobe',panel)
                 capture('restart-gif-crown',pet)
                 assert not model.claim_achievement('soul_infusion')
                 result['custom_skin_gif_crown_offset_title_pin_restart']=True
                 return
-            panel.summon();panel.tabs.setCurrentIndex(3)
+            panel.summon();panel.show_section("dress", animate=False)
             assert panel.debug_unlock_check is not None
             panel.debug_unlock_check.setChecked(True)
             assert model.debug_unlock_all
@@ -115,10 +120,10 @@ def worker(mode,file):
             panel.offset_slider.setValue(-12)
             assert model.effective_accessories()=={'head':'crown','face':'sunglasses','effect':'steam','offset_y':-12}
             assert 'soul_infusion' in model.data.unlocked_achievements
-            panel.tabs.setCurrentIndex(2)
+            panel.show_section("achievements", animate=False)
             click(panel.achievement_widgets['soul_infusion'][2])
             model.equip_title('百变星君')
-            panel.tabs.setCurrentIndex(3)
+            panel.show_section("dress", animate=False)
             panel.dress_tabs.setCurrentIndex(0)
             panel.dress_tabs.currentWidget().verticalScrollBar().setValue(0)
             capture('01-gif-wardrobe',panel)

@@ -85,10 +85,12 @@ class PetApplication:
         app.setWindowIcon(self.icon)
         self.window.setWindowIcon(self.icon)
         self._build_menu()
-        self.dashboard = DashboardWindow(self.model)
+        self.dashboard = DashboardWindow(self.model, self.window.engine, lambda: self.window.renderer)
         self.dashboard.setWindowIcon(self.icon)
         self.dashboard.set_phase4_context(self.skin_manager.list_skins(), self.dev_mode)
         self._connect_dashboard()
+        self.window.dialogue_shown.connect(self.dashboard.room.show_message)
+        self.model.food_consumed.connect(self.dashboard.room.show_food)
 
         self.model.state_changed.connect(self._state_changed)
         self.model.starvation_changed.connect(self.window.set_starving)
@@ -119,7 +121,7 @@ class PetApplication:
         self.window.close_requested.connect(app.quit)
 
         self.tray = QSystemTrayIcon(self.icon, app)
-        self.tray.setToolTip("Q弹汤圆 · 右键喂食、摸头与查看状态")
+        self.tray.setToolTip("Q弹汤圆 · 双击回小窝，右键快捷互动")
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self._tray_activated)
         if QSystemTrayIcon.isSystemTrayAvailable():
@@ -150,7 +152,9 @@ class PetApplication:
         self.dev_action.setChecked(accelerated)
         self._sync_settings()
         app.aboutToQuit.connect(self.stop)
-        self.window.show()
+        self.window.set_overlay_visible(self.model.data.overlay_visible)
+        self.overlay_action.setChecked(self.model.data.overlay_visible)
+        self.dashboard.summon()
         self._save()
         for achievement in self.model.initial_achievements:
             self._achievement_unlocked(achievement)
@@ -181,7 +185,10 @@ class PetApplication:
         self.pet_action = self.menu.addAction("")
         self.pin_action = self.menu.addAction("📌 固定当前位置（可拖动调整）")
         self.pin_action.setCheckable(True)
-        self.dashboard_action = self.menu.addAction("🏠 打开主面板")
+        self.dashboard_action = self.menu.addAction("🏠 打开汤圆小窝")
+        self.overlay_action = self.menu.addAction("🖥 显示桌面悬浮窗")
+        self.overlay_action.setCheckable(True)
+        self.overlay_action.toggled.connect(self.model.set_overlay_visible)
         self.trick_menu = self.menu.addMenu("🎪 表演特技")
         self.trick_actions = {}
         for trick_id in self.model.trick_cooldowns:
@@ -216,6 +223,11 @@ class PetApplication:
         self.menu.aboutToShow.connect(self._refresh_menu)
 
     def _connect_dashboard(self) -> None:
+        self.dashboard.rename_requested.connect(self.model.rename_pet)
+        self.dashboard.overlay_requested.connect(self.model.set_overlay_visible)
+        self.dashboard.furniture_requested.connect(self.model.equip_furniture)
+        self.dashboard.poke_requested.connect(self._room_poke)
+        self.dashboard.pet_requested.connect(self._pet_head)
         self.dashboard.pin_requested.connect(self.pin_action.setChecked)
         self.dashboard.dev_requested.connect(self.dev_action.setChecked)
         self.dashboard.flat_requested.connect(self.flat_action.setChecked)
@@ -273,7 +285,21 @@ class PetApplication:
 
     def _state_changed(self, _state: dict) -> None:
         self._dirty = True
+        enabled = self.model.data.overlay_visible
+        if self.window._overlay_enabled != enabled:
+            self.window.set_overlay_visible(enabled)
+        self.overlay_action.blockSignals(True)
+        self.overlay_action.setChecked(enabled)
+        self.overlay_action.setText("🖥 隐藏桌面悬浮窗" if enabled else "🖥 显示桌面悬浮窗")
+        self.overlay_action.blockSignals(False)
+        self.dashboard.room.set_home_state(self.model.snapshot())
         self._refresh_menu()
+        if hasattr(self, "save_timer"):
+            self.save_timer.start()
+
+    def _room_poke(self) -> None:
+        self.window.engine.click()
+        self.model.poke()
 
     def _feedback(self, text: str, tone: str) -> None:
         self.window.show_message(text, tone)
@@ -401,7 +427,7 @@ class PetApplication:
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.window.reset_to_primary()
+            self.dashboard.summon()
 
     def stop(self) -> None:
         if self._stopped:
@@ -414,6 +440,7 @@ class PetApplication:
         self.menu.hide()
         self.tray.hide()
         self.window.hide()
+        self.dashboard.stop()
         self.dashboard.hide()
 
 
@@ -476,6 +503,9 @@ def main() -> int:
                 "pinned": window.engine.pinned,
                 "growth": controller.model.snapshot(),
                 "dashboard_tabs": controller.dashboard.tabs.count(),
+                "home_visible": controller.dashboard.isVisible(),
+                "overlay_enabled": controller.model.data.overlay_visible,
+                "home_scene": controller.dashboard.room.isVisible(),
             }
             print("PHASE4_SMOKE_OK " + json.dumps(diagnostics, ensure_ascii=False), flush=True)
             app.quit()

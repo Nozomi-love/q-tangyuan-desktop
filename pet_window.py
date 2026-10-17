@@ -187,6 +187,7 @@ class PetWindow(QWidget):
     close_requested = Signal()
     pinned_changed = Signal(bool)
     position_changed = Signal()
+    dialogue_shown = Signal(str, str)
 
     FRAME_PERIOD = 1.0 / 60.0
     DRAG_THRESHOLD = 5.0
@@ -218,6 +219,7 @@ class PetWindow(QWidget):
         self.engine = PetEngine(self.work_area(primary))
         self.renderer = SkinRenderer(skin_directory)
         self.renderer.frame_changed.connect(self.update)
+        self._overlay_enabled = True
         self.bubble = SpeechBubble(self)
         self.bubble.claimed.connect(self.collectible_clicked.emit)
         self._pending_pokes = deque()
@@ -393,10 +395,27 @@ class PetWindow(QWidget):
         self.engine.set_starving(enabled)
         self._sync_window()
 
+    def set_overlay_visible(self, visible: bool) -> None:
+        """Keep simulation running while the optional desktop view is hidden."""
+        self._overlay_enabled = bool(visible)
+        if visible:
+            self._sync_window()
+            self.show()
+        else:
+            self.bubble._notifications.clear()
+            self.bubble._expires = 0.0
+            self.bubble.stop()
+            self.hide()
+
     def show_message(self, text: str, tone: str = "normal") -> None:
-        self.bubble.show_message(text, tone)
+        self.dialogue_shown.emit(text, tone)
+        if self._overlay_enabled:
+            self.bubble.show_message(text, tone)
 
     def show_collectible(self, enabled: bool) -> None:
+        if not self._overlay_enabled:
+            self.bubble.stop()
+            return
         self.bubble.set_collectible(enabled)
         self._position_bubble()
 

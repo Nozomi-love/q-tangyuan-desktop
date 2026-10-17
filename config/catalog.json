@@ -250,6 +250,16 @@
       "coins": 100,
       "title": "百变星君",
       "description": "首次导入/切换自定义皮肤，或穿戴一件挂件"
+    },
+    {
+      "id": "warm_home",
+      "tier": 1,
+      "name": "温馨小家",
+      "metric": "furniture_placements",
+      "target": 1,
+      "coins": 60,
+      "title": "",
+      "description": "首次购买并布置一件新家具，初始家具不计入。"
     }
   ],
   "interactions": {
@@ -413,7 +423,7 @@
   },
   "dialogues": {
     "poke": [
-      "别急别急。"
+      "急咯急咯"
     ],
     "feed_full": [
       "别吃，别吃，饿吗，饿死了吗。"
@@ -460,5 +470,115 @@
     "trick_screen_roll": [
       "绕屏走位，转一圈就回来。"
     ]
+  },
+  "furniture": {
+    "cheese_room": {
+      "id": "cheese_room",
+      "name": "温馨奶酪屋",
+      "slot": "theme",
+      "price": 0,
+      "description": "奶油墙面与温暖原木地板，初始自带的小家。",
+      "emoji": "🧀",
+      "default": true
+    },
+    "sakura_room": {
+      "id": "sakura_room",
+      "name": "樱花甜梦屋",
+      "slot": "theme",
+      "price": 100,
+      "description": "浅樱粉的墙面与柔和木地板，做一场甜甜的梦。",
+      "emoji": "🌸",
+      "default": false
+    },
+    "matcha_room": {
+      "id": "matcha_room",
+      "name": "宇治茶室屋",
+      "slot": "theme",
+      "price": 100,
+      "description": "清新的抹茶墙面与榻榻米色调，静静陪伴。",
+      "emoji": "🍵",
+      "default": false
+    },
+    "cloud_cushion": {
+      "id": "cloud_cushion",
+      "name": "云朵软垫",
+      "slot": "rug",
+      "price": 0,
+      "description": "像云朵一样蓬松的软垫，初始自带。",
+      "emoji": "☁️",
+      "default": true
+    },
+    "lotus_cushion": {
+      "id": "lotus_cushion",
+      "name": "清新荷叶垫",
+      "slot": "rug",
+      "price": 40,
+      "description": "一片清凉荷叶，托住软乎乎的汤圆。",
+      "emoji": "🍃",
+      "default": false
+    },
+    "cat_paw_rug": {
+      "id": "cat_paw_rug",
+      "name": "豪华猫爪地毯",
+      "slot": "rug",
+      "price": 80,
+      "description": "粉嘟嘟的猫爪毛绒地毯，踩上去特别软。",
+      "emoji": "🐾",
+      "default": false
+    },
+    "sunflower_painting": {
+      "id": "sunflower_painting",
+      "name": "向日葵挂画",
+      "slot": "wall",
+      "price": 60,
+      "description": "把晴天的小太阳挂在墙上。",
+      "emoji": "🌻",
+      "default": false
+    },
+    "rice_clock": {
+      "id": "rice_clock",
+      "name": "糯米挂钟",
+      "slot": "wall",
+      "price": 70,
+      "description": "圆圆的汤圆钟面，记录一起相伴的时光。",
+      "emoji": "🕰️",
+      "default": false
+    },
+    "ficus_plant": {
+      "id": "ficus_plant",
+      "name": "琴叶榕盆栽",
+      "slot": "corner",
+      "price": 60,
+      "description": "角落里的一抹绿意，让房间更有生气。",
+      "emoji": "🪴",
+      "default": false
+    },
+    "warm_lamp": {
+      "id": "warm_lamp",
+      "name": "暖心落地灯",
+      "slot": "corner",
+      "price": 90,
+      "description": "点击房间里的灯可开关暖光，陪伴晚归的小汤圆。",
+      "emoji": "💡",
+      "default": false
+    },
+    "wood_bowl": {
+      "id": "wood_bowl",
+      "name": "朴素小木碗",
+      "slot": "bowl",
+      "price": 0,
+      "description": "盛着每一口温柔，初始自带的小木碗。",
+      "emoji": "🥣",
+      "default": true
+    },
+    "porcelain_bowl": {
+      "id": "porcelain_bowl",
+      "name": "青花瓷汤碗",
+      "slot": "bowl",
+      "price": 50,
+      "description": "绘着蓝色花纹的瓷碗，吃饭也要有仪式感。",
+      "emoji": "🍚",
+      "default": false
+    }
   }
 }

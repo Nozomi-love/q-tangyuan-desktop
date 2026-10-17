@@ -11,6 +11,7 @@ from pathlib import Path
 import random
 import re
 import time
+import unicodedata
 from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
@@ -18,7 +19,7 @@ from PySide6.QtCore import QObject, Signal
 
 DEFAULT_DIALOGUES = {
     "poke": [
-        "别急别急。"
+        "急咯急咯"
     ],
     "feed_full": [
         "别吃，别吃，饿吗，饿死了吗。"
@@ -71,6 +72,30 @@ DEFAULT_DIALOGUES = {
 EXP_PER_LEVEL = 500
 GUARDIAN_TITLE = "阿一古"
 LEGACY_GUARDIAN_TITLES = {"✨ 汤圆守护神", "汤圆守护神"}
+
+
+FURNITURE_SLOTS = ("theme", "rug", "wall", "corner", "bowl")
+DEFAULT_FURNITURE = {"theme": "cheese_room", "rug": "cloud_cushion",
+                     "wall": "", "corner": "", "bowl": "wood_bowl"}
+FURNITURE_SLOT_BY_ID = {
+    "cheese_room": "theme",
+    "sakura_room": "theme",
+    "matcha_room": "theme",
+    "cloud_cushion": "rug",
+    "lotus_cushion": "rug",
+    "cat_paw_rug": "rug",
+    "sunflower_painting": "wall",
+    "rice_clock": "wall",
+    "ficus_plant": "corner",
+    "warm_lamp": "corner",
+    "wood_bowl": "bowl",
+    "porcelain_bowl": "bowl"
+}
+
+
+def _valid_pet_name(value) -> bool:
+    return (isinstance(value, str) and 1 <= len(value) <= 40 and bool(value.strip())
+            and not any(unicodedata.category(char) in ("Cc", "Cs") for char in value))
 
 
 def _number(value, name: str, low: float = 0, high: float = math.inf) -> float:
@@ -144,6 +169,22 @@ class Catalog:
                     raise ValueError("等级名称无效")
                 _integer(tier["cost"], "等级价格", 1)
                 _integer(tier[metric], "等级效果", 1, 100 if metric == "hunger" else 10000)
+        self.furniture = deepcopy(source.get("furniture", {}))
+        if not isinstance(self.furniture, dict):
+            raise ValueError("家具配置必须为对象")
+        for furniture_id, product in self.furniture.items():
+            if (not isinstance(furniture_id, str) or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", furniture_id) is None
+                    or not isinstance(product, dict) or product.get("id") != furniture_id
+                    or product.get("slot") not in FURNITURE_SLOTS):
+                raise ValueError("家具 ID 或槽位无效")
+            for key in ("name", "description", "emoji"):
+                if not isinstance(product.get(key), str) or not product[key]:
+                    raise ValueError("家具名称、说明和图标不能为空")
+            if type(product.get("default")) is not bool:
+                raise ValueError("家具默认拥有标记需要布尔值")
+            _integer(product.get("price"), "家具价格", 0 if product["default"] else 1)
+            if product["default"] and (product["price"] != 0 or DEFAULT_FURNITURE.get(product["slot"]) != furniture_id):
+                raise ValueError("初始家具必须与默认房间对应且免费")
         self.achievements = deepcopy(source["achievements"])
         self.interactions = dict(source["interactions"])
         self.perks = deepcopy(source.get("perks", {}))
@@ -205,7 +246,7 @@ class Catalog:
             raise ValueError("商品中必须包含 sugar")
         ids = set()
         metrics = {"total_clicks", "total_drops", "total_feeds", "total_pets", "flavors_seen",
-                   "total_gifts", "affection_level", "rapid_poke_peak", "total_shakes", "starvation_recoveries", "customizations"}
+                   "total_gifts", "affection_level", "rapid_poke_peak", "total_shakes", "starvation_recoveries", "customizations", "furniture_placements"}
         for achievement in self.achievements:
             aid = achievement["id"]
             if not isinstance(aid, str) or aid in ids or achievement["metric"] not in metrics:
@@ -239,6 +280,11 @@ class PetData:
     selected_skin_id: str = "default"
     custom_import_unlocked: bool = False
     accessories: dict = field(default_factory=lambda: {"head": "", "face": "", "effect": "", "offset_y": 0})
+    owned_furniture: list[str] = field(default_factory=lambda: ["cheese_room", "cloud_cushion", "wood_bowl"])
+    equipped_furniture: dict = field(default_factory=lambda: dict(DEFAULT_FURNITURE))
+    placed_furniture: list[str] = field(default_factory=list)
+    lamp_on: bool = True
+    overlay_visible: bool = False
     coins: int = 100
     hunger: float = 80.0
     affection_level: int = 1
@@ -250,6 +296,7 @@ class PetData:
         "total_clicks": 0, "total_feeds": 0, "total_idle_seconds": 0.0,
         "total_gifts": 0, "total_presents": 0, "total_pets": 0, "total_drops": 0, "total_shakes": 0,
         "starvation_recoveries": 0, "rapid_poke_peak": 0, "customizations": 0,
+        "furniture_purchases": 0, "furniture_placements": 0,
     })
     timers: dict = field(default_factory=lambda: {
         "hunger_elapsed": 0.0, "coin_elapsed": 0.0,
@@ -269,7 +316,7 @@ class PetData:
                         raise ValueError(f"{key} 必须是对象")
                     defaults[key].update(deepcopy(raw[key]))
                 else:
-                    defaults[key] = raw[key]
+                    defaults[key] = deepcopy(raw[key])
         item = cls(**defaults)
         if not isinstance(item.selected_skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", item.selected_skin_id):
             raise ValueError("皮肤 ID 无效")
@@ -282,13 +329,34 @@ class PetData:
         for key in ("name", "equipped_title"):
             if not isinstance(getattr(item, key), str) or not 1 <= len(getattr(item, key)) <= 40:
                 raise ValueError(f"{key} 需要 1～40 个字符")
-        for key in ("titles", "flavors_seen", "unlocked_achievements", "claimed_achievements", "purchased_tricks"):
+        if not _valid_pet_name(item.name):
+            raise ValueError("宠物名字需要 1～40 个字符且不能含控制字符")
+        for key in ("titles", "flavors_seen", "unlocked_achievements", "claimed_achievements", "purchased_tricks",
+                    "owned_furniture", "placed_furniture"):
             value = getattr(item, key)
             if (not isinstance(value, list) or not all(isinstance(v, str) for v in value)
                     or len(set(value)) != len(value)):
                 raise ValueError(f"{key} 必须为不重复的字符串列表")
         if any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", trick) for trick in item.purchased_tricks):
             raise ValueError("已购特技 ID 无效")
+        for key in ("lamp_on", "overlay_visible"):
+            if type(getattr(item, key)) is not bool:
+                raise ValueError(f"{key} 需要布尔值")
+        for furniture_id in item.owned_furniture + item.placed_furniture:
+            if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", furniture_id):
+                raise ValueError("家具 ID 无效")
+        # Existing saves gain the three starter furnishings without spending coins.
+        for furniture_id in DEFAULT_FURNITURE.values():
+            if furniture_id and furniture_id not in item.owned_furniture:
+                item.owned_furniture.append(furniture_id)
+        if not set(item.placed_furniture).issubset(item.owned_furniture):
+            raise ValueError("布置记录只能包含已拥有家具")
+        for slot in FURNITURE_SLOTS:
+            furniture_id = item.equipped_furniture[slot]
+            if (not isinstance(furniture_id, str) or (furniture_id and furniture_id not in item.owned_furniture)
+                    or (furniture_id in FURNITURE_SLOT_BY_ID and FURNITURE_SLOT_BY_ID[furniture_id] != slot)
+                    or (slot in ("theme", "rug", "bowl") and not furniture_id)):
+                raise ValueError("家具槽位与已拥有家具不匹配")
         item.titles = list(dict.fromkeys(GUARDIAN_TITLE if title in LEGACY_GUARDIAN_TITLES else title for title in item.titles))
         if item.equipped_title in LEGACY_GUARDIAN_TITLES:
             item.equipped_title = GUARDIAN_TITLE
@@ -315,7 +383,8 @@ class PetData:
             raise ValueError("每日日期需要 YYYY-MM-DD")
         attempts = _integer(item.daily_stats["poke_attempts"], "poke_attempts", 0, 20)
         _integer(item.daily_stats["poke_coin_drops"], "poke_coin_drops", 0, attempts)
-        for key in ("total_clicks", "total_feeds", "total_gifts", "total_presents", "total_pets", "total_drops", "total_shakes", "starvation_recoveries", "rapid_poke_peak", "customizations"):
+        for key in ("total_clicks", "total_feeds", "total_gifts", "total_presents", "total_pets", "total_drops", "total_shakes", "starvation_recoveries", "rapid_poke_peak", "customizations",
+                    "furniture_purchases", "furniture_placements"):
             _integer(item.stats[key], key)
         _number(item.stats["total_idle_seconds"], "total_idle_seconds")
         for key in ("hunger_elapsed", "coin_elapsed", "hungry_notice_elapsed", "pet_cooldown_remaining"):
@@ -339,6 +408,7 @@ class PetModel(QObject):
     feedback = Signal(str, str)
     collectible_changed = Signal(bool)
     fed = Signal()
+    food_consumed = Signal(str)
     gifted = Signal()
     achievement_unlocked = Signal(dict)
     buff_changed = Signal(dict)
@@ -544,6 +614,7 @@ class PetModel(QObject):
             self.buff_changed.emit(self.buff_view())
         event = "feed_full" if was_full else "feed_recover" if previous and not self.starving else "feed"
         self._publish(previous, message=self.dialogue(event), tone="interaction")
+        self.food_consumed.emit(item_id)
         self.fed.emit()
 
     def buff_view(self) -> dict:
@@ -583,6 +654,72 @@ class PetModel(QObject):
         if title and title not in self.data.titles:
             self.data.titles.append(title)
         self._publish(self.starving, message=f"🎁 已领取《{achievement['name']}》奖励：{achievement['coins']} 币" + (f"，称号【{title}】" if title else ""), tone="reward")
+        return True
+
+    def rename_pet(self, name: str) -> bool:
+        if not isinstance(name, str) or any(unicodedata.category(char) in ("Cc", "Cs") for char in name):
+            return False
+        name = name.strip()
+        if not _valid_pet_name(name):
+            self.feedback.emit("名字请填写 1～40 个字符，不包含换行或控制字符。", "normal")
+            return False
+        if name == self.data.name:
+            return True
+        self.data.name = name
+        self._publish(self.starving, message=f"以后就叫我{name}啦！", tone="interaction")
+        return True
+
+    def set_overlay_visible(self, visible: bool) -> bool:
+        if type(visible) is not bool:
+            return False
+        if self.data.overlay_visible != visible:
+            self.data.overlay_visible = visible
+            self._publish(self.starving)
+        return True
+
+    def set_lamp_on(self, enabled: bool) -> bool:
+        if type(enabled) is not bool:
+            return False
+        if self.data.lamp_on != enabled:
+            self.data.lamp_on = enabled
+            self._publish(self.starving)
+        return True
+
+    def buy_furniture(self, furniture_id: str) -> bool:
+        product = self.catalog.furniture.get(furniture_id) if isinstance(furniture_id, str) else None
+        if product is None:
+            self.feedback.emit("这件家具还没有上架。", "normal")
+            return False
+        if furniture_id in self.data.owned_furniture:
+            self.feedback.emit("这件家具已经在小窝里啦，无需重复购买。", "normal")
+            return False
+        if self.data.coins < product["price"]:
+            self.feedback.emit("糯米币还差一点，先攒一攒再布置吧～", "normal")
+            return False
+        self.data.coins -= product["price"]
+        self.data.owned_furniture.append(furniture_id)
+        if product["price"] > 0:
+            self.data.stats["furniture_purchases"] += 1
+        self._publish(self.starving, message=f"{product['emoji']} 已买下{product['name']}，去家具装修布置吧！")
+        return True
+
+    def equip_furniture(self, slot: str, furniture_id: str) -> bool:
+        if slot not in FURNITURE_SLOTS or not isinstance(furniture_id, str):
+            return False
+        if not furniture_id:
+            if slot not in ("wall", "corner"):
+                return False
+        else:
+            product = self.catalog.furniture.get(furniture_id)
+            if product is None or product["slot"] != slot or furniture_id not in self.data.owned_furniture:
+                return False
+        if self.data.equipped_furniture[slot] == furniture_id:
+            return True
+        self.data.equipped_furniture[slot] = furniture_id
+        if furniture_id and product["price"] > 0 and furniture_id not in self.data.placed_furniture:
+            self.data.placed_furniture.append(furniture_id)
+            self.data.stats["furniture_placements"] += 1
+        self._publish(self.starving)
         return True
 
     def equip_title(self, title: str) -> bool:

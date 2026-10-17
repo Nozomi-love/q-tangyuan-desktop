@@ -5,18 +5,24 @@ anchor in desktop coordinates, never the window's top-left.
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
+from time import monotonic
+from typing import Callable
 from enum import Enum
 import logging
 import json
 import math
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
-    QColor, QImage, QImageReader, QLinearGradient, QMovie, QPainter, QPainterPath, QPen, QPolygonF,
+    QColor, QFont, QFontMetricsF, QImage, QImageReader, QLinearGradient, QMovie, QPainter, QPainterPath, QPen, QPolygonF, QRadialGradient,
     QPixmap, QTransform,
 )
+
+from PySide6.QtWidgets import QWidget
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1226,3 +1232,520 @@ class SkinRenderer(QObject):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(255, 255, 255, 145))
         painter.drawEllipse(QRectF(-32.0, -97.0, 43.0, 19.0))
+
+
+class RoomCanvas(QWidget):
+    """A local, interactive home view over the existing pet render pipeline.
+
+    PetWindow remains the sole owner of the shared engine clock and renderer.
+    This canvas only maps its visual pose into room coordinates; opening a second
+    view never advances gravity, consumes inventory, or moves a saved anchor.
+    """
+
+    poke_requested = Signal()
+    pet_requested = Signal()
+    lamp_toggle_requested = Signal()
+
+    THEMES = {
+        "cheese_room": ("#fbefdb", "#f4dcc1", "#ceab83", "#edcfad", "#c69b73"),
+        "sakura_room": ("#fff0f3", "#f5d9e2", "#cda2a6", "#eed1c5", "#c89c90"),
+        "matcha_room": ("#eff2df", "#dce4c9", "#9aa886", "#d1caa4", "#ada780"),
+    }
+
+    def __init__(self, engine: PetEngine, renderer_provider: Callable[[], SkinRenderer],
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.engine = engine
+        self.renderer_provider = renderer_provider
+        self.setObjectName("roomCanvas")
+        self.setMinimumHeight(220)
+        self.setMouseTracking(True)
+        self.setAccessibleName("汤圆小窝互动房间")
+        self.setToolTip("左键戳一戳汤圆，右键摸摸头；点击落地灯可开关灯光。")
+        self.daytime_override: bool | None = None
+        self._home: dict = {}
+        self._catalog: dict = {}
+        self._message = ""
+        self._message_tone = "info"
+        self._message_started = 0.0
+        self._message_duration = 2.8
+        self._notifications: deque[tuple[str, str, float]] = deque()
+        self._food_id = ""
+        self._food_until = 0.0
+        self._pressed: QPointF | None = None
+        self._animation_timer = QTimer(self)
+        self._animation_timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._animation_timer.setInterval(16)
+        self._animation_timer.timeout.connect(self._repaint_if_visible)
+        self._animation_timer.start()
+
+    @staticmethod
+    def is_daytime(at: datetime | None = None) -> bool:
+        """Follow the computer's local clock, with an explicit deterministic seam."""
+        return 6 <= (at or datetime.now()).hour < 18
+
+    @property
+    def daytime(self) -> bool:
+        return self.is_daytime() if self.daytime_override is None else self.daytime_override
+
+    def set_home_state(self, snapshot: dict, furniture_catalog: dict | None = None) -> None:
+        self._home = dict(snapshot)
+        self._home["equipped_furniture"] = dict(snapshot.get("equipped_furniture", {}))
+        if furniture_catalog is not None:
+            self._catalog = dict(furniture_catalog)
+        self.update()
+
+    def show_message(self, text: str, tone: str = "normal", duration: float = 2.5) -> None:
+        # Match SpeechBubble's priorities and expiry so both visible views show
+        # the same dialogue. Interaction text replaces repeated poke text;
+        # achievements and level celebrations wait instead of stealing it.
+        now = monotonic()
+        priority = {"achievement": 2, "level": 3, "special": 4, "interaction": 5}
+        expires = self._message_started + self._message_duration
+        current = priority.get(self._message_tone, 0) if expires > now else 0
+        incoming = priority.get(tone, 0)
+        duration = max(0.5, float(duration))
+        if tone == "interaction":
+            if current and self._message_tone != "interaction":
+                self._notifications.appendleft((self._message, self._message_tone, max(1.0, expires - now)))
+        elif current:
+            if incoming == 0:
+                return
+            if incoming <= current:
+                self._notifications.append((str(text), tone, duration))
+                return
+            self._notifications.appendleft((self._message, self._message_tone, max(1.0, expires - now)))
+        self._message = str(text)
+        self._message_tone = tone
+        self._message_started = now
+        self._message_duration = duration + 0.3
+        self.update()
+
+    def _advance_message(self) -> None:
+        now = monotonic()
+        if now >= self._message_started + self._message_duration and self._notifications:
+            self._message, self._message_tone, duration = self._notifications.popleft()
+            self._message_started = now
+            self._message_duration = duration + 0.3
+
+    def show_food(self, item_id: str) -> None:
+        self._food_id = item_id
+        self._food_until = monotonic() + 2.7
+        self.update()
+
+    def stop(self) -> None:
+        """Stop this view's repaint timer; never stop the shared skin's QMovie."""
+        self._animation_timer.stop()
+
+    def _repaint_if_visible(self) -> None:
+        self._advance_message()
+        if self.isVisible():
+            self.update()
+
+    def _geometry(self) -> tuple[float, float, float]:
+        scale = max(0.05, min(self.width() / 960.0, self.height() / 500.0))
+        return scale, self.width() / scale, self.height() / scale
+
+    def _slot(self, slot: str) -> str:
+        defaults = {"theme": "cheese_room", "rug": "cloud_cushion", "bowl": "wood_bowl"}
+        return self._home.get("equipped_furniture", {}).get(slot, defaults.get(slot, ""))
+
+    def _base_foot(self) -> QPointF:
+        _scale, width, height = self._geometry()
+        return QPointF(width * 0.5, height - 78.0)
+
+    def _local_roll_offset(self) -> QPointF:
+        """Mirror a screen tour inside the room, without changing desktop physics."""
+        _scale, width, height = self._geometry()
+        padding = max(130.0, self.renderer_provider().screen_roll_padding())
+        rect = QRectF(padding, padding, max(20.0, width - 2 * padding),
+                      max(20.0, height - 2 * padding))
+        foot = self._base_foot()
+        center = foot - QPointF(0, PetEngine.BODY_HEIGHT / 2 * self.engine.pose.scale_y)
+        edge = QPointF(clamp(center.x(), rect.left(), rect.right()), rect.bottom())
+        progress = self.engine.trick_progress
+        if progress < 1 / 12:
+            mix = progress * 12
+            mix = mix * mix * (3 - 2 * mix)
+            position = center + (edge - center) * mix
+        elif progress > 11 / 12:
+            mix = progress * 12 - 11
+            mix = mix * mix * (3 - 2 * mix)
+            position = edge + (center - edge) * mix
+        else:
+            distance = (progress * 12 - 1) / 10 * 2 * (rect.width() + rect.height())
+            start = rect.width() + rect.height() + rect.right() - edge.x()
+            distance = (start + distance) % (2 * (rect.width() + rect.height()))
+            if distance < rect.width():
+                position = QPointF(rect.left() + distance, rect.top())
+            elif distance < rect.width() + rect.height():
+                position = QPointF(rect.right(), rect.top() + distance - rect.width())
+            elif distance < rect.width() * 2 + rect.height():
+                position = QPointF(rect.right() - (distance - rect.width() - rect.height()), rect.bottom())
+            else:
+                position = QPointF(rect.left(), rect.bottom() - (distance - rect.width() * 2 - rect.height()))
+        return position - center
+
+    def _render_foot(self) -> QPointF:
+        foot = self._base_foot()
+        engine = self.engine
+        if engine.active_trick == "screen_roll":
+            return foot + self._local_roll_offset() - engine.visual_offset
+        # Global desktop positions are intentionally not used as room positions.
+        # Only the relative height of a real jump is mirrored, including a drag.
+        if not engine.pinned and not engine.grounded:
+            foot.setY(foot.y() - clamp(engine.area.bottom - engine.y, 0.0, 110.0))
+        if engine.buff.get("behavior_remaining", 0) > 0 and not engine.pinned and not engine.flat:
+            foot.setX(foot.x() + math.sin(engine.elapsed * 3.4) * 110.0)
+        return foot
+
+    def pet_center(self) -> QPointF:
+        renderer = self.renderer_provider()
+        scale, _width, _height = self._geometry()
+        point = renderer.body_transform(self.engine, self._render_foot()).map(
+            renderer.visible_rect(self.engine.state).center())
+        return point * scale
+
+    def pet_bounds(self) -> QRectF:
+        scale, _width, _height = self._geometry()
+        bounds = self.renderer_provider().scene_bounds(self.engine, self._render_foot())
+        return QRectF(bounds.x() * scale, bounds.y() * scale,
+                      bounds.width() * scale, bounds.height() * scale)
+
+    def lamp_rect(self) -> QRectF:
+        if self._slot("corner") != "warm_lamp":
+            return QRectF()
+        scale, width, height = self._geometry()
+        return QRectF((width * 0.17 - 62) * scale, (height - 286) * scale,
+                      124 * scale, 220 * scale)
+
+    def _hit_pet(self, point: QPointF) -> bool:
+        scale, _width, _height = self._geometry()
+        return self.renderer_provider().hit_test(self.engine, self._render_foot(), point / scale)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.RightButton and self._hit_pet(event.position()):
+            self.pet_requested.emit()
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._pressed = QPointF(event.position())
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        pressed, self._pressed = self._pressed, None
+        if (event.button() == Qt.MouseButton.LeftButton and pressed is not None
+                and (event.position() - pressed).manhattanLength() <= 8):
+            if self._hit_pet(event.position()):
+                self.poke_requested.emit()
+            elif self.lamp_rect().contains(event.position()):
+                self.lamp_toggle_requested.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        # The first click already pokes; a room double-click opens no extra action.
+        self._pressed = None
+        event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        interactive = self._hit_pet(event.position()) or self.lamp_rect().contains(event.position())
+        self.setCursor(Qt.CursorShape.PointingHandCursor if interactive else Qt.CursorShape.ArrowCursor)
+        super().mouseMoveEvent(event)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        scale, width, height = self._geometry()
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(self.rect()), 22, 22)
+        painter.setClipPath(clip)
+        painter.save()
+        painter.scale(scale, scale)
+        self._paint_room(painter, width, height)
+        self._paint_wall_decoration(painter, width, height)
+        self._paint_corner(painter, width, height)
+        self._paint_rug(painter, self._base_foot())
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(95, 65, 45, 20))
+        foot = self._base_foot()
+        painter.drawEllipse(QRectF(foot.x() - 62, foot.y() - 6, 124, 16))
+        self.renderer_provider().paint(painter, self.engine, self._render_foot())
+        self._paint_bowl(painter, width, height)
+        painter.restore()
+        self._paint_message(painter)
+        painter.end()
+
+    def _paint_room(self, painter: QPainter, width: float, height: float) -> None:
+        wall, trim, wood, plank, grain = self.THEMES.get(self._slot("theme"), self.THEMES["cheese_room"])
+        floor_y = height * 0.64
+        gradient = QLinearGradient(0, 0, 0, floor_y)
+        gradient.setColorAt(0, QColor(wall))
+        gradient.setColorAt(1, QColor(trim).lighter(108))
+        painter.fillRect(QRectF(0, 0, width, floor_y), gradient)
+        # Fine wallpaper detail stays decorative rather than competing with the pet.
+        painter.setPen(QPen(QColor(trim), 1))
+        for x in range(30, int(width), 48):
+            painter.drawLine(QPointF(x, 0), QPointF(x, floor_y))
+        painter.fillRect(QRectF(0, floor_y, width, height - floor_y), QColor(plank))
+        painter.setPen(QPen(QColor(grain), 1.2))
+        for row in range(7):
+            y = floor_y + row * 35
+            painter.drawLine(QPointF(0, y), QPointF(width, y))
+            for x in range(-100 + (row % 2) * 110, int(width), 220):
+                painter.drawLine(QPointF(x, y), QPointF(x, y + 35))
+                painter.setPen(QPen(QColor(255, 250, 238, 105), 1))
+                painter.drawLine(QPointF(x + 16, y + 15), QPointF(x + 165, y + 15))
+                painter.setPen(QPen(QColor(grain), 1.2))
+        painter.fillRect(QRectF(0, floor_y - 13, width, 13), QColor(wood))
+        painter.fillRect(QRectF(0, floor_y - 17, width, 5), QColor(trim).lighter(112))
+        self._paint_window(painter, QRectF(width - 290, 45, 176, 170), wood)
+        painter.setPen(QColor("#876754"))
+        painter.setFont(QFont("Microsoft YaHei UI", 20, QFont.Weight.DemiBold))
+        title = QFontMetricsF(painter.font()).elidedText(
+            str(self._home.get("name", "白汤圆")) + "的小窝", Qt.TextElideMode.ElideRight,
+            max(80.0, width - 380))
+        painter.drawText(QRectF(40, 24, width - 380, 42),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, title)
+        painter.setFont(QFont("Microsoft YaHei UI", 11))
+        painter.setPen(QColor("#a0816f"))
+        painter.drawText(QRectF(42, 71, width - 380, 24), Qt.AlignmentFlag.AlignLeft,
+                         "阳光正好，慢慢陪你长大" if self.daytime else "月亮来值班啦，今晚也有我陪你")
+        # A gentle pool of sunlight, never a rectangular image background.
+        if self.daytime:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 246, 207, 65))
+            painter.drawPolygon(QPolygonF([QPointF(width - 260, floor_y + 4),
+                QPointF(width - 130, floor_y + 4), QPointF(width - 45, height),
+                QPointF(width - 330, height)]))
+
+    def _paint_window(self, painter: QPainter, rect: QRectF, wood: str) -> None:
+        painter.save()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(90, 68, 55, 20))
+        painter.drawRoundedRect(rect.adjusted(-9, -6, 12, 15), 18, 18)
+        painter.setBrush(QColor(wood))
+        painter.drawRoundedRect(rect.adjusted(-7, -7, 7, 7), 13, 13)
+        sky = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        sky.setColorAt(0, QColor("#bcdff0" if self.daytime else "#30385f"))
+        sky.setColorAt(1, QColor("#edf9f4" if self.daytime else "#72718e"))
+        painter.setBrush(sky)
+        painter.drawRoundedRect(rect, 8, 8)
+        if self.daytime:
+            painter.setBrush(QColor("#fff4b2"))
+            painter.drawEllipse(rect.topLeft() + QPointF(126, 40), 22, 22)
+            painter.setBrush(QColor("#ffffff"))
+            for dx, dy in [(24, 56), (42, 47), (60, 57), (109, 109), (129, 101)]:
+                painter.drawEllipse(rect.topLeft() + QPointF(dx, dy), 20, 11)
+        else:
+            painter.setBrush(QColor("#fff1bd"))
+            painter.drawEllipse(rect.topLeft() + QPointF(128, 42), 20, 20)
+            painter.setBrush(QColor("#454966"))
+            painter.drawEllipse(rect.topLeft() + QPointF(136, 36), 18, 18)
+            painter.setBrush(QColor("#fff6d5"))
+            for dx, dy in [(23, 25), (57, 62), (89, 31), (39, 119), (140, 126), (112, 96)]:
+                painter.drawEllipse(rect.topLeft() + QPointF(dx, dy), 2.2, 2.2)
+        painter.setPen(QPen(QColor(wood), 7))
+        painter.drawLine(QPointF(rect.center().x(), rect.top()), QPointF(rect.center().x(), rect.bottom()))
+        painter.drawLine(QPointF(rect.left(), rect.center().y()), QPointF(rect.right(), rect.center().y()))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#f9e8d8"))
+        painter.drawRoundedRect(QRectF(rect.left() - 16, rect.bottom() + 6, rect.width() + 32, 12), 5, 5)
+        painter.restore()
+
+    def _paint_wall_decoration(self, painter: QPainter, width: float, height: float) -> None:
+        furniture = self._slot("wall")
+        painter.save()
+        painter.translate(width * 0.27, height * 0.34)
+        if furniture == "sunflower_painting":
+            painter.setPen(QPen(QColor("#b68c69"), 7))
+            painter.setBrush(QColor("#fffaf0"))
+            painter.drawRoundedRect(QRectF(-67, -64, 134, 125), 4, 4)
+            painter.setPen(QPen(QColor("#779266"), 4))
+            painter.drawLine(QPointF(0, 0), QPointF(0, 48))
+            painter.setBrush(QColor("#a8bc79"))
+            painter.drawEllipse(QRectF(0, 20, 26, 13))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#f3cd6e"))
+            for index in range(10):
+                painter.save()
+                painter.rotate(index * 36)
+                painter.drawEllipse(QRectF(-9, -42, 18, 31))
+                painter.restore()
+            painter.setBrush(QColor("#986a4c"))
+            painter.drawEllipse(QPointF(), 18, 18)
+            painter.setBrush(QColor("#c29a6d"))
+            for x, y in [(-7, -4), (3, -8), (9, 3), (-1, 5), (-8, 8)]:
+                painter.drawEllipse(QPointF(x, y), 1.7, 1.7)
+        elif furniture == "rice_clock":
+            painter.setPen(QPen(QColor("#c6a38a"), 6))
+            painter.setBrush(QColor("#fffaf1"))
+            painter.drawEllipse(QPointF(), 58, 58)
+            painter.setPen(QPen(QColor("#ad8d77"), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            for index in range(12):
+                angle = index * math.tau / 12
+                painter.drawLine(QPointF(math.sin(angle) * 47, -math.cos(angle) * 47),
+                                 QPointF(math.sin(angle) * 51, -math.cos(angle) * 51))
+            now = datetime.now()
+            for angle, length, thickness in [((now.hour % 12 + now.minute / 60) * 30, 25, 4),
+                                               ((now.minute + now.second / 60) * 6, 38, 2.5)]:
+                painter.save()
+                painter.rotate(angle)
+                painter.setPen(QPen(QColor("#846859"), thickness, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                painter.drawLine(QPointF(), QPointF(0, -length))
+                painter.restore()
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#e9b6ad"))
+            painter.drawEllipse(QPointF(), 4, 4)
+        painter.restore()
+
+    def _paint_corner(self, painter: QPainter, width: float, height: float) -> None:
+        furniture = self._slot("corner")
+        painter.save()
+        painter.translate(width * 0.17, height - 76)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(88, 65, 48, 22))
+        if furniture:
+            painter.drawEllipse(QRectF(-52, -5, 104, 18))
+        if furniture == "ficus_plant":
+            painter.setPen(QPen(QColor("#86916a"), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(QPointF(0, -36), QPointF(-5, -166))
+            for index, (x, y, angle) in enumerate([(-23, -80, -45), (19, -112, 42),
+                                                  (-23, -144, -46), (10, -176, 26)]):
+                painter.save()
+                painter.translate(x, y)
+                painter.rotate(angle)
+                painter.setPen(QPen(QColor("#63875d"), 1.2))
+                painter.setBrush(QColor("#8db783" if index % 2 else "#729d6a"))
+                painter.drawEllipse(QRectF(-18, -27, 36, 54))
+                painter.setPen(QPen(QColor("#b8cf9a"), 1.3))
+                painter.drawLine(QPointF(0, -20), QPointF(0, 20))
+                painter.restore()
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#cf9f83"))
+            painter.drawPolygon(QPolygonF([QPointF(-34, -53), QPointF(34, -53), QPointF(25, 0), QPointF(-25, 0)]))
+            painter.setBrush(QColor("#e3baa0"))
+            painter.drawRoundedRect(QRectF(-38, -59, 76, 13), 5, 5)
+            painter.setBrush(QColor("#8b6c53"))
+            painter.drawEllipse(QRectF(-31, -57, 62, 8))
+        elif furniture == "warm_lamp":
+            on = self._home.get("lamp_on", True)
+            if on:
+                glow = QRadialGradient(QPointF(0, -132), 156)
+                glow.setColorAt(0, QColor(255, 230, 158, 105))
+                glow.setColorAt(1, QColor(255, 230, 158, 0))
+                painter.setBrush(glow)
+                painter.drawEllipse(QPointF(0, -132), 156, 156)
+            painter.setPen(QPen(QColor("#9e8164"), 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(QPointF(0, -22), QPointF(0, -171))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#a98a69"))
+            painter.drawEllipse(QRectF(-37, -14, 74, 18))
+            painter.setBrush(QColor("#fff1c3" if on else "#d4c1a9"))
+            painter.drawPolygon(QPolygonF([QPointF(-36, -202), QPointF(36, -202),
+                                           QPointF(60, -135), QPointF(-60, -135)]))
+            painter.setPen(QPen(QColor("#cbb18b"), 2))
+            painter.drawLine(QPointF(-60, -135), QPointF(60, -135))
+            painter.setPen(QPen(QColor("#b39977"), 1.5))
+            painter.drawLine(QPointF(38, -135), QPointF(38, -112))
+            painter.setBrush(QColor("#e4bd72"))
+            painter.drawEllipse(QPointF(38, -108), 4, 5)
+        painter.restore()
+
+    def _paint_rug(self, painter: QPainter, foot: QPointF) -> None:
+        rug = self._slot("rug")
+        painter.save()
+        painter.translate(foot + QPointF(0, 13))
+        painter.setPen(QPen(QColor("#d2b9a4"), 1.7))
+        painter.setBrush(QColor("#f8ecd9"))
+        if rug == "lotus_cushion":
+            painter.setPen(QPen(QColor("#779f7a"), 2))
+            painter.setBrush(QColor("#a9c9a0"))
+            painter.drawEllipse(QRectF(-120, -29, 240, 58))
+            painter.setPen(QPen(QColor("#d7e6bf"), 1.7))
+            for x in [-102, -66, -25, 25, 66, 102]:
+                painter.drawLine(QPointF(0, 2), QPointF(x, -19 if x % 2 else 19))
+        elif rug == "cat_paw_rug":
+            painter.setPen(QPen(QColor("#dfb5b5"), 3))
+            painter.setBrush(QColor("#fae2e1"))
+            painter.drawEllipse(QRectF(-135, -35, 270, 76))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#eebfc4"))
+            painter.drawEllipse(QRectF(-48, -11, 96, 37))
+            for x in [-70, -24, 24, 70]:
+                painter.drawEllipse(QRectF(x - 16, -24, 32, 22))
+        else:
+            cloud = QPainterPath()
+            cloud.addRoundedRect(QRectF(-111, -22, 222, 54), 26, 26)
+            for x, y, w in [(-119, -18, 68), (-77, -29, 77), (-20, -32, 87), (49, -20, 78)]:
+                cloud.addEllipse(QRectF(x, y, w, 48))
+            painter.drawPath(cloud.simplified())
+            painter.setPen(QPen(QColor("#fffaf3"), 2))
+            painter.drawArc(QRectF(-92, -12, 184, 40), 185 * 16, 170 * 16)
+        painter.restore()
+
+    def _paint_bowl(self, painter: QPainter, width: float, height: float) -> None:
+        painter.save()
+        painter.translate(width * 0.5 + 159, height - 53)
+        porcelain = self._slot("bowl") == "porcelain_bowl"
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(99, 70, 50, 24))
+        painter.drawEllipse(QRectF(-49, 3, 98, 17))
+        painter.setPen(QPen(QColor("#87a4b8" if porcelain else "#ad825c"), 2))
+        painter.setBrush(QColor("#edf4fa" if porcelain else "#d3ad80"))
+        bowl = QPainterPath(QPointF(-43, -15))
+        bowl.cubicTo(-37, 25, 37, 25, 43, -15)
+        bowl.closeSubpath()
+        painter.drawPath(bowl)
+        painter.setBrush(QColor("#fcfeff" if porcelain else "#f1d1a2"))
+        painter.drawEllipse(QRectF(-43, -25, 86, 22))
+        if porcelain:
+            painter.setPen(QPen(QColor("#638fae"), 2))
+            for x in [-23, -8, 8, 23]:
+                wave = QPainterPath(QPointF(x - 4, -1))
+                wave.cubicTo(x + 7, 1, x - 7, 9, x + 4, 10)
+                painter.drawPath(wave)
+        if monotonic() < self._food_until:
+            colors = {"sesame": "#716b70", "strawberry": "#eaa4b6", "matcha": "#a8bf85",
+                      "chili": "#de856c", "osmanthus": "#e9c878", "water": "#b9dde8", "sugar": "#fffaf1"}
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(colors.get(self._food_id, "#f1cd90")))
+            painter.drawEllipse(QRectF(-34, -21, 68, 15))
+            painter.setBrush(QColor(255, 255, 255, 155))
+            painter.drawEllipse(QRectF(-23, -19, 18, 4))
+        painter.restore()
+
+    def _paint_message(self, painter: QPainter) -> None:
+        self._advance_message()
+        age = monotonic() - self._message_started
+        if not self._message or age >= self._message_duration:
+            return
+        opacity = min(1.0, age / 0.13, (self._message_duration - age) / 0.35)
+        painter.save()
+        painter.setOpacity(max(0.0, opacity))
+        font = QFont("Microsoft YaHei UI", 11)
+        font.setPointSizeF(max(9.0, min(11.0, self.width() / 80)))
+        painter.setFont(font)
+        metrics = QFontMetricsF(font)
+        width = min(340.0, max(180.0, self.width() * 0.48))
+        content = metrics.boundingRect(QRectF(0, 0, width - 28, 300),
+                                      Qt.TextFlag.TextWordWrap, self._message)
+        height = min(max(40.0, content.height() + 20), self.height() - 24)
+        pet = self.pet_bounds()
+        x = clamp(pet.center().x() - width / 2, 12, max(12.0, self.width() - width - 12))
+        y = clamp(pet.top() - height - 14, 12, max(12.0, self.height() - height - 12))
+        rect = QRectF(x, y, width, height)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(128, 89, 72, 20))
+        painter.drawRoundedRect(rect.translated(0, 3), 14, 14)
+        painter.setPen(QPen(QColor("#e9ccaa" if self._message_tone in {"achievement", "level"} else "#ead9cf"), 1))
+        painter.setBrush(QColor(255, 252, 246, 246))
+        painter.drawRoundedRect(rect, 14, 14)
+        painter.setPen(QColor("#795e52"))
+        painter.drawText(rect.adjusted(14, 8, -14, -8),
+                         Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, self._message)
+        painter.restore()

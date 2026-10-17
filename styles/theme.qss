@@ -59,3 +59,18 @@ QSlider::sub-page:horizontal { border-radius: 3px; background: #dcadc3; }
 QSlider::handle:horizontal { width: 18px; margin: -6px 0; border-radius: 9px; background: #bd7b9a; border: 3px solid #f9e4ee; }
 QSlider::handle:horizontal:hover { background: #a86485; border-color: #f3d6e4; }
 QCheckBox#debugPerks { color: #a17450; background: #fff2dd; border-radius: 8px; padding: 9px; }
+
+/* Home Scene HUD and bottom dock. */
+QFrame#homeHud { background: #fffaf3; border: 1px solid #e7d8ca; border-radius: 18px; }
+QFrame#homeDrawer { background: #fffaf5; border: 1px solid #e8d8cf; border-radius: 15px; }
+QFrame#feedingShelf { background: #fff9ee; border: 1px solid #e9d7bd; border-radius: 14px; }
+QLabel#homeBuff { color: #9b715f; font-size: 12px; padding-left: 8px; }
+QFrame#homeHud QLabel#hero { font-size: 22px; color: #765543; }
+QFrame#homeHud QLabel#balance { padding: 7px 10px; font-size: 14px; }
+QFrame#homeHud QProgressBar { min-height: 20px; font-size: 11px; }
+QPushButton#homeNav { background: #f2e8dc; border: 1px solid #e4d4c2; padding: 10px 5px; font-weight: 600; }
+QPushButton#homeNav:checked { background: #e6c6b0; border-color: #cfa98b; color: #674a3c; }
+QPushButton#homeNav:hover { background: #ecd6c4; }
+QLineEdit { background: #fffaf3; padding: 8px; border: 1px solid #d9bfae; border-radius: 7px; selection-background-color: #ebc9d8; }
+QTabWidget#marketTabs QTabBar::tab { padding: 7px 16px; }
+QTabWidget#shopTabs QTabBar::tab { padding: 6px 15px; }

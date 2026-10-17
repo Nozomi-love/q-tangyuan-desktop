@@ -137,10 +137,10 @@ class AchievementTests(unittest.TestCase):
         self.assertEqual(restored.initial_achievements, [])
         self.assertEqual(restored.data.coins, 100)
 
-    def test_eleven_achievements_with_three_tiers(self):
+    def test_twelve_achievements_with_three_tiers(self):
         achievements = Catalog.load().achievements
-        self.assertEqual(len(achievements), 11)
-        self.assertEqual([sum(a["tier"] == t for a in achievements) for t in (1, 2, 3)], [4, 4, 3])
+        self.assertEqual(len(achievements), 12)
+        self.assertEqual([sum(a["tier"] == t for a in achievements) for t in (1, 2, 3)], [5, 4, 3])
 
     def test_first_poke_unlocks_once_but_does_not_auto_award(self):
         pet = wealthy()
@@ -441,6 +441,8 @@ class DashboardInputTests(unittest.TestCase):
         with patch("main.PetWindow", side_effect=lambda _: PetWindow(ARTIFACTS / "no-skin")):
             self.controller = PetApplication(APP, save_path=self.file)
         self.window, self.model, self.dashboard = self.controller.window, self.controller.model, self.controller.dashboard
+        self.model.set_overlay_visible(True)
+        self.dashboard.hide()
         self.window.timer.stop()
         self.controller.tick_timer.stop()
         self.controller.autosave_timer.stop()
@@ -464,7 +466,7 @@ class DashboardInputTests(unittest.TestCase):
             APP.sendEvent(self.window, event)
 
     def test_dashboard_has_five_tabs_menu_summons_and_close_only_hides(self):
-        self.assertEqual(self.dashboard.tabs.count(), 5)
+        self.assertEqual(self.dashboard.tabs.count(), 6)
         self.assertFalse(self.dashboard.isVisible())
         self.controller.dashboard_action.trigger()
         self.assertTrue(self.dashboard.isVisible())
@@ -583,12 +585,12 @@ class DashboardInputTests(unittest.TestCase):
 
     def test_shop_buttons_inventory_use_and_live_balance(self):
         self.dashboard.summon()
-        self.dashboard.tabs.setCurrentIndex(1)
+        self.dashboard.show_section("shop", animate=False)
         buy, feed, _ = self.dashboard.shop_buttons["sesame"]
         QTest.mouseClick(buy, Qt.MouseButton.LeftButton)
         self.assertEqual(self.model.data.inventory["sesame"], 1)
         self.assertIn("975", self.dashboard.balance.text())
-        self.dashboard.tabs.setCurrentIndex(0)
+        self.dashboard.show_section("bag", animate=False)
         QTest.mouseClick(self.dashboard.inventory_widgets["sesame"][2], Qt.MouseButton.LeftButton)
         self.assertEqual(self.model.data.inventory["sesame"], 0)
         self.assertEqual(self.window.engine.buff["scale"], 1.2)
@@ -600,7 +602,7 @@ class DashboardInputTests(unittest.TestCase):
 
     def test_settings_pin_dev_flat_and_debug_buttons_are_connected(self):
         self.dashboard.summon()
-        self.dashboard.tabs.setCurrentIndex(4)
+        self.dashboard.show_section("settings", animate=False)
         self.dashboard.pin_check.setChecked(False)
         self.assertFalse(self.window.engine.pinned)
         self.controller.pin_action.setChecked(True)
@@ -619,7 +621,7 @@ class DashboardInputTests(unittest.TestCase):
         self.model._publish(self.model.starving)
         _, _, claim, equip = self.dashboard.achievement_widgets["level_three"]
         self.assertTrue(claim.isEnabled())
-        self.dashboard.tabs.setCurrentIndex(2)
+        self.dashboard.show_section("achievements", animate=False)
         QTest.mouseClick(claim, Qt.MouseButton.LeftButton)
         self.assertFalse(claim.isEnabled())
         self.assertIn("糯米团长", self.model.data.titles)

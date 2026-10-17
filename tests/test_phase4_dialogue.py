@@ -63,10 +63,10 @@ class IncomeAndDialogueTests(unittest.TestCase):
     def test_poke_quote_survives_daily_coin_drop(self):
         model=self.model();messages=self.feedback(model);model.poke()
         self.assertEqual(model.data.coins,1002);self.assertEqual(model.data.affection_exp,2)
-        self.assertEqual(messages,[('别急别急。','interaction')])
+        self.assertEqual(messages,[('急咯急咯','interaction')])
     def test_poke_hungry_quote_still_uses_low_hunger_exp(self):
         model=self.model(hunger=20);messages=self.feedback(model);model.poke()
-        self.assertEqual(model.data.affection_exp,1);self.assertEqual(messages[-1][0],'别急别急。')
+        self.assertEqual(model.data.affection_exp,1);self.assertEqual(messages[-1][0],'急咯急咯')
     def test_full_hunger_food_quote_does_not_grant_exp(self):
         model=self.model(hunger=100);messages=self.feedback(model);model.buy_item('sugar',True)
         self.assertEqual(messages[-1],('别吃，别吃，饿吗，饿死了吗。','interaction'))
@@ -105,11 +105,12 @@ class ShopAndBubbleTests(unittest.TestCase):
         SaveManager(file).update_game(PetData(coins=1000).to_dict(),{'pinned':True,'screen':APP.primaryScreen().name(),'x_ratio':.6,'y_ratio':.6})
         self.controller=PetApplication(APP,save_path=file,skins_root=file.parent/(self._testMethodName+'-skins'))
         self.model=self.controller.model;self.panel=self.controller.dashboard;self.pet=self.controller.window
+        self.model.set_overlay_visible(True);self.panel.hide()
     def tearDown(self):
         self.controller.stop();self.pet.deleteLater();self.panel.deleteLater()
         APP.sendPostedEvents(None,QEvent.Type.DeferredDelete)
     def test_food_and_gift_are_exactly_two_independent_subtabs(self):
-        self.panel.summon();self.panel.tabs.setCurrentIndex(1)
+        self.panel.summon();self.panel.show_section("shop", animate=False)
         self.assertEqual([self.panel.shop_tabs.tabText(i) for i in range(2)],['食物','礼物'])
         for key,item in self.model.catalog.items.items():
             index=0 if item['category']=='food' else 1
@@ -117,7 +118,7 @@ class ShopAndBubbleTests(unittest.TestCase):
         self.assertFalse(self.panel.shop_tabs.isAncestorOf(self.panel.shop_trick_buttons['screen_roll'][0]))
         self.assertTrue(self.panel.shop_trick_buttons['screen_roll'][0].isVisible())
     def test_nested_tab_edges_stay_aligned_and_scroll_areas_are_independent(self):
-        self.panel.summon();self.panel.tabs.setCurrentIndex(1)
+        self.panel.summon();self.panel.show_section("shop", animate=False)
         for width in (700,900,1100):
             self.panel.resize(width,760);QTest.qWait(20)
             bar=self.panel.shop_tabs.tabBar()
@@ -133,12 +134,12 @@ class ShopAndBubbleTests(unittest.TestCase):
         self.assertFalse(self.pet.bubble._showing_gift)
     def test_repeated_pokes_never_queue_the_same_interaction(self):
         for _ in range(10):self.model.poke()
-        self.assertEqual(self.pet.bubble._text,'别急别急。')
+        self.assertEqual(self.pet.bubble._text,'急咯急咯')
         self.assertFalse(any(row[1]=='interaction' for row in self.pet.bubble._notifications))
     def test_no_currency_bubble_can_be_reenabled_by_legacy_callback(self):
-        self.pet.show_message('别急别急。','interaction');self.pet.show_collectible(True)
+        self.pet.show_message('急咯急咯','interaction');self.pet.show_collectible(True)
         self.assertFalse(self.pet.bubble._gift);self.assertFalse(self.pet.bubble._showing_gift)
-        self.assertEqual(self.pet.bubble._text,'别急别急。')
+        self.assertEqual(self.pet.bubble._text,'急咯急咯')
         self.assertTrue(self.pet.bubble.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
     def test_drag_and_dizzy_use_contextual_lines(self):
         self.pet.drag_started.emit();self.assertEqual(self.pet.bubble._text,'你们是来抓我的吗？')

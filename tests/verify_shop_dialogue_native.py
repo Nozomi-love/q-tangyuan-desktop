@@ -22,15 +22,20 @@ def worker(mode,file):
     app.setStyleSheet((ROOT/'styles/theme.qss').read_text(encoding='utf-8'))
     controller=PetApplication(app,save_path=file,skins_root=file.parent/'skins',accelerated=mode=='write')
     pet,model,panel=controller.window,controller.model,controller.dashboard
+    controller.model.set_overlay_visible(True)
+    controller.dashboard.hide()
     errors=[];result=dict(mode=mode,platform=QGuiApplication.platformName(),dpr=pet.devicePixelRatioF())
     sys.excepthook=lambda typ,val,tb:(errors.append(''.join(traceback.format_exception(typ,val,tb))),app.exit(1))
     def capture(name,widget):
         QTest.qWait(50)
         assert widget.grab().save(str(file.parent/(name+'.png')))
     def click(button):
-        for tabs in (panel.tabs,panel.shop_tabs,panel.dress_tabs):
+        for tabs in (panel.tabs,panel.market_tabs,panel.shop_tabs,panel.dress_tabs):
             for i in range(tabs.count()):
-                if tabs.widget(i).isAncestorOf(button):tabs.setCurrentIndex(i);break
+                if tabs.widget(i).isAncestorOf(button):
+                    if tabs is panel.tabs:panel.show_section(("bag","shop","achievements","dress","settings","furniture")[i],animate=False)
+                    else:tabs.setCurrentIndex(i)
+                    break
         node=button
         while node.parentWidget() is not None:
             node=node.parentWidget()
@@ -61,7 +66,7 @@ def worker(mode,file):
             assert not pet.bubble.isVisible()
             result['real_timer_auto_income_silent']=True
             controller.tick_timer.stop()
-            panel.summon();panel.tabs.setCurrentIndex(1)
+            panel.summon();panel.show_section("shop", animate=False)
             assert [panel.shop_tabs.tabText(i) for i in range(2)]==['食物','礼物']
             result['shop_nav_edges']=[]
             for width in (700,900,1100):
@@ -87,7 +92,7 @@ def worker(mode,file):
             coins=model.data.coins
             QTest.mouseClick(pet,Qt.MouseButton.LeftButton,pos=body);QTest.qWait(240)
             assert model.data.coins==coins+2
-            assert pet.bubble._text=='别急别急。'
+            assert pet.bubble._text=='急咯急咯'
             capture('04-poke-dialogue',pet.bubble)
             model.set_hunger(100);exp=model.data.affection_exp
             controller.feed_action.trigger()

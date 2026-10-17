@@ -192,16 +192,19 @@ class NavigationAndCommerceTests(unittest.TestCase):
         self.assertTrue(self.window.dress_tabs.widget(2).isAncestorOf(self.window.trick_buttons['flip']))
         self.assertTrue(self.window.tabs.widget(4).isAncestorOf(self.window.pin_check))
     def test_navigation_spans_divider_and_has_no_native_overlap(self):
+        self.assertTrue(self.window.tabs.tabBar().isHidden())
+        self.assertEqual(list(self.window.nav_buttons), ['home','furniture','shop','dress','achievements'])
         for width in (700,900,1100):
             self.window.resize(width,760);QTest.qWait(25)
-            bar=self.window.tabs.tabBar();line=self.window.nav_divider
-            self.assertFalse(bar.drawBase());self.assertTrue(bar.expanding())
-            first=bar.mapTo(self.window,bar.tabRect(0).topLeft())
-            last=bar.mapTo(self.window,bar.tabRect(4).topRight())
-            left=line.mapTo(self.window,line.rect().topLeft())
-            right=line.mapTo(self.window,line.rect().topRight())
-            self.assertLessEqual(abs(first.x()-left.x()),2)
-            self.assertLessEqual(abs(last.x()-right.x()),2)
+            buttons=list(self.window.nav_buttons.values())
+            for left,right in zip(buttons,buttons[1:]):
+                a=left.mapTo(self.window,left.rect().topRight()).x()
+                b=right.mapTo(self.window,right.rect().topLeft()).x()
+                self.assertLess(a,b)
+            for section,button in self.window.nav_buttons.items():
+                button.click();QTest.qWait(20)
+                self.assertEqual(self.window.current_section,section)
+                self.assertTrue(self.window.room.isVisible())
     def test_food_cards_have_no_affection_and_gifts_have_no_hunger(self):
         self.window.refresh()
         for key,item in self.model.catalog.items.items():
@@ -213,7 +216,7 @@ class NavigationAndCommerceTests(unittest.TestCase):
                 self.assertIn('好感',text);self.assertNotIn('饱食度',text)
                 self.assertEqual(self.window.shop_buttons[key][1].text(),'购买并赠送')
     def test_shop_subtabs_show_food_and_gifts_separately(self):
-        self.window.tabs.setCurrentIndex(1)
+        self.window.show_section("shop", animate=False)
         self.window.shop_tabs.setCurrentIndex(1)
         self.assertFalse(self.window.shop_groups['food'].isVisible())
         self.assertTrue(self.window.shop_groups['gift'].isVisible())
@@ -221,11 +224,11 @@ class NavigationAndCommerceTests(unittest.TestCase):
         self.assertTrue(self.window.shop_groups['food'].isVisible())
         self.assertFalse(self.window.shop_groups['gift'].isVisible())
     def test_buy_give_and_backpack_buttons_share_live_model(self):
-        self.window.tabs.setCurrentIndex(1);self.window.shop_tabs.setCurrentIndex(1)
+        self.window.show_section("shop", animate=False);self.window.shop_tabs.setCurrentIndex(1)
         self.window.shop_buttons['paper_star'][0].click()
         self.assertEqual(self.model.data.inventory['paper_star'],1)
         self.assertEqual(self.model.data.affection_exp,0)
-        self.window.tabs.setCurrentIndex(0)
+        self.window.show_section("bag", animate=False)
         self.assertEqual(self.window.inventory_widgets['paper_star'][2].text(),'赠送')
         self.window.inventory_widgets['paper_star'][2].click()
         self.assertEqual(self.model.data.affection_exp,20)

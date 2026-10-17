@@ -353,6 +353,8 @@ class UIIntegrationTests(unittest.TestCase):
         with patch("main.PetWindow", side_effect=lambda _: PetWindow(ARTIFACTS / "no-art")):
             self.controller = PetApplication(APP, save_path=self.file)
         self.window = self.controller.window
+        self.controller.model.set_overlay_visible(True)
+        self.controller.dashboard.hide()
         self.window.timer.stop()
         self.controller.tick_timer.stop()
         self.controller.autosave_timer.stop()
@@ -408,10 +410,10 @@ class UIIntegrationTests(unittest.TestCase):
         self.window.clicked.emit()
         self.assertEqual(self.controller.model.data.affection_level, 2)
         self.assertEqual(self.window.engine._celebration_hops, 3)
-        self.assertEqual(self.bubble._text, "别急别急。")
+        self.assertEqual(self.bubble._text, "急咯急咯")
         self.assertTrue(any("Lv.2" in row[0] for row in self.bubble._notifications))
         self.window.show_message("普通提示")
-        self.assertEqual(self.bubble._text, "别急别急。")
+        self.assertEqual(self.bubble._text, "急咯急咯")
         anchor = (self.window.engine.x, self.window.engine.y)
         for _ in range(180):
             self.window.engine.advance(1 / 60)

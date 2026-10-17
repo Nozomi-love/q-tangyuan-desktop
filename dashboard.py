@@ -1,15 +1,17 @@
-"""Five-tab dashboard bound to the same PetModel as the desktop overlay."""
+"""Interactive home scene with persistent HUD, feeding shelf and feature drawers."""
 from __future__ import annotations
 
 import math
-from PySide6.QtCore import Qt, Signal
+from pathlib import Path
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QCloseEvent, QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
-    QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QStyle, QStyleOptionTab,
-    QStylePainter, QTabBar, QTabWidget, QVBoxLayout, QWidget,
+    QInputDialog, QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QStyle, QStyleOptionTab,
+    QStylePainter, QTabBar, QTabWidget, QVBoxLayout, QWidget, QSizePolicy,
 )
 from models import PetModel
+from pet_engine import PetEngine, SkinRenderer, WorkArea, RoomCanvas
 
 
 def label(text: str, role: str = "") -> QLabel:
@@ -72,7 +74,14 @@ class DashboardWindow(QMainWindow):
     import_unlock_requested = Signal()
     debug_unlock_requested = Signal(bool)
 
-    def __init__(self, model: PetModel) -> None:
+    rename_requested = Signal(str)
+    overlay_requested = Signal(bool)
+    furniture_requested = Signal(str, str)
+    poke_requested = Signal()
+    pet_requested = Signal()
+
+    def __init__(self, model: PetModel, engine: PetEngine | None = None,
+                 renderer_provider=None) -> None:
         super().__init__()
         self.model = model
         self._skin_entries = [{"id": "default", "name": "白汤圆", "author": "默认皮肤"}]
@@ -81,35 +90,73 @@ class DashboardWindow(QMainWindow):
         self.setObjectName("dashboard")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
-        self.resize(900, 760)
-        self.setMinimumSize(700, 520)
+        self.resize(1000, 860)
+        self.setMinimumSize(560, 420)
+        self._home_engine_owned = engine is None
+        self._home_engine = engine or PetEngine(WorkArea(0, 0, 900, 500))
+        self._home_renderer = None
+        if renderer_provider is None:
+            self._home_renderer = SkinRenderer(Path(__file__).resolve().parent / "assets" / "skins" / "default")
+            renderer_provider = lambda: self._home_renderer
         root = QWidget()
         root.setObjectName("dashboardRoot")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
-        header = QHBoxLayout()
-        words = QVBoxLayout()
-        words.addWidget(label("🍡 汤圆的陪伴小屋", "hero"))
-        words.addWidget(label("慢慢长大，每一次陪伴都算数", "muted"))
-        header.addLayout(words, 1)
-        self.balance = label("", "balance")
-        self.balance.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        header.addWidget(self.balance)
-        layout.addLayout(header)
+        layout.setContentsMargins(20, 16, 20, 14)
+        layout.setSpacing(10)
+        self._build_hud(layout)
+        # Keep the HUD visible even on small high-DPI work areas; the room and
+        # drawers remain reachable by scrolling instead of extending offscreen.
+        self.home_scroll = QScrollArea()
+        self.home_scroll.setWidgetResizable(True)
+        self.home_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        body_root = QWidget()
+        body_root.setObjectName("homeBody")
+        body_root.setMinimumWidth(700)
+        self.home_scroll.setWidget(body_root)
+        layout.addWidget(self.home_scroll, 1)
+        layout = QVBoxLayout(body_root)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        self.room = RoomCanvas(self._home_engine, renderer_provider, self)
+        self.room.setObjectName("homeScene")
+        self.room.setMinimumHeight(220)
+        self.room.poke_requested.connect(self.poke_requested.emit)
+        self.room.pet_requested.connect(self.pet_requested.emit)
+        self.room.lamp_toggle_requested.connect(lambda: self.model.set_lamp_on(not self.model.data.lamp_on))
+        layout.addWidget(self.room, 1)
+        if self._home_engine_owned:
+            self.preview_timer = QTimer(self)
+            self.preview_timer.setInterval(16)
+            self.preview_timer.timeout.connect(lambda: self._home_engine.advance(0.016))
+            self.preview_timer.start()
+            self.poke_requested.connect(self._preview_poke)
+            self.pet_requested.connect(self._preview_pet)
+            self.model.feedback.connect(self.room.show_message)
+            self.model.fed.connect(self._home_engine.rebound)
+            self.model.food_consumed.connect(self.room.show_food)
+        self.drawer = QFrame()
+        self.drawer.setObjectName("homeDrawer")
+        drawer_layout = QVBoxLayout(self.drawer)
+        drawer_layout.setContentsMargins(10, 6, 10, 4)
+        drawer_layout.setSpacing(4)
+        drawer_header = QHBoxLayout()
+        self.drawer_title = label("", "sectionTitle")
+        drawer_header.addWidget(self.drawer_title, 1)
+        close = QPushButton("收起 · 回小窝")
+        close.clicked.connect(lambda: self.show_section("home"))
+        drawer_header.addWidget(close)
+        drawer_layout.addLayout(drawer_header)
         self.nav_divider = QFrame()
         self.nav_divider.setObjectName("navDivider")
         self.nav_divider.setFixedHeight(1)
-        layout.addWidget(self.nav_divider)
+        drawer_layout.addWidget(self.nav_divider)
         self.tabs = QTabWidget()
         self.tabs.setObjectName("mainTabs")
         self.tabs.setTabBar(NavigationTabBar(self.tabs))
         self.tabs.setDocumentMode(True)
-        self.tabs.tabBar().setExpanding(True)
-        self.tabs.tabBar().setDrawBase(False)
-        self.tabs.tabBar().setAutoFillBackground(True)
-        layout.addWidget(self.tabs, 1)
+        drawer_layout.addWidget(self.tabs, 1)
+        layout.addWidget(self.drawer)
         self.inventory_widgets = {}
         self.shop_buttons = {}
         self.shop_details = {}
@@ -120,11 +167,213 @@ class DashboardWindow(QMainWindow):
         self._build_achievements()
         self._build_customization()
         self._build_settings()
-        self.notice = label("所有商品仅消耗游戏内糯米币 · 本地离线保存", "muted")
+        self._build_furniture()
+        self.tabs.tabBar().hide()
+        self.tabs.currentChanged.connect(self._drawer_selected)
+        self.drawer_animation = QPropertyAnimation(self.drawer, b"maximumHeight", self)
+        self.drawer_animation.setDuration(180)
+        self.drawer_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.drawer.setMaximumHeight(0)
+        self.current_section = "home"
+        self._build_shelf(layout)
+        self._build_navigation(layout)
+        self.notice = label("欢迎回家 · 戳一戳汤圆，右键汤圆摸摸头", "muted")
+        self.notice.setMaximumHeight(32)
         layout.addWidget(self.notice)
         model.state_changed.connect(self._model_changed)
         model.feedback.connect(self._feedback)
         self.refresh()
+
+    def _build_hud(self, layout: QVBoxLayout) -> None:
+        hud, body = card()
+        hud.setObjectName("homeHud")
+        body.setContentsMargins(16, 10, 16, 10)
+        body.setSpacing(6)
+        top = QHBoxLayout()
+        self.hud_name = label("", "hero")
+        self.hud_name.setWordWrap(False)
+        self.hud_name.setMinimumWidth(0)
+        self.hud_name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        top.addWidget(self.hud_name, 1)
+        self.rename_button = QPushButton("✎ 命名")
+        self.rename_button.clicked.connect(self._rename)
+        top.addWidget(self.rename_button)
+        self.balance = label("", "balance")
+        top.addWidget(self.balance)
+        self.overlay_button = QPushButton()
+        self.overlay_button.setCheckable(True)
+        self.overlay_button.toggled.connect(self.overlay_requested.emit)
+        top.addWidget(self.overlay_button)
+        settings = QPushButton("⚙ 设置")
+        settings.clicked.connect(lambda: self.show_section("settings"))
+        top.addWidget(settings)
+        body.addLayout(top)
+        self.hud_title = label("", "muted")
+        body.addWidget(self.hud_title)
+        row = QHBoxLayout()
+        self.hud_exp_bar = QProgressBar()
+        self.hud_hunger_bar = QProgressBar()
+        self.hud_hunger_bar.setObjectName("hungerBar")
+        self.hud_hunger_bar.setRange(0, 100)
+        row.addWidget(self.hud_exp_bar, 1)
+        row.addWidget(self.hud_hunger_bar, 1)
+        self.hud_buff = label("", "homeBuff")
+        row.addWidget(self.hud_buff, 1)
+        body.addLayout(row)
+        layout.addWidget(hud)
+
+    def _rename(self) -> None:
+        name, accepted = QInputDialog.getText(self, "给汤圆取个名字", "名字（1～40 个字符）", text=self.model.data.name)
+        if accepted:
+            self.rename_requested.emit(name)
+
+    def _preview_poke(self) -> None:
+        self._home_engine.click()
+        self.model.poke()
+
+    def _preview_pet(self) -> None:
+        if self.model.pet_head():
+            self._home_engine.rebound()
+
+    def _build_shelf(self, layout: QVBoxLayout) -> None:
+        shelf, body = card()
+        shelf.setObjectName("feedingShelf")
+        body.setContentsMargins(12, 6, 12, 6)
+        row = QHBoxLayout()
+        row.addWidget(label("🍡 喂养架", "sectionTitle"))
+        self.shelf_empty = label("背包空空，买点粮食带回家吧", "muted")
+        row.addWidget(self.shelf_empty, 1)
+        bag = QPushButton("🎒 背包 / 称号")
+        bag.clicked.connect(lambda: self.show_section("bag"))
+        row.addWidget(bag)
+        buy = QPushButton("＋ 买粮")
+        buy.clicked.connect(self._buy_food)
+        row.addWidget(buy)
+        body.addLayout(row)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        self.feeding_scroll = scroll
+        scroll.setFixedHeight(52)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content = QWidget()
+        foods = QHBoxLayout(content)
+        foods.setContentsMargins(0, 0, 0, 0)
+        foods.setSpacing(7)
+        self.feeding_buttons = {}
+        for key, item in self.model.catalog.items.items():
+            if item["category"] != "food":
+                continue
+            button = QPushButton()
+            button.setObjectName("feeding_" + key)
+            button.clicked.connect(lambda checked=False, food=key: self.model.use_item(food))
+            button.setToolTip(item["name"] + " · 点击从背包投喂")
+            foods.addWidget(button)
+            self.feeding_buttons[key] = button
+        foods.addStretch()
+        scroll.setWidget(content)
+        body.addWidget(scroll)
+        layout.addWidget(shelf)
+
+    def _buy_food(self) -> None:
+        self.show_section("shop")
+        self.market_tabs.setCurrentIndex(0)
+        self.shop_tabs.setCurrentIndex(0)
+
+    def _build_navigation(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.nav_buttons = {}
+        for section, text in (("home", "🏠 回小窝"), ("furniture", "🛋 家具装修"),
+                              ("shop", "🛒 杂货商城"), ("dress", "👑 装扮与上传"),
+                              ("achievements", "🏆 成就与图鉴")):
+            button = QPushButton(text)
+            button.setObjectName("homeNav")
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked=False, key=section: self.show_section(key))
+            row.addWidget(button, 1)
+            self.nav_buttons[section] = button
+        self.nav_buttons["home"].setChecked(True)
+        layout.addLayout(row)
+
+    def show_section(self, section: str, *, animate: bool = True) -> None:
+        pages = {"bag": (0, "🎒 状态、背包与称号"), "shop": (1, "🛒 杂货商城"),
+                 "achievements": (2, "🏆 成就与图鉴"), "dress": (3, "👑 装扮与上传"),
+                 "settings": (4, "⚙ 陪伴设置"), "furniture": (5, "🛋 家具装修")}
+        if section != "home" and section not in pages:
+            return
+        self.current_section = section
+        if section != "home":
+            index, title = pages[section]
+            self.tabs.blockSignals(True)
+            self.tabs.setCurrentIndex(index)
+            self.tabs.blockSignals(False)
+            self.drawer_title.setText(title)
+        for key, button in self.nav_buttons.items():
+            button.setChecked(key == section)
+        target = 0 if section == "home" else min(300, max(240, self.height() // 3))
+        self.drawer_animation.stop()
+        if animate:
+            self.drawer_animation.setStartValue(self.drawer.maximumHeight())
+            self.drawer_animation.setEndValue(target)
+            self.drawer_animation.start()
+        else:
+            self.drawer.setMaximumHeight(target)
+        self.refresh()
+
+    def _drawer_selected(self, index: int) -> None:
+        # Programmatic navigation remains available to accessibility tools.
+        sections = ("bag", "shop", "achievements", "dress", "settings", "furniture")
+        if hasattr(self, "nav_buttons") and 0 <= index < len(sections):
+            self.show_section(sections[index], animate=False)
+
+    def _build_furniture(self) -> None:
+        page = self._page("家具装修")
+        page.addWidget(label("小小的家，慢慢布置成喜欢的样子", "sectionTitle"))
+        self.furniture_buttons = {}
+        self.furniture_shop_buttons = {}
+        for slot, title in (("theme", "🏡 房间主题"), ("rug", "☁ 小窝与坐垫"),
+                            ("wall", "🖼 墙面装饰"), ("corner", "🌿 角落摆件"), ("bowl", "🍚 专属食盆")):
+            group = QGroupBox(title)
+            body = QVBoxLayout(group)
+            for key, item in self.model.catalog.furniture.items():
+                if item["slot"] != slot:
+                    continue
+                row = QHBoxLayout()
+                row.addWidget(label(item.get("emoji", "") + " " + item["name"]), 1)
+                button = QPushButton("布置")
+                button.clicked.connect(lambda checked=False, s=slot, fid=key: self.furniture_requested.emit(s, fid))
+                row.addWidget(button)
+                body.addLayout(row)
+                self.furniture_buttons[key] = button
+            if slot in ("wall", "corner"):
+                clear = QPushButton("收起此处装饰")
+                clear.clicked.connect(lambda checked=False, s=slot: self.furniture_requested.emit(s, ""))
+                body.addWidget(clear)
+            page.addWidget(group)
+        self.lamp_check = QCheckBox("暖心落地灯 · 打开暖光（也可直接点击房间里的灯）")
+        self.lamp_check.toggled.connect(self.model.set_lamp_on)
+        page.addWidget(self.lamp_check)
+        to_shop = QPushButton("🛒 选购家居家具")
+        to_shop.clicked.connect(lambda: (self.show_section("shop"), self.market_tabs.setCurrentIndex(1)))
+        page.addWidget(to_shop)
+        page.addStretch()
+        furniture_page = self._page("家居家具", self.market_tabs)
+        grid = QGridLayout()
+        for index, (key, item) in enumerate(self.model.catalog.furniture.items()):
+            panel, body = card()
+            body.addWidget(label(item.get("emoji", "") + " " + item["name"], "sectionTitle"))
+            body.addWidget(label(item.get("description", ""), "muted"))
+            body.addWidget(label("初始自带" if item.get("default") else f"{item['price']} 糯米币"))
+            button = QPushButton("购买家具")
+            button.clicked.connect(lambda checked=False, fid=key: self.model.buy_furniture(fid))
+            body.addWidget(button)
+            self.furniture_shop_buttons[key] = button
+            grid.addWidget(panel, index // 2, index % 2)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        furniture_page.addLayout(grid)
+        furniture_page.addStretch()
 
     def _page(self, title: str, tabs: QTabWidget | None = None) -> QVBoxLayout:
         scroll = QScrollArea()
@@ -189,7 +438,18 @@ class DashboardWindow(QMainWindow):
         page = QVBoxLayout(shop)
         page.setContentsMargins(0, 12, 0, 0)
         page.setSpacing(12)
-        page.addWidget(label("食物补充饱食度 · 礼物积累好感", "sectionTitle"))
+        self.market_description = label("食物补充饱食度 · 礼物积累好感", "sectionTitle")
+        page.addWidget(self.market_description)
+        self.market_tabs = QTabWidget()
+        self.market_tabs.setObjectName("marketTabs")
+        self.market_tabs.currentChanged.connect(lambda index: self.market_description.setText(
+            "食物补充饱食度 · 礼物积累好感" if index == 0 else "给小窝添一件家具 · 购买后到家具装修布置"))
+        self.market_tabs.setTabBar(NavigationTabBar(self.market_tabs))
+        page.addWidget(self.market_tabs, 1)
+        grocery = QWidget()
+        grocery_layout = QVBoxLayout(grocery)
+        grocery_layout.setContentsMargins(0, 0, 0, 0)
+        self.market_tabs.addTab(grocery, "美味食品与礼物")
         self.shop_tabs = QTabWidget()
         self.shop_tabs.setObjectName("shopTabs")
         self.shop_tabs.setTabBar(NavigationTabBar(self.shop_tabs))
@@ -197,7 +457,7 @@ class DashboardWindow(QMainWindow):
         self.shop_tabs.tabBar().setExpanding(True)
         self.shop_tabs.tabBar().setDrawBase(False)
         self.shop_tabs.tabBar().setAutoFillBackground(True)
-        page.addWidget(self.shop_tabs, 1)
+        grocery_layout.addWidget(self.shop_tabs, 1)
         self.tabs.addTab(shop, "免费商城")
         self.shop_groups = {}
         for category, title in (("food", "食物"), ("gift", "礼物")):
@@ -266,7 +526,7 @@ class DashboardWindow(QMainWindow):
             status = label("", "muted")
             special_layout.addWidget(status)
             self.shop_trick_buttons[trick_id] = (buy, perform, status)
-        page.addWidget(special)
+        grocery_layout.addWidget(special)
         self.shop_groups["trick"] = special
 
     def _build_achievements(self) -> None:
@@ -689,7 +949,63 @@ class DashboardWindow(QMainWindow):
             else:
                 equip.setText("佩戴称号")
 
+        self._refresh_home()
         self._refresh_phase4()
+
+    def _refresh_home(self) -> None:
+        data = self.model.data
+        self.hud_name.setText(data.name + "的小窝")
+        self.hud_name.setToolTip(data.name + "的小窝")
+        self.hud_title.setText(f"{data.equipped_title}  ·  家里的陪伴和桌面陪伴，共享同一个汤圆")
+        required = self.model.exp_required
+        self.hud_exp_bar.setRange(0, required)
+        self.hud_exp_bar.setValue(required if data.affection_level == 30 else data.affection_exp)
+        self.hud_exp_bar.setFormat(f"Lv.{data.affection_level} · {data.affection_exp}/{required} EXP" if data.affection_level < 30 else "Lv.30 · 好感满级")
+        self.hud_hunger_bar.setValue(round(data.hunger))
+        self.hud_hunger_bar.setFormat(f"饱食度 {data.hunger:g} / 100")
+        buff = self.model.buff_view()
+        self.hud_buff.setText(f"{buff['name']} · {math.ceil(buff['remaining_seconds'])}秒" if buff else "🍡 原味 · 慢慢陪你")
+        self.overlay_button.blockSignals(True)
+        self.overlay_button.setChecked(data.overlay_visible)
+        self.overlay_button.setText("🖥 隐藏桌宠" if data.overlay_visible else "🖥 显示桌宠")
+        self.overlay_button.blockSignals(False)
+        any_food = False
+        for key, button in self.feeding_buttons.items():
+            count = data.inventory.get(key, 0)
+            item = self.model.catalog.items[key]
+            button.setText(f"{item['icon']} {item['name']} ×{count}")
+            button.setVisible(count > 0)
+            button.setEnabled(count > 0)
+            any_food = any_food or count > 0
+        self.shelf_empty.setVisible(not any_food)
+        self.feeding_scroll.setVisible(any_food)
+        for key, button in self.furniture_buttons.items():
+            item = self.model.catalog.furniture[key]
+            owned = key in data.owned_furniture
+            equipped = data.equipped_furniture.get(item["slot"]) == key
+            button.setText("✓ 已布置" if equipped else "布置" if owned else "尚未拥有 · 商城选购")
+            button.setEnabled(owned and not equipped)
+        for key, button in self.furniture_shop_buttons.items():
+            owned = key in data.owned_furniture
+            item = self.model.catalog.furniture[key]
+            button.setText("✓ 已拥有" if owned else f"购买 · {item['price']} 币")
+            button.setEnabled(not owned and data.coins >= item["price"])
+        self.lamp_check.blockSignals(True)
+        self.lamp_check.setChecked(data.lamp_on)
+        self.lamp_check.setEnabled(data.equipped_furniture.get("corner") == "warm_lamp")
+        self.lamp_check.blockSignals(False)
+        if self._home_engine_owned:
+            self._home_engine.set_starving(self.model.starving)
+            self._home_engine.set_buff(self.model.buff_view())
+            self._home_renderer.set_accessories(self.model.effective_accessories())
+        self.room.set_home_state(self.model.snapshot())
+
+    def stop(self) -> None:
+        self.room.stop()
+        self.drawer_animation.stop()
+        if self._home_engine_owned:
+            self.preview_timer.stop()
+            self._home_renderer.stop()
 
     def _feedback(self, text: str, _tone: str) -> None:
         self.notice.setText(text)
@@ -698,9 +1014,13 @@ class DashboardWindow(QMainWindow):
         screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
         if screen is not None:
             area = screen.availableGeometry()
-            self.resize(min(self.width(), area.width() - 32), min(self.height(), area.height() - 32))
-            if not area.intersects(self.frameGeometry()):
-                self.move(area.center() - self.rect().center())
+            width, height = max(1, area.width() - 24), max(1, area.height() - 40)
+            self.setMinimumSize(min(560, width), min(420, height))
+            self.resize(min(self.width(), width), min(self.height(), height))
+            frame = self.frameGeometry()
+            x = max(area.left(), min(frame.left(), area.right() - frame.width() + 1))
+            y = max(area.top(), min(frame.top(), area.bottom() - frame.height() + 1))
+            self.move(x, y)
         self.showNormal()
         self.raise_()
         self.activateWindow()

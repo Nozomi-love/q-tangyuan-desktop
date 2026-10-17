@@ -22,6 +22,8 @@ def worker(mode, file):
     app.setStyleSheet((ROOT/'styles/theme.qss').read_text(encoding='utf-8'))
     controller = PetApplication(app, save_path=file, skins_root=file.parent/'skins')
     pet, model, panel = controller.window, controller.model, controller.dashboard
+    controller.model.set_overlay_visible(True)
+    controller.dashboard.hide()
     errors = []
     result = dict(mode=mode, platform=QGuiApplication.platformName(), dpr=pet.devicePixelRatioF())
     sys.excepthook = lambda typ, value, tb: (errors.append(''.join(traceback.format_exception(typ,value,tb))), app.exit(1))
@@ -29,14 +31,20 @@ def worker(mode, file):
         QTest.qWait(80)
         assert panel.grab().save(str(file.parent/(name+'.png')))
     def choose(tabs, index):
-        QTest.mouseClick(tabs.tabBar(), Qt.MouseButton.LeftButton, pos=tabs.tabBar().tabRect(index).center())
+        if tabs is panel.tabs:
+            panel.show_section(("bag","shop","achievements","dress","settings","furniture")[index], animate=False)
+        else:
+            QTest.mouseClick(tabs.tabBar(), Qt.MouseButton.LeftButton, pos=tabs.tabBar().tabRect(index).center())
         QTest.qWait(20)
         assert tabs.currentIndex() == index
     def click(button):
-        for tabs in (panel.tabs, panel.shop_tabs, panel.dress_tabs):
+        for tabs in (panel.tabs, panel.market_tabs, panel.shop_tabs, panel.dress_tabs):
             for index in range(tabs.count()):
                 if tabs.widget(index).isAncestorOf(button):
-                    tabs.setCurrentIndex(index)
+                    if tabs is panel.tabs:
+                        panel.show_section(("bag","shop","achievements","dress","settings","furniture")[index], animate=False)
+                    else:
+                        tabs.setCurrentIndex(index)
                     break
         widget = button
         while widget.parentWidget() is not None:
@@ -79,13 +87,13 @@ def worker(mode, file):
             result['navigation_edges'] = []
             for width in (700,900,1100):
                 panel.resize(width,760); QTest.qWait(60)
-                bar, line = panel.tabs.tabBar(), panel.nav_divider
-                left = bar.mapTo(panel,bar.tabRect(0).topLeft()).x()
-                right = bar.mapTo(panel,bar.tabRect(4).topRight()).x()
-                a = line.mapTo(panel,line.rect().topLeft()).x()
-                b = line.mapTo(panel,line.rect().topRight()).x()
-                assert abs(left-a)<=2 and abs(right-b)<=2
-                result['navigation_edges'].append([width,left,right,a,b])
+                assert panel.tabs.tabBar().isHidden()
+                buttons=list(panel.nav_buttons.values())
+                edges=[]
+                for button in buttons:
+                    edges.append([button.mapTo(panel,button.rect().topLeft()).x(),button.mapTo(panel,button.rect().topRight()).x()])
+                assert all(a[1]<b[0] for a,b in zip(edges,edges[1:]))
+                result['navigation_edges'].append([width,edges])
             panel.resize(900,760)
             choose(panel.tabs,3)
             for index in range(3): choose(panel.dress_tabs,index)

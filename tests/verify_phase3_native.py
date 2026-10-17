@@ -27,6 +27,8 @@ def worker(mode: str, file: Path) -> int:
     app.setStyleSheet((ROOT / "styles/theme.qss").read_text(encoding="utf-8"))
     controller = PetApplication(app, save_path=file, accelerated=mode == "write")
     window, model, panel = controller.window, controller.model, controller.dashboard
+    controller.model.set_overlay_visible(True)
+    controller.dashboard.hide()
     failures = []
     started = time.perf_counter()
     result = {"mode": mode, "platform": QGuiApplication.platformName(), "dpr": window.devicePixelRatioF(),
@@ -35,17 +37,20 @@ def worker(mode: str, file: Path) -> int:
 
     def capture(name, tab=None):
         if tab is not None:
-            panel.tabs.setCurrentIndex(tab)
+            panel.show_section(("bag", "shop", "achievements", "dress", "settings", "furniture")[tab], animate=False)
         QTest.qWait(130)
         widget = window if tab is None else panel
         assert widget.grab().save(str(file.parent / (name + ".png")))
         result.setdefault("capture_times", {})[name] = round(time.perf_counter() - started, 3)
 
     def ensure_button(button):
-        for tabs in (panel.tabs, panel.shop_tabs, panel.dress_tabs):
+        for tabs in (panel.tabs, panel.market_tabs, panel.shop_tabs, panel.dress_tabs):
             for index in range(tabs.count()):
                 if tabs.widget(index).isAncestorOf(button):
-                    tabs.setCurrentIndex(index)
+                    if tabs is panel.tabs:
+                        panel.show_section(("bag","shop","achievements","dress","settings","furniture")[index], animate=False)
+                    else:
+                        tabs.setCurrentIndex(index)
                     break
         page = button
         while page.parentWidget() is not None:
@@ -66,7 +71,7 @@ def worker(mode: str, file: Path) -> int:
     def begin():
         try:
             assert QGuiApplication.platformName() == "windows"
-            assert panel.tabs.count() == 5
+            assert panel.tabs.count() == 6
             assert window.engine.pinned
             if mode == "read":
                 saved = json.loads(file.read_text(encoding="utf-8"))
@@ -101,7 +106,7 @@ def worker(mode: str, file: Path) -> int:
             assert not panel.isVisible() and window.isVisible()
             controller.dashboard_action.trigger()
             assert panel.isVisible()
-            panel.tabs.setCurrentIndex(1)
+            panel.show_section("shop", animate=False)
             ensure_button(panel.shop_buttons["sesame"][0])
             assert model.data.inventory["sesame"] == 1
             capture("02-shop-top", 1)
@@ -113,12 +118,12 @@ def worker(mode: str, file: Path) -> int:
             assert window.engine.buff["scale"] == 1.2
             capture("05-sesame-overlay")
             for key in ("strawberry", "matcha"):
-                panel.tabs.setCurrentIndex(1)
+                panel.show_section("shop", animate=False)
                 ensure_button(panel.shop_buttons[key][1])
                 assert window.engine.buff["item_id"] == key
                 capture(key + "-overlay")
             assert "flavors_three" in model.data.unlocked_achievements
-            panel.tabs.setCurrentIndex(2)
+            panel.show_section("achievements", animate=False)
             for aid in ("first_feed", "flavors_three"):
                 ensure_button(panel.achievement_widgets[aid][2])
             ensure_button(panel.achievement_widgets["flavors_three"][3])
@@ -174,7 +179,7 @@ def worker(mode: str, file: Path) -> int:
             capture("09-chili-overlay")
             assert len(model.data.unlocked_achievements) == 10, model.data.unlocked_achievements
             controller.dashboard_action.trigger()
-            panel.tabs.setCurrentIndex(2)
+            panel.show_section("achievements", animate=False)
             panel.tier_filter.setCurrentIndex(3)
             for achievement in model.catalog.achievements:
                 # Use the same model slot as each claim button, checking once-only rewards.

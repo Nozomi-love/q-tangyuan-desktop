@@ -28,6 +28,7 @@ class ControllerTests(unittest.TestCase):
     def create(self,accelerated=False):
         with patch('main.PetWindow',side_effect=lambda _:PetWindow(self.work/'no-default-art')):
             controller=PetApplication(APP,save_path=self.file,skins_root=self.work/'skins',accelerated=accelerated,dev_mode=False)
+        controller.model.set_overlay_visible(True);controller.dashboard.hide()
         controller.window.timer.stop();controller.tick_timer.stop();controller.autosave_timer.stop()
         controller.window.set_pinned(True)
         return controller
@@ -96,7 +97,8 @@ class ControllerTests(unittest.TestCase):
         self.controller=self.create(accelerated=True)
         c=self.controller
         self.assertEqual(c.model.data.selected_skin_id,missing)
-        self.assertIn('原自定义皮肤',c.window.bubble._text)
+        c.dashboard.summon()
+        self.assertIn('原自定义皮肤',c.dashboard.room._message)
         self.assertEqual(c.dashboard.skin_combo.currentData(),missing)
     def test_empty_accessory_slot_does_not_resurrect_on_save(self):
         c=self.controller

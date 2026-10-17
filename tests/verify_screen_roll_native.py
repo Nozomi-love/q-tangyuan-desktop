@@ -22,12 +22,17 @@ def worker(mode,file):
     app.setStyleSheet((ROOT/'styles/theme.qss').read_text(encoding='utf-8'))
     controller=PetApplication(app,save_path=file,skins_root=file.parent/'skins')
     pet,model,panel=controller.window,controller.model,controller.dashboard
+    controller.model.set_overlay_visible(True)
+    controller.dashboard.hide()
     errors=[];result=dict(mode=mode,platform=QGuiApplication.platformName(),dpr=pet.devicePixelRatioF())
     sys.excepthook=lambda typ,val,tb:(errors.append(''.join(traceback.format_exception(typ,val,tb))),app.exit(1))
     def click(button):
-        for tabs in (panel.tabs,panel.shop_tabs,panel.dress_tabs):
+        for tabs in (panel.tabs,panel.market_tabs,panel.shop_tabs,panel.dress_tabs):
             for index in range(tabs.count()):
-                if tabs.widget(index).isAncestorOf(button):tabs.setCurrentIndex(index);break
+                if tabs.widget(index).isAncestorOf(button):
+                    if tabs is panel.tabs:panel.show_section(("bag","shop","achievements","dress","settings","furniture")[index],animate=False)
+                    else:tabs.setCurrentIndex(index)
+                    break
         node=button
         while node.parentWidget() is not None:
             node=node.parentWidget()
@@ -51,7 +56,7 @@ def worker(mode,file):
                 assert pet.renderer.movies
                 result['permanent_purchase_gif_accessory_and_home_restored']=True
                 return
-            panel.summon();panel.tabs.setCurrentIndex(1);panel.shop_tabs.setCurrentIndex(0)
+            panel.summon();panel.show_section("shop", animate=False);panel.shop_tabs.setCurrentIndex(0)
             buy,perform,status=panel.shop_trick_buttons['screen_roll']
             assert not perform.isEnabled()
             click(buy);assert model.data.coins==80;assert not buy.isEnabled();assert perform.isEnabled()
@@ -97,7 +102,7 @@ def worker(mode,file):
             (file.parent/'trace.json').write_text(json.dumps(trail),encoding='utf-8')
             # A second native UI trigger verifies click-to-return, with no poke or drag.
             model.advance(21)
-            panel.summon();panel.tabs.setCurrentIndex(3);panel.dress_tabs.setCurrentIndex(2)
+            panel.summon();panel.show_section("dress", animate=False);panel.dress_tabs.setCurrentIndex(2)
             click(panel.trick_buttons['screen_roll']);panel.hide();QTest.qWait(1300)
             assert pet.engine.active_trick=='screen_roll'
             point=pet.renderer.body_transform(pet.engine,pet.local_foot()).map(QPointF(0,-58)).toPoint()
