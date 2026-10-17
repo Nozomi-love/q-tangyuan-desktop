@@ -13,12 +13,13 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from pet_engine import PetEngine, SkinRenderer, WorkArea
+from illustrated_assets import plain_text
 
 
 class SpeechBubble(QWidget):
     """Independent no-focus tool window: never clipped by the pet canvas."""
     claimed = Signal()
-    GIFT_TEXT = "🎁 捡到糯米币啦\n点击领取 · 30 秒后自动收好"
+    GIFT_TEXT = " 捡到糯米币啦\n点击领取 · 30 秒后自动收好"
 
     def __init__(self, owner: QWidget) -> None:
         super().__init__(owner, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
@@ -49,6 +50,7 @@ class SpeechBubble(QWidget):
         self._refresh()
 
     def show_message(self, text: str, tone: str = "normal", duration: float = 2.5) -> None:
+        text = plain_text(text)
         now = time.perf_counter()
         priority = {"achievement": 2, "level": 3, "special": 4, "interaction": 5}
         current = priority.get(self._tone, 0) if self._expires > now else 0
@@ -408,6 +410,7 @@ class PetWindow(QWidget):
             self.hide()
 
     def show_message(self, text: str, tone: str = "normal") -> None:
+        text = plain_text(text)
         self.dialogue_shown.emit(text, tone)
         if self._overlay_enabled:
             self.bubble.show_message(text, tone)

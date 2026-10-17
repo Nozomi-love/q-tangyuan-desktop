@@ -71,7 +71,7 @@ DEFAULT_DIALOGUES = {
 
 EXP_PER_LEVEL = 500
 GUARDIAN_TITLE = "阿一古"
-LEGACY_GUARDIAN_TITLES = {"✨ 汤圆守护神", "汤圆守护神"}
+LEGACY_GUARDIAN_TITLES = {"\u2728 汤圆守护神", "汤圆守护神"}
 
 
 FURNITURE_SLOTS = ("theme", "rug", "wall", "corner", "bowl")
@@ -577,7 +577,7 @@ class PetModel(QObject):
             self._consume(item_id, item, previous)
         else:
             self.data.inventory[item_id] = self.data.inventory.get(item_id, 0) + 1
-            self._publish(previous, message=f"{item['icon']} 已购买 {item['name']}，放进背包啦")
+            self._publish(previous, message=f"已购买 {item['name']}，放进背包啦")
         return True
 
     def use_item(self, item_id: str) -> bool:
@@ -653,7 +653,7 @@ class PetModel(QObject):
         title = achievement.get("title")
         if title and title not in self.data.titles:
             self.data.titles.append(title)
-        self._publish(self.starving, message=f"🎁 已领取《{achievement['name']}》奖励：{achievement['coins']} 币" + (f"，称号【{title}】" if title else ""), tone="reward")
+        self._publish(self.starving, message=f" 已领取《{achievement['name']}》奖励：{achievement['coins']} 币" + (f"，称号【{title}】" if title else ""), tone="reward")
         return True
 
     def rename_pet(self, name: str) -> bool:
@@ -700,7 +700,7 @@ class PetModel(QObject):
         self.data.owned_furniture.append(furniture_id)
         if product["price"] > 0:
             self.data.stats["furniture_purchases"] += 1
-        self._publish(self.starving, message=f"{product['emoji']} 已买下{product['name']}，去家具装修布置吧！")
+        self._publish(self.starving, message=f"已买下{product['name']}，去家具装修布置吧！")
         return True
 
     def equip_furniture(self, slot: str, furniture_id: str) -> bool:
@@ -752,7 +752,7 @@ class PetModel(QObject):
         if not authorized or type(enabled) is not bool:
             return False
         self.debug_unlock_all = enabled
-        self._publish(self.starving, message="🧪 全部特权试用已" + ("开启" if enabled else "关闭"))
+        self._publish(self.starving, message=" 全部特权试用已" + ("开启" if enabled else "关闭"))
         self.appearance_changed.emit(self.effective_accessories())
         return True
 
@@ -764,7 +764,7 @@ class PetModel(QObject):
             return False
         self.data.coins -= 50
         self.data.custom_import_unlocked = True
-        self._publish(self.starving, message="🎨 衣橱已提前开启，试试导入自己的小伙伴吧！")
+        self._publish(self.starving, message=" 衣橱已提前开启，试试导入自己的小伙伴吧！")
         return True
 
     def effective_accessories(self) -> dict:
@@ -810,7 +810,7 @@ class PetModel(QObject):
         self.data.selected_skin_id = skin_id
         if skin_id != "default" and (changed or imported):
             self.data.stats["customizations"] += 1
-        self._publish(self.starving, message="🎨 已换上新外观，挂件和小特技也能一起用哦～" if changed else "")
+        self._publish(self.starving, message=" 已换上新外观，挂件和小特技也能一起用哦～" if changed else "")
         return True
 
     def has_trick(self, trick_id: str) -> bool:
@@ -821,7 +821,7 @@ class PetModel(QObject):
     def trick_name(self, trick_id: str) -> str:
         product = self.catalog.trick_products.get(trick_id)
         if product:
-            return f"{product['icon']} {product['name']}"
+            return str(product["name"])
         return self.catalog.perks.get("trick_" + trick_id, {}).get("name", trick_id)
 
     def buy_trick(self, trick_id: str) -> bool:
@@ -837,7 +837,7 @@ class PetModel(QObject):
             return False
         self.data.coins -= product["cost"]
         self.data.purchased_tricks.append(trick_id)
-        self._publish(self.starving, message=f"🎪 已永久学会【{product['name']}】，现在可以表演啦！", tone="reward")
+        self._publish(self.starving, message=f" 已永久学会【{product['name']}】，现在可以表演啦！", tone="reward")
         return True
 
     def finish_trick(self, trick_id: str) -> None:
@@ -886,7 +886,7 @@ class PetModel(QObject):
         self.data.hunger = value
         self.data.timers["hunger_elapsed"] = 0.0
         self.data.timers["hungry_notice_elapsed"] = 0.0
-        text = self.dialogue("hungry") if value == 0 else f"🍙 饥饿值恢复至 {value:g}"
+        text = self.dialogue("hungry") if value == 0 else f" 饥饿值恢复至 {value:g}"
         self._publish(previous, message=text, tone="hungry" if value == 0 else "normal")
 
     def offer_collectible(self) -> bool:

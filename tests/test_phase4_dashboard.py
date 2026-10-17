@@ -38,7 +38,7 @@ class WardrobeDashboardTests(unittest.TestCase):
         self.assertEqual(self.window.tabs.count(), 6)
         self.assertTrue(self.window.tabs.tabBar().isHidden())
         self.assertEqual(self.window.tabs.tabText(3), "装扮")
-        self.assertEqual(self.window.skin_disclaimer.text(), "ℹ️ 免责声明：本软件为纯本地渲染工具，自定义导入的图片/GIF仅保存在您的电脑本地，不会上传至任何服务器。请确保所导入素材仅供个人学习欣赏或已取得合法授权。")
+        self.assertEqual(self.window.skin_disclaimer.text(), "免责声明：本软件为纯本地渲染工具，自定义导入的图片/GIF仅保存在您的电脑本地，不会上传至任何服务器。请确保所导入素材仅供个人学习欣赏或已取得合法授权。")
         self.assertEqual(self.window.skin_disclaimer.textFormat(), Qt.TextFormat.PlainText)
         self.assertTrue(self.window.skin_disclaimer.wordWrap())
 

@@ -116,6 +116,7 @@ class ShopAndBubbleTests(unittest.TestCase):
             index=0 if item['category']=='food' else 1
             self.assertTrue(self.panel.shop_tabs.widget(index).isAncestorOf(self.panel.shop_buttons[key][0]))
         self.assertFalse(self.panel.shop_tabs.isAncestorOf(self.panel.shop_trick_buttons['screen_roll'][0]))
+        self.panel.market_tabs.setCurrentIndex(2)
         self.assertTrue(self.panel.shop_trick_buttons['screen_roll'][0].isVisible())
     def test_nested_tab_edges_stay_aligned_and_scroll_areas_are_independent(self):
         self.panel.summon();self.panel.show_section("shop", animate=False)

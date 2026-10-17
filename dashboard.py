@@ -1,21 +1,21 @@
-"""Interactive home scene with persistent HUD, feeding shelf and feature drawers."""
+"""Game home, illustrated inventory books and visual dressing slots."""
 from __future__ import annotations
 
 import math
 from pathlib import Path
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QCloseEvent, QGuiApplication
-from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
-    QInputDialog, QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QStyle, QStyleOptionTab,
-    QStylePainter, QTabBar, QTabWidget, QVBoxLayout, QWidget, QSizePolicy,
-)
+from PySide6.QtCore import QEvent, QEasingCurve, QPoint, QPropertyAnimation, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPainter, QPen, QLinearGradient
+from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog,
+    QLabel, QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QSizePolicy,
+    QTabBar, QTabWidget, QVBoxLayout, QWidget)
 from models import PetModel
-from pet_engine import PetEngine, SkinRenderer, WorkArea, RoomCanvas
+from pet_engine import PetEngine, SkinRenderer, WorkArea
+from home_scene import IllustratedRoomCanvas
+from illustrated_assets import IconAtlas, plain_text
 
 
 def label(text: str, role: str = "") -> QLabel:
-    widget = QLabel(text)
+    widget = QLabel(plain_text(text))
     widget.setTextFormat(Qt.TextFormat.PlainText)
     widget.setWordWrap(True)
     if role:
@@ -23,36 +23,117 @@ def label(text: str, role: str = "") -> QLabel:
     return widget
 
 
-def card() -> tuple[QFrame, QVBoxLayout]:
-    widget = QFrame()
-    widget.setObjectName("card")
-    layout = QVBoxLayout(widget)
-    layout.setContentsMargins(18, 16, 18, 16)
-    layout.setSpacing(10)
+def card():
+    widget = QFrame(); widget.setObjectName("gameCard")
+    layout = QVBoxLayout(widget); layout.setContentsMargins(12, 12, 12, 12); layout.setSpacing(7)
     return widget, layout
 
 
 class NavigationTabBar(QTabBar):
-    """Keep QSS shapes while painting each caption once at fractional Windows DPI."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.setExpanding(True)
-        self.setDrawBase(False)
+        self.setExpanding(True); self.setDrawBase(False)
+        self.setElideMode(Qt.TextElideMode.ElideRight)
 
-    def paintEvent(self, event) -> None:
-        painter = QStylePainter(self)
-        painter.fillRect(self.rect(), QColor("#faf3ed"))
-        for index in range(self.count()):
-            option = QStyleOptionTab()
-            self.initStyleOption(option, index)
-            painter.drawControl(QStyle.ControlElement.CE_TabBarTabShape, option)
-            painter.setFont(self.font())
-            painter.setPen(QColor("#74475d" if index == self.currentIndex() else "#8e737c"))
-            area = self.tabRect(index).adjusted(8, 0, -8, 0)
-            text = self.fontMetrics().elidedText(self.tabText(index), Qt.TextElideMode.ElideRight, area.width())
-            painter.drawText(area, Qt.AlignmentFlag.AlignCenter, text)
-        painter.end()
+
+class IconTile(QPushButton):
+    """A real pixmap slot; its checked state is a worn/placed game badge."""
+    def __init__(self, title, icon_id, atlas, parent=None):
+        super().__init__(plain_text(title), parent)
+        self.setProperty("icon_id", icon_id)
+        self.setIcon(atlas.icon(icon_id)); self.setIconSize(QSize(80, 80))
+        self.setMinimumSize(112, 141)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.badge = ""
+        self.setObjectName("iconTile")
+
+    def sizeHint(self):
+        return QSize(132, 146)
+
+    def minimumSizeHint(self):
+        return QSize(112, 146)
+
+    def paintEvent(self, event):
+        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        checked = self.isChecked() or bool(self.property("selected"))
+        area = QRectF(self.rect()).adjusted(3, 2, -3, -5)
+        p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(104, 73, 43, 18)); p.drawRoundedRect(area.translated(0, 3), 15, 15)
+        gradient = QLinearGradient(area.topLeft(), area.bottomRight())
+        gradient.setColorAt(0, QColor("#fff7df" if not checked else "#eef1cd"))
+        gradient.setColorAt(1, QColor("#f0dfc0" if not checked else "#d6dfb5"))
+        p.setBrush(gradient); p.setPen(QPen(QColor("#8b9a64" if checked else "#c5a37b"), 2.5 if checked else 1.5))
+        p.drawRoundedRect(area, 15, 15)
+        if not self.isEnabled(): p.setOpacity(.46)
+        self.icon().paint(p, int((self.width() - 80) / 2), 6, 80, 80)
+        p.setPen(QColor("#684e37")); font = QFont("Microsoft YaHei UI", 10); font.setBold(True); p.setFont(font)
+        p.drawText(QRectF(5, 88, self.width() - 10, 44), Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, self.text())
+        if self.badge or checked:
+            text = self.badge or "已选择"
+            p.setOpacity(1); p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor("#899764" if checked else "#c09b6e"))
+            width = max(34, min(self.width() - 10, p.fontMetrics().horizontalAdvance(text) + 14))
+            badge = QRectF(self.width() - width - 5, 6, width, 20); p.drawRoundedRect(badge, 7, 7)
+            p.setPen(QColor("#fff9e7")); p.setFont(QFont("Microsoft YaHei UI", 8))
+            p.drawText(badge, Qt.AlignmentFlag.AlignCenter, text)
+        p.end()
+
+
+class IconChoice(QWidget):
+    """Visible tile collection with a small selection API for controller clients."""
+    currentIndexChanged = Signal(int)
+    currentTextChanged = Signal(str)
+
+    def __init__(self, atlas, icon_id="avatar", parent=None):
+        super().__init__(parent)
+        self.atlas, self.icon_id = atlas, icon_id
+        self.entries = []; self.buttons = []; self._index = -1
+        self.grid = QGridLayout(self); self.grid.setContentsMargins(0, 0, 0, 0); self.grid.setSpacing(9)
+        for i in range(3): self.grid.setColumnStretch(i, 1)
+
+    def addItem(self, title, data=None, icon_id=None):
+        title = plain_text(title)
+        index = len(self.entries); self.entries.append((title, title if data is None else data))
+        tile = IconTile(title, icon_id or self.icon_id, self.atlas)
+        tile.setCheckable(True); tile.clicked.connect(lambda checked=False, i=index: self.setCurrentIndex(i))
+        self.grid.addWidget(tile, index // 3, index % 3); self.buttons.append(tile)
+        if self._index < 0: self.setCurrentIndex(0)
+
+    def addItems(self, values):
+        for value in values: self.addItem(value)
+
+    def clear(self):
+        for button in self.buttons:
+            self.grid.removeWidget(button); button.hide(); button.deleteLater()
+        self.entries, self.buttons, self._index = [], [], -1
+
+    def count(self): return len(self.entries)
+    def itemText(self, index): return self.entries[index][0]
+    def itemData(self, index): return self.entries[index][1]
+    def currentIndex(self): return self._index
+    def currentText(self): return self.itemText(self._index) if self._index >= 0 else ""
+    def currentData(self): return self.itemData(self._index) if self._index >= 0 else None
+    def findData(self, value): return next((i for i, row in enumerate(self.entries) if row[1] == value), -1)
+    def findText(self, value): return next((i for i, row in enumerate(self.entries) if row[0] == value), -1)
+    def setCurrentText(self, value): self.setCurrentIndex(self.findText(plain_text(value)))
+    def model(self): return self
+    def item(self, index): return self.buttons[index]
+
+    def setCurrentIndex(self, index):
+        if not 0 <= index < len(self.entries): return
+        previous, self._index = self._index, index
+        for i, button in enumerate(self.buttons):
+            button.setChecked(i == index); button.update()
+        if previous != index:
+            self.currentIndexChanged.emit(index); self.currentTextChanged.emit(self.currentText())
+
+
+class GameToggle(QPushButton):
+    def __init__(self, title, icon_id, atlas):
+        super().__init__(plain_text(title))
+        self.setProperty("icon_id", icon_id)
+        self.setIcon(atlas.icon(icon_id)); self.setIconSize(QSize(40, 40)); self.setCheckable(True)
+        self.setMinimumHeight(56); self.setObjectName("gameToggle")
+        self.toggled.connect(lambda enabled: self.setProperty("selected", enabled))
 
 
 class DashboardWindow(QMainWindow):
@@ -73,685 +154,366 @@ class DashboardWindow(QMainWindow):
     export_template_requested = Signal(str)
     import_unlock_requested = Signal()
     debug_unlock_requested = Signal(bool)
-
     rename_requested = Signal(str)
     overlay_requested = Signal(bool)
     furniture_requested = Signal(str, str)
     poke_requested = Signal()
     pet_requested = Signal()
 
-    def __init__(self, model: PetModel, engine: PetEngine | None = None,
-                 renderer_provider=None) -> None:
+    def __init__(self, model: PetModel, engine: PetEngine | None = None, renderer_provider=None):
         super().__init__()
-        self.model = model
+        self.model = model; self.atlas = IconAtlas(); self.atlas.warm()
         self._skin_entries = [{"id": "default", "name": "白汤圆", "author": "默认皮肤"}]
         self._phase4_dev_mode = False
-        self.setWindowTitle("Q弹汤圆 · 养成小屋")
+        self._home_engine_owned = engine is None
+        self._home_engine = engine or PetEngine(WorkArea(0, 0, 1000, 600))
+        self._home_renderer = None
+        if renderer_provider is None:
+            self._home_renderer = SkinRenderer(Path(__file__).resolve().parent / "assets/skins/default")
+            renderer_provider = lambda: self._home_renderer
+        self._renderer_provider = renderer_provider
+        self.setWindowTitle("Q弹汤圆 · 汤圆的家")
         self.setObjectName("dashboard")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
-        self.resize(1000, 860)
-        self.setMinimumSize(560, 420)
-        self._home_engine_owned = engine is None
-        self._home_engine = engine or PetEngine(WorkArea(0, 0, 900, 500))
-        self._home_renderer = None
-        if renderer_provider is None:
-            self._home_renderer = SkinRenderer(Path(__file__).resolve().parent / "assets" / "skins" / "default")
-            renderer_provider = lambda: self._home_renderer
-        root = QWidget()
-        root.setObjectName("dashboardRoot")
-        self.setCentralWidget(root)
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(20, 16, 20, 14)
-        layout.setSpacing(10)
-        self._build_hud(layout)
-        # Keep the HUD visible even on small high-DPI work areas; the room and
-        # drawers remain reachable by scrolling instead of extending offscreen.
-        self.home_scroll = QScrollArea()
-        self.home_scroll.setWidgetResizable(True)
+        self.resize(1120, 890); self.setMinimumSize(580, 500)
+        self.home_scroll = QScrollArea(); self.home_scroll.setWidgetResizable(True)
         self.home_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        body_root = QWidget()
-        body_root.setObjectName("homeBody")
-        body_root.setMinimumWidth(700)
-        self.home_scroll.setWidget(body_root)
-        layout.addWidget(self.home_scroll, 1)
-        layout = QVBoxLayout(body_root)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        self.room = RoomCanvas(self._home_engine, renderer_provider, self)
-        self.room.setObjectName("homeScene")
-        self.room.setMinimumHeight(220)
+        self.setCentralWidget(self.home_scroll)
+        root = QWidget(); root.setObjectName("dashboardRoot"); root.setMinimumWidth(740)
+        self.home_scroll.setWidget(root)
+        layout = QVBoxLayout(root); layout.setContentsMargins(18, 14, 18, 12); layout.setSpacing(10)
+        self.room = IllustratedRoomCanvas(self._home_engine, renderer_provider, self, self.atlas)
+        self.room.setMinimumHeight(420); self.room.installEventFilter(self)
+        layout.addWidget(self.room, 1)
         self.room.poke_requested.connect(self.poke_requested.emit)
         self.room.pet_requested.connect(self.pet_requested.emit)
         self.room.lamp_toggle_requested.connect(lambda: self.model.set_lamp_on(not self.model.data.lamp_on))
-        layout.addWidget(self.room, 1)
+        self._build_hud()
         if self._home_engine_owned:
-            self.preview_timer = QTimer(self)
-            self.preview_timer.setInterval(16)
-            self.preview_timer.timeout.connect(lambda: self._home_engine.advance(0.016))
-            self.preview_timer.start()
-            self.poke_requested.connect(self._preview_poke)
-            self.pet_requested.connect(self._preview_pet)
-            self.model.feedback.connect(self.room.show_message)
-            self.model.fed.connect(self._home_engine.rebound)
+            self.preview_timer = QTimer(self); self.preview_timer.setInterval(16)
+            self.preview_timer.timeout.connect(lambda: self._home_engine.advance(.016)); self.preview_timer.start()
+            self.poke_requested.connect(self._preview_poke); self.pet_requested.connect(self._preview_pet)
+            self.model.feedback.connect(self.room.show_message); self.model.fed.connect(self._home_engine.rebound)
             self.model.food_consumed.connect(self.room.show_food)
-        self.drawer = QFrame()
-        self.drawer.setObjectName("homeDrawer")
-        drawer_layout = QVBoxLayout(self.drawer)
-        drawer_layout.setContentsMargins(10, 6, 10, 4)
-        drawer_layout.setSpacing(4)
-        drawer_header = QHBoxLayout()
-        self.drawer_title = label("", "sectionTitle")
-        drawer_header.addWidget(self.drawer_title, 1)
-        close = QPushButton("收起 · 回小窝")
-        close.clicked.connect(lambda: self.show_section("home"))
-        drawer_header.addWidget(close)
-        drawer_layout.addLayout(drawer_header)
-        self.nav_divider = QFrame()
-        self.nav_divider.setObjectName("navDivider")
-        self.nav_divider.setFixedHeight(1)
+        self.drawer = QFrame(self, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
+        self.drawer.setObjectName("inventoryBook"); self.drawer.setWindowTitle("汤圆图鉴")
+        self.drawer.setMinimumSize(500, 460)
+        drawer_layout = QVBoxLayout(self.drawer); drawer_layout.setContentsMargins(16, 12, 16, 14); drawer_layout.setSpacing(8)
+        header = QHBoxLayout(); self.drawer_title = label("", "bookTitle"); header.addWidget(self.drawer_title, 1)
+        close = QPushButton("回房间"); close.setIcon(self.atlas.icon("home")); close.setIconSize(QSize(28, 28))
+        close.clicked.connect(lambda: self.show_section("home")); header.addWidget(close); drawer_layout.addLayout(header)
+        self.nav_divider = QFrame(); self.nav_divider.setObjectName("navDivider"); self.nav_divider.setFixedHeight(2)
         drawer_layout.addWidget(self.nav_divider)
-        self.tabs = QTabWidget()
-        self.tabs.setObjectName("mainTabs")
-        self.tabs.setTabBar(NavigationTabBar(self.tabs))
-        self.tabs.setDocumentMode(True)
-        drawer_layout.addWidget(self.tabs, 1)
-        layout.addWidget(self.drawer)
-        self.inventory_widgets = {}
-        self.shop_buttons = {}
-        self.shop_details = {}
-        self.achievement_widgets = {}
-        self.tier_groups = {}
-        self._build_status()
-        self._build_shop()
-        self._build_achievements()
-        self._build_customization()
-        self._build_settings()
-        self._build_furniture()
-        self.tabs.tabBar().hide()
-        self.tabs.currentChanged.connect(self._drawer_selected)
-        self.drawer_animation = QPropertyAnimation(self.drawer, b"maximumHeight", self)
-        self.drawer_animation.setDuration(180)
-        self.drawer_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.drawer.setMaximumHeight(0)
-        self.current_section = "home"
-        self._build_shelf(layout)
-        self._build_navigation(layout)
-        self.notice = label("欢迎回家 · 戳一戳汤圆，右键汤圆摸摸头", "muted")
-        self.notice.setMaximumHeight(32)
-        layout.addWidget(self.notice)
-        model.state_changed.connect(self._model_changed)
-        model.feedback.connect(self._feedback)
+        self.tabs = QTabWidget(); self.tabs.setObjectName("bookPages"); self.tabs.setTabBar(NavigationTabBar())
+        self.tabs.setDocumentMode(True); drawer_layout.addWidget(self.tabs, 1)
+        self.inventory_widgets = {}; self.shop_buttons = {}; self.shop_details = {}; self.achievement_widgets = {}; self.tier_groups = {}
+        self._build_status(); self._build_shop(); self._build_achievements(); self._build_customization(); self._build_settings(); self._build_furniture()
+        self.tabs.tabBar().hide(); self.tabs.currentChanged.connect(self._drawer_selected)
+        self.drawer_animation = QPropertyAnimation(self.drawer, b"windowOpacity", self)
+        self.drawer_animation.setDuration(160); self.drawer_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.drawer.setMaximumHeight(0); self.drawer.hide(); self.current_section = "home"
+        self._build_shelf(layout); self._build_navigation(layout)
+        self.notice = label("左键戳戳，右键摸摸头。今天也陪你慢慢长大。", "muted"); self.notice.setMaximumHeight(28); layout.addWidget(self.notice)
+        model.state_changed.connect(self._model_changed); model.feedback.connect(self._feedback)
         self.refresh()
 
-    def _build_hud(self, layout: QVBoxLayout) -> None:
-        hud, body = card()
-        hud.setObjectName("homeHud")
-        body.setContentsMargins(16, 10, 16, 10)
-        body.setSpacing(6)
-        top = QHBoxLayout()
-        self.hud_name = label("", "hero")
-        self.hud_name.setWordWrap(False)
-        self.hud_name.setMinimumWidth(0)
-        self.hud_name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        top.addWidget(self.hud_name, 1)
-        self.rename_button = QPushButton("✎ 命名")
-        self.rename_button.clicked.connect(self._rename)
-        top.addWidget(self.rename_button)
-        self.balance = label("", "balance")
-        top.addWidget(self.balance)
-        self.overlay_button = QPushButton()
-        self.overlay_button.setCheckable(True)
-        self.overlay_button.toggled.connect(self.overlay_requested.emit)
-        top.addWidget(self.overlay_button)
-        settings = QPushButton("⚙ 设置")
-        settings.clicked.connect(lambda: self.show_section("settings"))
-        top.addWidget(settings)
-        body.addLayout(top)
-        self.hud_title = label("", "muted")
-        body.addWidget(self.hud_title)
-        row = QHBoxLayout()
-        self.hud_exp_bar = QProgressBar()
-        self.hud_hunger_bar = QProgressBar()
-        self.hud_hunger_bar.setObjectName("hungerBar")
-        self.hud_hunger_bar.setRange(0, 100)
-        row.addWidget(self.hud_exp_bar, 1)
-        row.addWidget(self.hud_hunger_bar, 1)
-        self.hud_buff = label("", "homeBuff")
-        row.addWidget(self.hud_buff, 1)
-        body.addLayout(row)
-        layout.addWidget(hud)
+    def _button(self, text, icon_id=None):
+        button = QPushButton(plain_text(text))
+        if icon_id:
+            button.setProperty("icon_id", icon_id)
+            button.setIcon(self.atlas.icon(icon_id)); button.setIconSize(QSize(26, 26))
+        return button
 
-    def _rename(self) -> None:
-        name, accepted = QInputDialog.getText(self, "给汤圆取个名字", "名字（1～40 个字符）", text=self.model.data.name)
-        if accepted:
-            self.rename_requested.emit(name)
+    def _build_hud(self):
+        self.hud = QFrame(self.room); self.hud.setObjectName("floatingHud")
+        content = QHBoxLayout(self.hud); content.setContentsMargins(12, 8, 12, 8); content.setSpacing(10)
+        avatar = QVBoxLayout(); self.hud_avatar = QLabel(); self.hud_avatar.setFixedSize(76, 69)
+        self.hud_avatar.setPixmap(self.atlas.pixmap("avatar", 68)); self.hud_avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        avatar.addWidget(self.hud_avatar); self.level_badge = label("Lv.1", "levelBadge"); self.level_badge.setAlignment(Qt.AlignmentFlag.AlignCenter); avatar.addWidget(self.level_badge)
+        content.addLayout(avatar)
+        profile = QVBoxLayout(); profile.setSpacing(3)
+        row = QHBoxLayout(); self.hud_name = label("", "petName"); self.hud_name.setWordWrap(False)
+        self.hud_name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred); row.addWidget(self.hud_name, 1)
+        self.rename_button = self._button("命名"); self.rename_button.clicked.connect(self._rename); row.addWidget(self.rename_button)
+        profile.addLayout(row); self.hud_title = label("", "titlePlaque"); profile.addWidget(self.hud_title)
+        self.hud_hunger_bar = QProgressBar(); self.hud_hunger_bar.setRange(0, 100); self.hud_hunger_bar.setObjectName("hungerBar")
+        self.hud_exp_bar = QProgressBar(); self.hud_exp_bar.setObjectName("affectionBar")
+        profile.addWidget(self.hud_hunger_bar); profile.addWidget(self.hud_exp_bar)
+        content.addLayout(profile, 1)
+        currency = QVBoxLayout(); coins = QHBoxLayout()
+        coin_art = QLabel(); coin_art.setPixmap(self.atlas.pixmap("coin", 52)); coins.addWidget(coin_art)
+        self.balance = label("", "coinAmount"); coins.addWidget(self.balance); currency.addLayout(coins)
+        self.hud_buff = label("", "buffBadge"); currency.addWidget(self.hud_buff)
+        content.addLayout(currency)
+        self.overlay_button = self._button("桌面宠", "desktop"); self.overlay_button.setIconSize(QSize(42, 42))
+        self.overlay_button.setCheckable(True); self.overlay_button.toggled.connect(self.overlay_requested.emit)
+        content.addWidget(self.overlay_button)
+        self.hud.raise_()
 
-    def _preview_poke(self) -> None:
-        self._home_engine.click()
-        self.model.poke()
+    def eventFilter(self, watched, event):
+        if watched is getattr(self, "room", None) and event.type() == QEvent.Type.Resize and hasattr(self, "hud"):
+            self.hud.setGeometry(14, 14, max(100, self.room.width() - 28), 126)
+        return super().eventFilter(watched, event)
 
-    def _preview_pet(self) -> None:
-        if self.model.pet_head():
-            self._home_engine.rebound()
+    def _rename(self):
+        name, ok = QInputDialog.getText(self, "给汤圆命名", "名字（1～40个字符）", text=plain_text(self.model.data.name))
+        if ok: self.rename_requested.emit(name)
 
-    def _build_shelf(self, layout: QVBoxLayout) -> None:
-        shelf, body = card()
-        shelf.setObjectName("feedingShelf")
-        body.setContentsMargins(12, 6, 12, 6)
-        row = QHBoxLayout()
-        row.addWidget(label("🍡 喂养架", "sectionTitle"))
-        self.shelf_empty = label("背包空空，买点粮食带回家吧", "muted")
-        row.addWidget(self.shelf_empty, 1)
-        bag = QPushButton("🎒 背包 / 称号")
-        bag.clicked.connect(lambda: self.show_section("bag"))
-        row.addWidget(bag)
-        buy = QPushButton("＋ 买粮")
-        buy.clicked.connect(self._buy_food)
-        row.addWidget(buy)
-        body.addLayout(row)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        self.feeding_scroll = scroll
-        scroll.setFixedHeight(52)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        content = QWidget()
-        foods = QHBoxLayout(content)
-        foods.setContentsMargins(0, 0, 0, 0)
-        foods.setSpacing(7)
+    def _preview_poke(self): self._home_engine.click(); self.model.poke()
+    def _preview_pet(self):
+        if self.model.pet_head(): self._home_engine.rebound()
+
+    def _build_shelf(self, layout):
+        shelf = QFrame(); shelf.setObjectName("feedingShelf")
+        row = QHBoxLayout(shelf); row.setContentsMargins(12, 4, 12, 4); row.setSpacing(7)
+        self.shelf_empty = label("喂养架还空着\n去杂货铺买点好吃的", "muted"); row.addWidget(self.shelf_empty)
+        self.feeding_scroll = QScrollArea(); self.feeding_scroll.setWidgetResizable(True); self.feeding_scroll.setFixedHeight(92)
+        self.feeding_scroll.setFrameShape(QFrame.Shape.NoFrame); self.feeding_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget(); foods = QHBoxLayout(content); foods.setContentsMargins(0, 0, 0, 0); foods.setSpacing(4)
         self.feeding_buttons = {}
         for key, item in self.model.catalog.items.items():
-            if item["category"] != "food":
-                continue
-            button = QPushButton()
-            button.setObjectName("feeding_" + key)
-            button.clicked.connect(lambda checked=False, food=key: self.model.use_item(food))
-            button.setToolTip(item["name"] + " · 点击从背包投喂")
-            foods.addWidget(button)
-            self.feeding_buttons[key] = button
-        foods.addStretch()
-        scroll.setWidget(content)
-        body.addWidget(scroll)
+            if item["category"] != "food": continue
+            button = self._button("", key); button.setIconSize(QSize(62, 62)); button.setMinimumHeight(76)
+            button.clicked.connect(lambda checked=False, food=key: self.model.use_item(food)); button.setToolTip(item["name"])
+            foods.addWidget(button); self.feeding_buttons[key] = button
+        foods.addStretch(); self.feeding_scroll.setWidget(content); row.addWidget(self.feeding_scroll, 1)
+        buy = self._button("买粮", "shop"); buy.clicked.connect(self._buy_food); row.addWidget(buy)
         layout.addWidget(shelf)
 
-    def _buy_food(self) -> None:
-        self.show_section("shop")
-        self.market_tabs.setCurrentIndex(0)
-        self.shop_tabs.setCurrentIndex(0)
+    def _buy_food(self):
+        self.show_section("shop"); self.market_tabs.setCurrentIndex(0); self.shop_tabs.setCurrentIndex(0)
 
-    def _build_navigation(self, layout: QVBoxLayout) -> None:
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        self.nav_buttons = {}
-        for section, text in (("home", "🏠 回小窝"), ("furniture", "🛋 家具装修"),
-                              ("shop", "🛒 杂货商城"), ("dress", "👑 装扮与上传"),
-                              ("achievements", "🏆 成就与图鉴")):
-            button = QPushButton(text)
-            button.setObjectName("homeNav")
-            button.setCheckable(True)
-            button.clicked.connect(lambda checked=False, key=section: self.show_section(key))
-            row.addWidget(button, 1)
-            self.nav_buttons[section] = button
-        self.nav_buttons["home"].setChecked(True)
-        layout.addLayout(row)
+    def _build_navigation(self, layout):
+        row = QHBoxLayout(); row.setSpacing(10); self.nav_buttons = {}
+        for section, text, art in (("home", "小屋主页", "home"), ("bag", "背包与投喂", "bag"),
+                                  ("shop", "插画商城", "shop"), ("dress", "换装与小窝装修", "dress"),
+                                  ("achievements", "成就与设置", "achievements")):
+            button = IconTile(text, art, self.atlas); button.setMinimumHeight(146); button.setMaximumHeight(146)
+            button.setCheckable(True); button.clicked.connect(lambda checked=False, key=section: self.show_section(key))
+            row.addWidget(button, 1); self.nav_buttons[section] = button
+        self.nav_buttons["home"].setChecked(True); layout.addLayout(row)
 
-    def show_section(self, section: str, *, animate: bool = True) -> None:
-        pages = {"bag": (0, "🎒 状态、背包与称号"), "shop": (1, "🛒 杂货商城"),
-                 "achievements": (2, "🏆 成就与图鉴"), "dress": (3, "👑 装扮与上传"),
-                 "settings": (4, "⚙ 陪伴设置"), "furniture": (5, "🛋 家具装修")}
-        if section != "home" and section not in pages:
-            return
-        self.current_section = section
-        if section != "home":
-            index, title = pages[section]
-            self.tabs.blockSignals(True)
-            self.tabs.setCurrentIndex(index)
-            self.tabs.blockSignals(False)
-            self.drawer_title.setText(title)
-        for key, button in self.nav_buttons.items():
-            button.setChecked(key == section)
-        target = 0 if section == "home" else min(300, max(240, self.height() // 3))
-        self.drawer_animation.stop()
-        if animate:
-            self.drawer_animation.setStartValue(self.drawer.maximumHeight())
-            self.drawer_animation.setEndValue(target)
-            self.drawer_animation.start()
+    def _place_drawer(self):
+        screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
+        if screen is None: return
+        area = screen.availableGeometry()
+        width = min(580, max(500, int(area.width() * .43)))
+        width = min(width, area.width() - 16); height = min(760, area.height() - 48)
+        self.drawer.setMaximumHeight(height); self.drawer.resize(width, height)
+        x = min(self.frameGeometry().right() + 10, area.right() - width - 8)
+        y = max(area.top() + 8, min(self.frameGeometry().top() + 36, area.bottom() - height - 8))
+        self.drawer.move(max(area.left() + 8, x), y)
+
+    def show_section(self, section, *, animate=True):
+        pages = {"bag": (0, "背包与投喂"), "shop": (1, "插画杂货铺"), "achievements": (2, "成就图鉴"),
+                 "dress": (3, "换装衣橱"), "settings": (4, "游戏设置"), "furniture": (5, "小窝装修")}
+        if section != "home" and section not in pages: return
+        self.current_section = section; self.drawer_animation.stop()
+        if section == "home":
+            self.drawer.hide(); self.drawer.setMaximumHeight(0)
+            self.home_scroll.verticalScrollBar().setValue(0); self.home_scroll.horizontalScrollBar().setValue(0)
         else:
-            self.drawer.setMaximumHeight(target)
+            index, title = pages[section]; self.tabs.blockSignals(True); self.tabs.setCurrentIndex(index); self.tabs.blockSignals(False)
+            self.drawer_title.setText(title); self._place_drawer(); self.drawer.show(); self.drawer.raise_()
+            if animate:
+                self.drawer_animation.setStartValue(.35); self.drawer_animation.setEndValue(1.0); self.drawer_animation.start()
+            else: self.drawer.setWindowOpacity(1.0)
+        for key, button in self.nav_buttons.items():
+            button.setChecked(key == section or (key == "dress" and section == "furniture") or (key == "achievements" and section == "settings"))
         self.refresh()
 
-    def _drawer_selected(self, index: int) -> None:
-        # Programmatic navigation remains available to accessibility tools.
-        sections = ("bag", "shop", "achievements", "dress", "settings", "furniture")
-        if hasattr(self, "nav_buttons") and 0 <= index < len(sections):
-            self.show_section(sections[index], animate=False)
+    def _drawer_selected(self, index):
+        if hasattr(self, "nav_buttons"):
+            self.show_section(("bag", "shop", "achievements", "dress", "settings", "furniture")[index], animate=False)
 
-    def _build_furniture(self) -> None:
-        page = self._page("家具装修")
-        page.addWidget(label("小小的家，慢慢布置成喜欢的样子", "sectionTitle"))
-        self.furniture_buttons = {}
-        self.furniture_shop_buttons = {}
-        for slot, title in (("theme", "🏡 房间主题"), ("rug", "☁ 小窝与坐垫"),
-                            ("wall", "🖼 墙面装饰"), ("corner", "🌿 角落摆件"), ("bowl", "🍚 专属食盆")):
-            group = QGroupBox(title)
-            body = QVBoxLayout(group)
-            for key, item in self.model.catalog.furniture.items():
-                if item["slot"] != slot:
-                    continue
-                row = QHBoxLayout()
-                row.addWidget(label(item.get("emoji", "") + " " + item["name"]), 1)
-                button = QPushButton("布置")
-                button.clicked.connect(lambda checked=False, s=slot, fid=key: self.furniture_requested.emit(s, fid))
-                row.addWidget(button)
-                body.addLayout(row)
-                self.furniture_buttons[key] = button
-            if slot in ("wall", "corner"):
-                clear = QPushButton("收起此处装饰")
-                clear.clicked.connect(lambda checked=False, s=slot: self.furniture_requested.emit(s, ""))
-                body.addWidget(clear)
-            page.addWidget(group)
-        self.lamp_check = QCheckBox("暖心落地灯 · 打开暖光（也可直接点击房间里的灯）")
-        self.lamp_check.toggled.connect(self.model.set_lamp_on)
-        page.addWidget(self.lamp_check)
-        to_shop = QPushButton("🛒 选购家居家具")
-        to_shop.clicked.connect(lambda: (self.show_section("shop"), self.market_tabs.setCurrentIndex(1)))
-        page.addWidget(to_shop)
-        page.addStretch()
-        furniture_page = self._page("家居家具", self.market_tabs)
-        grid = QGridLayout()
-        for index, (key, item) in enumerate(self.model.catalog.furniture.items()):
-            panel, body = card()
-            body.addWidget(label(item.get("emoji", "") + " " + item["name"], "sectionTitle"))
-            body.addWidget(label(item.get("description", ""), "muted"))
-            body.addWidget(label("初始自带" if item.get("default") else f"{item['price']} 糯米币"))
-            button = QPushButton("购买家具")
-            button.clicked.connect(lambda checked=False, fid=key: self.model.buy_furniture(fid))
-            body.addWidget(button)
-            self.furniture_shop_buttons[key] = button
-            grid.addWidget(panel, index // 2, index % 2)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        furniture_page.addLayout(grid)
-        furniture_page.addStretch()
-
-    def _page(self, title: str, tabs: QTabWidget | None = None) -> QVBoxLayout:
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+    def _page(self, title, tabs=None):
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        content = QWidget()
-        content.setObjectName("page")
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 16, 0, 12)
-        layout.setSpacing(14)
-        scroll.setWidget(content)
-        (self.tabs if tabs is None else tabs).addTab(scroll, title)
-        return layout
+        content = QWidget(); content.setObjectName("bookPage")
+        body = QVBoxLayout(content); body.setContentsMargins(3, 8, 3, 10); body.setSpacing(12)
+        scroll.setWidget(content); (self.tabs if tabs is None else tabs).addTab(scroll, plain_text(title))
+        return body
 
-    def _build_status(self) -> None:
+    def _subtabs(self, name):
+        tabs = QTabWidget(); tabs.setObjectName(name); tabs.setTabBar(NavigationTabBar(tabs)); tabs.setDocumentMode(True)
+        tabs.tabBar().setExpanding(True); tabs.tabBar().setDrawBase(False)
+        return tabs
+
+    def _art(self, key, size=80):
+        image = QLabel(); image.setAlignment(Qt.AlignmentFlag.AlignCenter); image.setPixmap(self.atlas.pixmap(key, size))
+        image.setMinimumHeight(size); image.setObjectName("itemArtwork"); image.setProperty("icon_id", key); image.setProperty("art_size", size); return image
+
+    def _item_card(self, key, title):
+        frame, body = card(); body.addWidget(self._art(key)); body.addWidget(label(title, "itemName"))
+        return frame, body
+
+    def _build_status(self):
         page = self._page("状态与背包")
-        profile, profile_layout = card()
-        top = QHBoxLayout()
-        self.pet_name = label("", "sectionTitle")
-        top.addWidget(self.pet_name, 1)
-        self.title_combo = QComboBox()
-        self.title_combo.setMinimumWidth(170)
-        self.title_combo.currentTextChanged.connect(self.model.equip_title)
-        top.addWidget(label("佩戴称号", "muted"))
-        top.addWidget(self.title_combo)
-        profile_layout.addLayout(top)
-        self.level_label = label("")
-        profile_layout.addWidget(self.level_label)
-        self.exp_bar = QProgressBar()
-        profile_layout.addWidget(self.exp_bar)
-        self.hunger_bar = QProgressBar()
-        self.hunger_bar.setObjectName("hungerBar")
-        self.hunger_bar.setRange(0, 100)
-        profile_layout.addWidget(self.hunger_bar)
-        self.buff_label = label("", "buffBadge")
-        profile_layout.addWidget(self.buff_label)
-        self.stats_label = label("", "muted")
-        profile_layout.addWidget(self.stats_label)
-        page.addWidget(profile)
-        page.addWidget(label("我的背包", "sectionTitle"))
-        self.empty_inventory = label("背包还是空的，去商城挑选食物或一份心意礼物吧～", "muted")
-        page.addWidget(self.empty_inventory)
-        for item_id, item in self.model.catalog.items.items():
-            row, content = card()
-            line = QHBoxLayout()
-            text = label("")
-            line.addWidget(text, 1)
-            button = QPushButton("赠送" if item["category"] == "gift" else "投喂")
-            button.clicked.connect(lambda checked=False, key=item_id: self.model.use_item(key))
-            line.addWidget(button)
-            content.addLayout(line)
-            page.addWidget(row)
-            self.inventory_widgets[item_id] = (row, text, button)
-        self.unknown_inventory = label("", "muted")
-        page.addWidget(self.unknown_inventory)
-        page.addStretch()
+        self.pet_name = label("", "sectionTitle"); page.addWidget(self.pet_name)
+        self.level_label = label(""); self.exp_bar = QProgressBar(); self.hunger_bar = QProgressBar(); self.hunger_bar.setRange(0, 100)
+        self.buff_label = label("", "buffBadge"); self.stats_label = label("", "muted")
+        for widget in (self.level_label, self.exp_bar, self.hunger_bar, self.buff_label, self.stats_label): page.addWidget(widget)
+        self.empty_inventory = label("背包还空着，给汤圆带点好吃的吧。", "muted"); page.addWidget(self.empty_inventory)
+        grid = QGridLayout(); grid.setSpacing(10)
+        for i, (key, item) in enumerate(self.model.catalog.items.items()):
+            frame, body = self._item_card(key, item["name"]); text = label("", "itemTag"); body.addWidget(text)
+            use = self._button("赠送" if item["category"] == "gift" else "投喂")
+            use.clicked.connect(lambda checked=False, k=key: self.model.use_item(k)); body.addWidget(use)
+            grid.addWidget(frame, i // 2, i % 2); self.inventory_widgets[key] = frame, text, use
+        grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); page.addLayout(grid)
+        self.unknown_inventory = label("", "muted"); page.addWidget(self.unknown_inventory)
+        page.addWidget(label("称号铭牌", "sectionTitle"))
+        self.title_combo = IconChoice(self.atlas, "title")
+        self.title_combo.currentIndexChanged.connect(lambda i: self.model.equip_title(str(self.title_combo.itemData(i))))
+        page.addWidget(self.title_combo); page.addStretch()
 
-    def _build_shop(self) -> None:
-        shop = QWidget()
-        shop.setObjectName("page")
-        page = QVBoxLayout(shop)
-        page.setContentsMargins(0, 12, 0, 0)
-        page.setSpacing(12)
-        self.market_description = label("食物补充饱食度 · 礼物积累好感", "sectionTitle")
-        page.addWidget(self.market_description)
-        self.market_tabs = QTabWidget()
-        self.market_tabs.setObjectName("marketTabs")
-        self.market_tabs.currentChanged.connect(lambda index: self.market_description.setText(
-            "食物补充饱食度 · 礼物积累好感" if index == 0 else "给小窝添一件家具 · 购买后到家具装修布置"))
-        self.market_tabs.setTabBar(NavigationTabBar(self.market_tabs))
-        page.addWidget(self.market_tabs, 1)
-        grocery = QWidget()
-        grocery_layout = QVBoxLayout(grocery)
-        grocery_layout.setContentsMargins(0, 0, 0, 0)
-        self.market_tabs.addTab(grocery, "美味食品与礼物")
-        self.shop_tabs = QTabWidget()
-        self.shop_tabs.setObjectName("shopTabs")
-        self.shop_tabs.setTabBar(NavigationTabBar(self.shop_tabs))
-        self.shop_tabs.setDocumentMode(True)
-        self.shop_tabs.tabBar().setExpanding(True)
-        self.shop_tabs.tabBar().setDrawBase(False)
-        self.shop_tabs.tabBar().setAutoFillBackground(True)
-        grocery_layout.addWidget(self.shop_tabs, 1)
+    def _build_shop(self):
+        shop = QWidget(); body = QVBoxLayout(shop); body.setContentsMargins(0, 0, 0, 0)
+        self.market_description = label("挑一点喜欢的，带回家。", "muted"); body.addWidget(self.market_description)
+        self.market_tabs = self._subtabs("marketTabs"); body.addWidget(self.market_tabs, 1)
         self.tabs.addTab(shop, "免费商城")
+        self.shop_tabs = self._subtabs("shopTabs"); self.market_tabs.addTab(self.shop_tabs, "食品与礼物")
         self.shop_groups = {}
         for category, title in (("food", "食物"), ("gift", "礼物")):
-            section = self._page(title, self.shop_tabs)
-            explanation = ("分三级恢复饱食度，食物不增加好感。可买进背包或立即投喂。" if category == "food"
-                           else "分三级增加好感，礼物不恢复饱食度。可买进背包或立即赠送。")
-            section.addWidget(label(explanation, "muted"))
-            group = QWidget()
-            group_layout = QVBoxLayout(group)
-            group_layout.setContentsMargins(0, 0, 0, 0)
-            group_layout.setSpacing(14)
-            definitions = self.model.catalog.food_tiers if category == "food" else self.model.catalog.gift_tiers
-            for tier in (1, 2, 3):
-                definition = definitions[str(tier)]
-                group_layout.addWidget(label(f"{('Ⅰ', 'Ⅱ', 'Ⅲ')[tier - 1]}级 · {definition['name']}", "sectionTitle"))
-                grid = QGridLayout()
-                grid.setSpacing(12)
-                items = [(key, item) for key, item in self.model.catalog.items.items()
-                         if item["category"] == category and item["tier"] == tier]
-                for index, (item_id, item) in enumerate(items):
-                    panel, content = card()
-                    content.addWidget(label(f"{item['icon']} {item['name']}", "sectionTitle"))
-                    details = label("")
-                    self.shop_details[item_id] = details
-                    content.addWidget(details)
-                    buff = item.get("buff")
-                    description = (f"【{buff['name']}】{buff['description']}" if buff else
-                                   item.get("description", "把心意送给汤圆，慢慢积累好感。") if category == "gift"
-                                   else "安心补充能量，饱食度最多恢复到 100。")
-                    content.addWidget(label(description, "muted"), 1)
-                    time_label = label("", "muted")
-                    content.addWidget(time_label)
-                    actions = QHBoxLayout()
-                    buy = QPushButton("购买")
-                    use = QPushButton("购买并赠送" if category == "gift" else "购买并投喂")
-                    use.setProperty("primary", True)
-                    buy.clicked.connect(lambda checked=False, key=item_id: self.model.buy_item(key))
-                    use.clicked.connect(lambda checked=False, key=item_id: self.model.buy_item(key, feed_now=True))
-                    actions.addWidget(buy)
-                    actions.addWidget(use)
-                    content.addLayout(actions)
-                    grid.addWidget(panel, index // 2, index % 2)
-                    self.shop_buttons[item_id] = (buy, use, time_label)
-                grid.setColumnStretch(0, 1)
-                grid.setColumnStretch(1, 1)
-                group_layout.addLayout(grid)
-            section.addWidget(group)
-            section.addStretch()
-            self.shop_groups[category] = group
-        special = QGroupBox("🎪 永久特技 · 购买一次永久拥有")
-        special_layout = QVBoxLayout(special)
-        self.shop_trick_buttons = {}
-        for trick_id, product in self.model.catalog.trick_products.items():
-            line = QHBoxLayout()
-            name = label(f"{product['icon']} {product['name']}", "sectionTitle")
-            name.setToolTip(product["description"])
-            line.addWidget(name, 1)
-            buy = QPushButton("购买特技")
-            buy.setProperty("primary", True)
-            buy.clicked.connect(lambda checked=False, key=trick_id: self.model.buy_trick(key))
-            perform = QPushButton("立即表演")
-            perform.clicked.connect(lambda checked=False, key=trick_id: self.trick_requested.emit(key))
-            line.addWidget(buy)
-            line.addWidget(perform)
-            special_layout.addLayout(line)
-            status = label("", "muted")
-            special_layout.addWidget(status)
-            self.shop_trick_buttons[trick_id] = (buy, perform, status)
-        grocery_layout.addWidget(special)
-        self.shop_groups["trick"] = special
-
-    def _build_achievements(self) -> None:
-        page = self._page("成就图鉴")
-        header = QHBoxLayout()
-        self.achievement_summary = label("", "sectionTitle")
-        header.addWidget(self.achievement_summary, 1)
-        self.tier_filter = QComboBox()
-        self.tier_filter.addItems(["全部成就", "一阶 · 初识汤圆", "二阶 · 渐入佳境", "三阶 · 隐藏彩蛋"])
-        self.tier_filter.currentIndexChanged.connect(self._filter_tiers)
-        header.addWidget(self.tier_filter)
-        page.addLayout(header)
-        for tier, title in enumerate(("一阶 · 初识汤圆", "二阶 · 渐入佳境", "三阶 · 隐藏彩蛋"), 1):
-            group = QGroupBox(title)
-            content = QVBoxLayout(group)
-            content.setSpacing(12)
-            self.tier_groups[tier] = group
-            for achievement in self.model.catalog.achievements:
-                if achievement["tier"] != tier:
-                    continue
-                aid = achievement["id"]
-                panel, body = card()
-                body.addWidget(label(f"🏆 《{achievement['name']}》", "sectionTitle"))
-                body.addWidget(label(achievement.get("description", ""), "muted"))
-                title_reward = f" + 称号【{achievement['title']}】" if achievement.get("title") else ""
-                body.addWidget(label(f"奖励：{achievement['coins']} 糯米币{title_reward}", "muted"))
-                bar = QProgressBar()
-                bar.setRange(0, achievement["target"])
-                body.addWidget(bar)
-                line = QHBoxLayout()
-                status = label("")
-                line.addWidget(status, 1)
-                claim = QPushButton("")
-                claim.setProperty("primary", True)
-                claim.clicked.connect(lambda checked=False, key=aid: self.model.claim_achievement(key))
-                line.addWidget(claim)
-                equip = QPushButton("佩戴称号")
-                equip.clicked.connect(lambda checked=False, title=achievement.get("title", ""): self.model.equip_title(title))
-                line.addWidget(equip)
-                body.addLayout(line)
-                content.addWidget(panel)
-                self.achievement_widgets[aid] = (bar, status, claim, equip)
-            page.addWidget(group)
-        page.addStretch()
-
-    def _filter_tiers(self, index: int) -> None:
-        for tier, group in self.tier_groups.items():
-            group.setVisible(index == 0 or index == tier)
-
-    def _build_customization(self) -> None:
-        self.dress_tabs = QTabWidget()
-        self.dress_tabs.setObjectName("dressTabs")
-        self.dress_tabs.setTabBar(NavigationTabBar(self.dress_tabs))
-        self.dress_tabs.setDocumentMode(True)
-        self.dress_tabs.tabBar().setExpanding(True)
-        self.dress_tabs.tabBar().setDrawBase(False)
-        self.dress_tabs.tabBar().setAutoFillBackground(True)
-        dressing = QWidget()
-        dressing_layout = QVBoxLayout(dressing)
-        dressing_layout.setContentsMargins(0, 12, 0, 0)
-        dressing_layout.addWidget(self.dress_tabs)
-        self.tabs.addTab(dressing, "装扮")
-        page = self._page("皮肤衣橱", self.dress_tabs)
-        wardrobe, content = card()
-        content.addWidget(label("🎨 皮肤衣橱与自定义导入", "sectionTitle"))
-        content.addWidget(label("本地 PNG / 动态 GIF 和多状态动作包，都能共享果冻形变、风味染色、挂件与特技。", "muted"))
-        line = QHBoxLayout()
-        line.addWidget(label("当前外观"))
-        self.skin_combo = QComboBox()
-        self.skin_combo.setObjectName("skinCombo")
-        self.skin_combo.setMinimumWidth(240)
-        self.skin_combo.currentIndexChanged.connect(self._skin_selected)
-        line.addWidget(self.skin_combo, 1)
-        content.addLayout(line)
-        self.skin_details = label("", "muted")
-        content.addWidget(self.skin_details)
-        unlock_line = QHBoxLayout()
-        self.import_status = label("")
-        unlock_line.addWidget(self.import_status, 1)
-        self.import_unlock_button = QPushButton("50 糯米币提前解锁")
-        self.import_unlock_button.setProperty("primary", True)
-        self.import_unlock_button.clicked.connect(lambda checked=False: self.import_unlock_requested.emit())
-        unlock_line.addWidget(self.import_unlock_button)
-        content.addLayout(unlock_line)
-        self.white_background_check = QCheckBox("自动移除纯白背景（PNG，保留主体内部白色）")
-        self.white_background_check.setChecked(True)
-        content.addWidget(self.white_background_check)
-        actions = QHBoxLayout()
-        self.import_buttons = {}
-        for key, title, handler in (
-            ("image", "📂 导入本地图片 / GIF", self._pick_image),
-            ("folder", "📁 导入动作包文件夹", self._pick_folder),
-            ("zip", "🗜 导入 ZIP 动作包", self._pick_zip),
-        ):
-            button = QPushButton(title)
-            button.setObjectName(f"import_{key}")
-            button.clicked.connect(handler)
-            actions.addWidget(button, 1)
-            self.import_buttons[key] = button
-        content.addLayout(actions)
-        self.export_template_button = QPushButton("📄 导出皮肤包模板")
-        self.export_template_button.clicked.connect(self._export_template)
-        content.addWidget(self.export_template_button)
-        content.addWidget(label("单个文件不超过 20 MB；导入后复制到本地皮肤沙箱，原文件保持原样。GIF 保留动画，大图按比例限制纹理尺寸。", "muted"))
-        self.skin_disclaimer = label("ℹ️ 免责声明：本软件为纯本地渲染工具，自定义导入的图片/GIF仅保存在您的电脑本地，不会上传至任何服务器。请确保所导入素材仅供个人学习欣赏或已取得合法授权。", "disclaimer")
-        content.addWidget(self.skin_disclaimer)
-        page.addWidget(wardrobe)
-        page.addStretch()
-
-        page = self._page("挂件装扮", self.dress_tabs)
-        accessories, body = card()
-        body.addWidget(label("👑 独立挂件与周身特效", "sectionTitle"))
-        body.addWidget(label("挂件随外观一起呼吸、回弹、旋转；头顶、面部、周身三个位置可同时搭配。", "muted"))
-        line = QHBoxLayout()
-        line.addWidget(label("头顶挂件"))
-        self.head_combo = QComboBox()
-        self.head_combo.setObjectName("headAccessory")
-        for title, item in (("不佩戴", ""), ("🌱 呆毛嫩芽 · Lv.2", "sprout"),
-                            ("👑 迷你金皇冠 · Lv.3", "crown"), ("🎀 樱粉蝴蝶结 · Lv.6", "bow")):
-            self.head_combo.addItem(title, item)
-        self.head_combo.currentIndexChanged.connect(self._head_selected)
-        line.addWidget(self.head_combo, 1)
-        body.addLayout(line)
-        self.face_check = QCheckBox("🕶️ 酷盖墨镜 · Lv.5")
-        self.effect_check = QCheckBox("♨️ 暖心热气 / 星光 · Lv.4")
-        self.face_check.toggled.connect(lambda enabled: self.accessory_requested.emit("face", "sunglasses" if enabled else ""))
-        self.effect_check.toggled.connect(lambda enabled: self.accessory_requested.emit("effect", "steam" if enabled else ""))
-        body.addWidget(self.face_check)
-        body.addWidget(self.effect_check)
-        offset = QHBoxLayout()
-        offset.addWidget(label("挂件垂直微调"))
-        self.offset_slider = QSlider(Qt.Orientation.Horizontal)
-        self.offset_slider.setObjectName("accessoryOffset")
-        self.offset_slider.setRange(-30, 30)
-        self.offset_slider.setSingleStep(1)
-        self.offset_slider.setTickInterval(10)
-        self.offset_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.offset_slider.valueChanged.connect(self._offset_changed)
-        offset.addWidget(self.offset_slider, 1)
-        self.offset_value = label("0 px")
-        self.offset_value.setMinimumWidth(52)
-        offset.addWidget(self.offset_value)
-        reset_offset = QPushButton("归零")
-        reset_offset.clicked.connect(lambda checked=False: self.offset_slider.setValue(0))
-        offset.addWidget(reset_offset)
-        body.addLayout(offset)
-        body.addWidget(label("负值向上，正值向下；范围 -30～+30 px，适配不同高矮的自定义图片。", "muted"))
-        page.addWidget(accessories)
-        page.addStretch()
-
-        page = self._page("特技与等级奖励", self.dress_tabs)
-        tricks, body = card()
-        body.addWidget(label("🎪 表演特技", "sectionTitle"))
-        body.addWidget(label("也可以右键桌宠，在“表演特技”中触发。双击仍然打开主面板。", "muted"))
-        self.trick_buttons = {}
-        self.trick_descriptions = {
-            "flip": ("🌀 原地 360° 空翻", "Lv.2 · 冷却 5 秒 · 每次表演好感 +5"),
-            "clone": ("✨ Q弹影分身", "Lv.4 · 两个分身弹跳 2.5 秒后合体"),
-            "ball": ("⚽ 玩芝麻弹力球", "Lv.5 · 顶球互动 5 秒"),
-        }
+            page = self._page(title, self.shop_tabs); grid = QGridLayout(); grid.setSpacing(10)
+            entries = sorted(((k, v) for k, v in self.model.catalog.items.items() if v["category"] == category), key=lambda row: row[1]["tier"])
+            for i, (key, item) in enumerate(entries):
+                frame, body = self._item_card(key, item["name"])
+                details = label("", "itemTag"); self.shop_details[key] = details; body.addWidget(details)
+                time = label("", "muted"); body.addWidget(time)
+                line = QHBoxLayout(); buy = self._button("购买"); use = self._button("购买并赠送" if category == "gift" else "购买并投喂")
+                use.setProperty("primary", True)
+                buy.clicked.connect(lambda checked=False, k=key: self.model.buy_item(k))
+                use.clicked.connect(lambda checked=False, k=key: self.model.buy_item(k, feed_now=True))
+                line.addWidget(buy); line.addWidget(use); body.addLayout(line)
+                grid.addWidget(frame, i // 2, i % 2); self.shop_buttons[key] = buy, use, time
+            grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); page.addLayout(grid); page.addStretch()
+            self.shop_groups[category] = self.shop_tabs.widget(self.shop_tabs.count() - 1)
+        self._furniture_market = self._page("家居家具", self.market_tabs)
+        page = self._page("特技图鉴", self.market_tabs); self.shop_trick_buttons = {}
         for key, product in self.model.catalog.trick_products.items():
-            self.trick_descriptions[key] = (self.model.trick_name(key),
-                                            f"商城永久解锁 · {product['cost']} 糯米币 · 约12秒 · 冷却20秒")
-        for key, (title, description) in self.trick_descriptions.items():
-            row = QHBoxLayout()
-            row.addWidget(label(description, "muted"), 1)
-            button = QPushButton(title)
-            button.setProperty("primary", True)
-            button.setMinimumWidth(205)
-            button.clicked.connect(lambda checked=False, trick=key: self.trick_requested.emit(trick))
-            self.trick_buttons[key] = button
-            row.addWidget(button)
-            body.addLayout(row)
-        self.trick_status = label("", "muted")
-        body.addWidget(self.trick_status)
-        page.addWidget(tricks)
+            frame, body = self._item_card(key, product["name"])
+            body.addWidget(label("购买一次，永久学会", "itemTag")); status = label("", "muted"); body.addWidget(status)
+            row = QHBoxLayout(); buy = self._button("学习特技"); perform = self._button("立即表演")
+            buy.clicked.connect(lambda checked=False, k=key: self.model.buy_trick(k)); perform.clicked.connect(lambda checked=False, k=key: self.trick_requested.emit(k))
+            row.addWidget(buy); row.addWidget(perform); body.addLayout(row); page.addWidget(frame)
+            self.shop_trick_buttons[key] = buy, perform, status; self.shop_groups["trick"] = frame
+        page.addStretch()
 
-        milestones, body = card()
-        body.addWidget(label("✨ 好感等级奖励", "sectionTitle"))
-        self.perk_summary = label("", "muted")
-        body.addWidget(self.perk_summary)
-        grid = QGridLayout()
-        grid.setSpacing(12)
-        self.milestone_widgets = {}
+    def _build_achievements(self):
+        page = self._page("成就图鉴")
+        settings = self._button("游戏设置", "settings"); settings.clicked.connect(lambda: self.show_section("settings")); page.addWidget(settings)
+        self.achievement_summary = label("", "sectionTitle"); page.addWidget(self.achievement_summary)
+        self.tier_filter = IconChoice(self.atlas, "achievements")
+        # Filters use compact illustrated buttons, keeping the gallery itself large.
+        self.tier_filter.addItems(["全部成就", "初识汤圆", "渐入佳境", "隐藏彩蛋"])
+        self.tier_filter.currentIndexChanged.connect(self._filter_tiers)
+        for index, art in enumerate(("achievements", "first_poke", "crown", "clone")):
+            tile = self.tier_filter.buttons[index]
+            tile.setIcon(self.atlas.icon(art)); tile.setProperty("icon_id", art)
+            self.tier_filter.grid.removeWidget(tile); self.tier_filter.grid.addWidget(tile, 0, index)
+        page.addWidget(self.tier_filter)
+        for tier, title in enumerate(("初识汤圆", "渐入佳境", "隐藏彩蛋"), 1):
+            group = QFrame(); group.setObjectName("achievementTier"); body = QVBoxLayout(group); body.setContentsMargins(0, 0, 0, 0)
+            body.addWidget(label(title, "sectionTitle")); grid = QGridLayout(); grid.setSpacing(10); self.tier_groups[tier] = group
+            entries = [a for a in self.model.catalog.achievements if a["tier"] == tier]
+            for i, achievement in enumerate(entries):
+                aid = achievement["id"]; frame, content = self._item_card(aid, achievement["name"])
+                frame.setToolTip(achievement["description"])
+                reward = f"{achievement['coins']} 糯米币" + (f" / {achievement['title']}" if achievement.get("title") else "")
+                content.addWidget(label(reward, "itemTag")); bar = QProgressBar(); bar.setRange(0, achievement["target"]); content.addWidget(bar)
+                status = label("", "muted"); content.addWidget(status); claim = self._button(""); claim.setProperty("primary", True)
+                claim.clicked.connect(lambda checked=False, a=aid: self.model.claim_achievement(a)); content.addWidget(claim)
+                equip = self._button("佩戴称号"); equip.clicked.connect(lambda checked=False, t=achievement.get("title", ""): self.model.equip_title(t)); content.addWidget(equip)
+                grid.addWidget(frame, i // 2, i % 2); self.achievement_widgets[aid] = bar, status, claim, equip
+            grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); body.addLayout(grid); page.addWidget(group)
+        page.addStretch()
+
+    def _filter_tiers(self, index):
+        for tier, group in self.tier_groups.items(): group.setVisible(index == 0 or index == tier)
+
+    def _build_customization(self):
+        dressing = QWidget(); body = QVBoxLayout(dressing); body.setContentsMargins(0, 0, 0, 0)
+        furniture = self._button("小窝装修", "home"); furniture.clicked.connect(lambda: self.show_section("furniture")); body.addWidget(furniture)
+        self.dress_tabs = self._subtabs("dressTabs"); body.addWidget(self.dress_tabs, 1); self.tabs.addTab(dressing, "装扮")
+        page = self._page("皮肤衣橱", self.dress_tabs)
+        self.skin_combo = IconChoice(self.atlas); self.skin_combo.setObjectName("skinChoices"); self.skin_combo.currentIndexChanged.connect(self._skin_selected)
+        page.addWidget(self.skin_combo); self.skin_details = label("", "muted"); page.addWidget(self.skin_details)
+        self.import_status = label("", "itemTag"); page.addWidget(self.import_status)
+        self.import_unlock_button = self._button("50币提前打开衣橱", "coin")
+        self.import_unlock_button.clicked.connect(self.import_unlock_requested.emit); page.addWidget(self.import_unlock_button)
+        self.white_background_check = GameToggle("纯白背景移除", "remove", self.atlas); self.white_background_check.setChecked(True); page.addWidget(self.white_background_check)
+        self.import_buttons = {}; actions = QGridLayout()
+        for i, (key, text, handler, art) in enumerate((("image", "导入PNG / GIF", self._pick_image, "import_image"),
+            ("folder", "导入动作文件夹", self._pick_folder, "import_folder"), ("zip", "导入ZIP动作包", self._pick_zip, "import_zip"))):
+            button = IconTile(text, art, self.atlas); button.clicked.connect(handler); actions.addWidget(button, i // 3, i % 3); self.import_buttons[key] = button
+        page.addLayout(actions); self.export_template_button = self._button("导出皮肤模板", "template"); self.export_template_button.clicked.connect(self._export_template); page.addWidget(self.export_template_button)
+        self.skin_disclaimer = label("免责声明：本软件为纯本地渲染工具，自定义导入的图片/GIF仅保存在您的电脑本地，不会上传至任何服务器。请确保所导入素材仅供个人学习欣赏或已取得合法授权。", "disclaimer")
+        page.addWidget(self.skin_disclaimer); page.addStretch()
+        page = self._page("挂件装扮", self.dress_tabs)
+        self.head_combo = IconChoice(self.atlas); self.head_combo.setObjectName("headChoices")
+        for title, key in (("不佩戴", ""), ("呆毛嫩芽", "sprout"), ("迷你金皇冠", "crown"), ("樱粉蝴蝶结", "bow")):
+            self.head_combo.addItem(title, key, key or "remove")
+        self.head_combo.currentIndexChanged.connect(self._head_selected); page.addWidget(self.head_combo)
+        row = QHBoxLayout(); self.face_check = IconTile("酷盖墨镜", "sunglasses", self.atlas); self.face_check.setCheckable(True)
+        self.effect_check = IconTile("暖心热气", "steam", self.atlas); self.effect_check.setCheckable(True)
+        self.face_check.toggled.connect(lambda on: self.accessory_requested.emit("face", "sunglasses" if on else ""))
+        self.effect_check.toggled.connect(lambda on: self.accessory_requested.emit("effect", "steam" if on else ""))
+        row.addWidget(self.face_check); row.addWidget(self.effect_check); page.addLayout(row)
+        page.addWidget(label("挂件高度", "sectionTitle")); line = QHBoxLayout()
+        self.offset_slider = QSlider(Qt.Orientation.Horizontal); self.offset_slider.setRange(-30, 30); self.offset_slider.valueChanged.connect(self._offset_changed)
+        self.offset_value = label("0 px"); line.addWidget(self.offset_slider, 1); line.addWidget(self.offset_value); page.addLayout(line)
+        page.addStretch()
+        page = self._page("特技与等级奖励", self.dress_tabs); grid = QGridLayout(); self.trick_buttons = {}
+        self.trick_descriptions = {"flip": ("原地空翻", "Lv.2"), "clone": ("Q弹影分身", "Lv.4"), "ball": ("芝麻弹力球", "Lv.5")}
+        for key, item in self.model.catalog.trick_products.items(): self.trick_descriptions[key] = (plain_text(item["name"]), "商城永久学习")
+        for i, (key, (name, requirement)) in enumerate(self.trick_descriptions.items()):
+            button = IconTile(name, key, self.atlas); button.badge = requirement
+            button.clicked.connect(lambda checked=False, k=key: self.trick_requested.emit(k)); grid.addWidget(button, i // 2, i % 2); self.trick_buttons[key] = button
+        page.addLayout(grid); self.trick_status = label("", "muted"); page.addWidget(self.trick_status)
+        self.perk_summary = label("", "sectionTitle"); page.addWidget(self.perk_summary); grid = QGridLayout(); self.milestone_widgets = {}
         for level in range(1, 7):
-            item = label("", "milestone")
-            item.setMinimumHeight(68)
-            grid.addWidget(item, (level - 1) // 2, (level - 1) % 2)
-            self.milestone_widgets[level] = item
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        body.addLayout(grid)
-        self.debug_unlock_check = QCheckBox("🧪 一键解锁全部等级特权 / 挂件（开发模式）")
-        self.debug_unlock_check.setObjectName("debugPerks")
-        self.debug_unlock_check.toggled.connect(self.debug_unlock_requested.emit)
-        self.debug_unlock_check.hide()
-        body.addWidget(self.debug_unlock_check)
-        page.addWidget(milestones)
-        page.addStretch()
+            frame, body = self._item_card(f"level_{level}", f"Lv.{level}"); text = label("", "milestone"); body.addWidget(text)
+            grid.addWidget(frame, (level - 1) // 2, (level - 1) % 2); self.milestone_widgets[level] = text
+        page.addLayout(grid)
+        self.debug_unlock_check = GameToggle("全部等级特权试用", "debug", self.atlas); self.debug_unlock_check.setObjectName("debugPerks")
+        self.debug_unlock_check.toggled.connect(self.debug_unlock_requested.emit); self.debug_unlock_check.hide(); page.addWidget(self.debug_unlock_check); page.addStretch()
 
-    def _build_settings(self) -> None:
+    def _build_settings(self):
         page = self._page("设置")
-        settings, content = card()
-        content.addWidget(label("桌面陪伴设置", "sectionTitle"))
-        self.pin_check = QCheckBox("固定当前位置（仍可拖动调整）")
-        self.dev_check = QCheckBox("开发测试加速（饱食度 2 秒 / 点；正常模式满值持续 8 小时）")
-        self.flat_check = QCheckBox("手动测试饿扁（不改变真实饥饿）")
-        self.pin_check.toggled.connect(self.pin_requested.emit)
-        self.dev_check.toggled.connect(self.dev_requested.emit)
-        self.flat_check.toggled.connect(self.flat_requested.emit)
-        for widget in (self.pin_check, self.dev_check, self.flat_check):
-            content.addWidget(widget)
-        buttons = QGridLayout()
-        for index, (title, signal) in enumerate((("重置回主屏幕右下角", self.reset_requested),
-                                               ("调试：饥饿归零", self.hunger_zero_requested),
-                                               ("调试：恢复满饥饿", self.hunger_full_requested),
-                                               ("调试：立即结算在线糯米币", self.gift_requested),
-                                               ("重新加载当前皮肤", self.reload_requested))):
-            button = QPushButton(title)
-            button.clicked.connect(lambda checked=False, output=signal: output.emit())
-            buttons.addWidget(button, index // 2, index % 2)
-        content.addLayout(buttons)
-        page.addWidget(settings)
+        self.pin_check = GameToggle("固定桌宠位置", "desktop", self.atlas)
+        self.dev_check = GameToggle("加速养成计时", "debug", self.atlas)
+        self.flat_check = GameToggle("测试饿扁外观", "avatar", self.atlas)
+        self.pin_check.toggled.connect(self.pin_requested.emit); self.dev_check.toggled.connect(self.dev_requested.emit); self.flat_check.toggled.connect(self.flat_requested.emit)
+        for widget in (self.pin_check, self.dev_check, self.flat_check): page.addWidget(widget)
+        for text, signal, art in (("重置桌宠位置", self.reset_requested, "desktop"), ("调试：饥饿归零", self.hunger_zero_requested, "avatar"),
+            ("恢复满饱食度", self.hunger_full_requested, "sugar"), ("结算在线收入", self.gift_requested, "coin"), ("重新加载外观与图标", self.reload_requested, "dress")):
+            button = self._button(text, art); button.clicked.connect(lambda checked=False, s=signal: s.emit()); page.addWidget(button)
         page.addStretch()
 
+    def _build_furniture(self):
+        page = self._page("家具装修"); back = self._button("随身装扮", "dress"); back.clicked.connect(lambda: self.show_section("dress")); page.addWidget(back)
+        self.furniture_buttons = {}; self.furniture_shop_buttons = {}
+        for slot, title in (("theme", "房间主题"), ("rug", "坐垫与地毯"), ("wall", "墙面装饰"), ("corner", "角落摆件"), ("bowl", "专属食盆")):
+            page.addWidget(label(title, "sectionTitle")); grid = QGridLayout(); grid.setSpacing(9)
+            entries = [(key, item) for key, item in self.model.catalog.furniture.items() if item["slot"] == slot]
+            for i, (key, item) in enumerate(entries):
+                tile = IconTile(item["name"], key, self.atlas); tile.setCheckable(True)
+                tile.clicked.connect(lambda checked=False, s=slot, fid=key: self.furniture_requested.emit(s, fid))
+                grid.addWidget(tile, i // 3, i % 3); self.furniture_buttons[key] = tile
+            if slot in ("wall", "corner"):
+                clear = IconTile("收起装饰", "remove", self.atlas); clear.clicked.connect(lambda checked=False, s=slot: self.furniture_requested.emit(s, ""))
+                grid.addWidget(clear, 0, len(entries))
+            page.addLayout(grid)
+        self.lamp_check = GameToggle("落地灯暖光", "lamp", self.atlas); self.lamp_check.toggled.connect(self.model.set_lamp_on); page.addWidget(self.lamp_check)
+        to_shop = self._button("选购家具", "shop"); to_shop.clicked.connect(lambda: (self.show_section("shop"), self.market_tabs.setCurrentIndex(1))); page.addWidget(to_shop); page.addStretch()
+        grid = QGridLayout(); grid.setSpacing(10)
+        for i, (key, item) in enumerate(self.model.catalog.furniture.items()):
+            frame, body = self._item_card(key, item["name"]); body.addWidget(label("初始自带" if item["default"] else f"{item['price']} 糯米币", "itemTag"))
+            button = self._button("购买家具"); button.clicked.connect(lambda checked=False, fid=key: self.model.buy_furniture(fid)); body.addWidget(button)
+            grid.addWidget(frame, i // 2, i % 2); self.furniture_shop_buttons[key] = button
+        grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); self._furniture_market.addLayout(grid); self._furniture_market.addStretch()
     def set_phase4_context(self, skins: list[dict], dev_mode: bool = False) -> None:
         """Refresh locally validated wardrobe metadata supplied by the controller."""
         entries = [{"id": "default", "name": "白汤圆", "author": "默认皮肤"}]
@@ -760,8 +522,8 @@ class DashboardWindow(QMainWindow):
             if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or entry["id"] in known:
                 continue
             known.add(entry["id"])
-            entries.append({"id": entry["id"], "name": str(entry.get("name", entry["id"]))[:120],
-                            "author": str(entry.get("author", "本地导入"))[:120]})
+            entries.append({"id": entry["id"], "name": plain_text(entry.get("name", entry["id"]))[:120],
+                            "author": plain_text(entry.get("author", "本地导入"))[:120]})
         self._skin_entries = entries
         self._phase4_dev_mode = bool(dev_mode)
         self.debug_unlock_check.setVisible(self._phase4_dev_mode)
@@ -818,9 +580,9 @@ class DashboardWindow(QMainWindow):
         self.skin_combo.setCurrentIndex(self.skin_combo.findData(selected))
         self.skin_combo.blockSignals(False)
         metadata = next((entry for entry in entries if entry["id"] == selected), entries[0])
-        self.skin_details.setText(f"作者：{metadata['author']} · 外观 ID：{selected}")
+        self.skin_details.setText(plain_text(f"作者：{metadata['author']}"))
         allowed = self._has_perk("custom_import")
-        self.import_status.setText("✅ 自定义导入已解锁" if allowed else "🔒 好感 Lv.3 免费解锁，也可以提前开启")
+        self.import_status.setText(" 自定义导入已解锁" if allowed else " 好感 Lv.3 免费解锁，也可以提前开启")
         self.import_unlock_button.setVisible(not allowed)
         self.import_unlock_button.setEnabled(not allowed and data.coins >= 50)
         for button in self.import_buttons.values():
@@ -834,6 +596,10 @@ class DashboardWindow(QMainWindow):
             self.head_combo.model().item(index).setEnabled(self._has_perk(f"accessory_{item_id}"))
         self.head_combo.setCurrentIndex(max(0, self.head_combo.findData(head)))
         self.head_combo.blockSignals(False)
+        for index, tile in enumerate(self.head_combo.buttons):
+            key = self.head_combo.itemData(index)
+            tile.badge = "已穿戴" if key and key == head else "不佩戴" if not key else "可穿戴" if self._has_perk("accessory_" + key) else "未解锁"
+            tile.update()
         for checkbox, value, perk in ((self.face_check, data.accessories.get("face") == "sunglasses", "accessory_sunglasses"),
                                       (self.effect_check, data.accessories.get("effect") == "steam", "effect_steam"),
                                       (self.debug_unlock_check, self.model.debug_unlock_all, "")):
@@ -842,6 +608,9 @@ class DashboardWindow(QMainWindow):
             checkbox.blockSignals(False)
             if perk:
                 checkbox.setEnabled(self._has_perk(perk) or bool(value))
+        self.face_check.badge = "已穿戴" if self.face_check.isChecked() else "Lv.5"
+        self.effect_check.badge = "已穿戴" if self.effect_check.isChecked() else "Lv.4"
+        self.face_check.update(); self.effect_check.update()
         self.offset_slider.blockSignals(True)
         value = int(data.accessories.get("offset_y", 0))
         self.offset_slider.setValue(value)
@@ -857,7 +626,7 @@ class DashboardWindow(QMainWindow):
         for key, (buy, perform, status) in self.shop_trick_buttons.items():
             product = self.model.catalog.trick_products[key]
             owned = key in data.purchased_tricks
-            buy.setText("✅ 已永久解锁" if owned else f"购买特技 · {product['cost']} 币")
+            buy.setText(" 已永久解锁" if owned else f"购买特技 · {product['cost']} 币")
             buy.setEnabled(not owned and data.coins >= product["cost"])
             perform.setEnabled(self.model.can_perform_trick(key))
             remaining = math.ceil(self.model.trick_cooldowns[key])
@@ -872,7 +641,7 @@ class DashboardWindow(QMainWindow):
             names = [self.model.catalog.perks[perk]["name"] for perk in milestone.get("perks", []) if perk in self.model.catalog.perks]
             description = "、".join(names) or "白汤圆皮肤 · 基础互动"
             unlocked = bool(milestone.get("unlocked", data.affection_level >= level))
-            widget.setText(f"{'✅' if unlocked else '🔒'} Lv.{level}  {milestone.get('label', '')}\n{description}")
+            widget.setText(f"{'' if unlocked else ''} Lv.{level}  {milestone.get('label', '')}\n{description}")
             widget.setProperty("unlocked", unlocked)
             widget.style().unpolish(widget)
             widget.style().polish(widget)
@@ -887,118 +656,93 @@ class DashboardWindow(QMainWindow):
         if self.isVisible():
             self.refresh()
 
-    def refresh(self, _state: dict | None = None) -> None:
+    def refresh(self, _state=None):
         data = self.model.data
-        self.balance.setText(f"🪙 {data.coins} 糯米币")
-        self.pet_name.setText(f"{data.name}  ·  {data.equipped_title}")
-        current = [self.title_combo.itemText(i) for i in range(self.title_combo.count())]
+        self.balance.setText(str(data.coins))
+        self.pet_name.setText(plain_text(data.name))
+        titles = [(plain_text(t), t) for t in data.titles]
         self.title_combo.blockSignals(True)
-        if current != data.titles:
+        if titles != self.title_combo.entries:
             self.title_combo.clear()
-            self.title_combo.addItems(data.titles)
-        self.title_combo.setCurrentText(data.equipped_title)
-        self.title_combo.blockSignals(False)
+            for title, raw in titles: self.title_combo.addItem(title, raw)
+        self.title_combo.setCurrentIndex(self.title_combo.findData(data.equipped_title)); self.title_combo.blockSignals(False)
         required = self.model.exp_required
-        self.level_label.setText(f"好感 Lv.{data.affection_level} / 30" + (" · 已满级" if data.affection_level == 30 else f" · {data.affection_exp}/{required} EXP"))
-        self.exp_bar.setRange(0, required)
-        self.exp_bar.setValue(required if data.affection_level == 30 else data.affection_exp)
-        self.exp_bar.setFormat("满级 · 陪伴仍在继续" if data.affection_level == 30 else f"好感经验 {data.affection_exp} / {required}")
-        self.hunger_bar.setValue(round(data.hunger))
-        self.hunger_bar.setFormat(f"饱食度 {data.hunger:g} / 100" + (" · 饿扁啦，喂一口就恢复" if self.model.starving else ""))
+        self.level_label.setText(f"Lv.{data.affection_level} · {data.affection_exp}/{required} EXP")
+        self.exp_bar.setRange(0, required); self.exp_bar.setValue(required if data.affection_level == 30 else data.affection_exp)
+        self.exp_bar.setFormat(f"好感 {data.affection_exp}/{required}")
+        self.hunger_bar.setValue(round(data.hunger)); self.hunger_bar.setFormat(f"饱食度 {data.hunger:g}/100")
         buff = self.model.buff_view()
-        self.buff_label.setText(f"{buff['name']} · 剩余 {math.ceil(buff['remaining_seconds'])} 秒" + (f" · 狂奔 / 跺脚 {math.ceil(buff['behavior_remaining'])} 秒" if buff.get("behavior_remaining") else "") if buff else "原味白汤圆 · 当前没有风味 Buff")
+        self.buff_label.setText(f"{buff['name']} · {math.ceil(buff['remaining_seconds'])}秒" if buff else "原味汤圆")
         stats = data.stats
-        self.stats_label.setText(f"累计戳戳 {stats['total_clicks']} 次  ·  投喂 {stats['total_feeds']} 次  ·  在线入账 {stats['total_gifts']} 次  ·  赠礼 {stats['total_presents']} 次\n在线陪伴 {int(stats['total_idle_seconds'] // 60)} 分钟  ·  摸头 {stats['total_pets']} 次  ·  高空落地 {stats['total_drops']} 次")
+        self.stats_label.setText(f"戳戳 {stats['total_clicks']} · 投喂 {stats['total_feeds']} · 赠礼 {stats['total_presents']} 次 · 在线入账 {stats['total_gifts']}")
         owned = False
-        for item_id, (row, text, button) in self.inventory_widgets.items():
-            item, count = self.model.item(item_id), data.inventory.get(item_id, 0)
-            row.setVisible(count > 0)
-            button.setEnabled(count > 0)
+        for key, (frame, text, button) in self.inventory_widgets.items():
+            item, count = self.model.item(key), data.inventory.get(key, 0)
+            frame.setVisible(count > 0); button.setEnabled(count > 0); owned |= count > 0
             effect = f"好感 +{item['exp']}" if item["category"] == "gift" else f"饱食度 +{item['hunger']:g}"
-            text.setText(f"{item['icon']} {item['name']} × {count}  ·  {item['tier']}级{'礼物' if item['category'] == 'gift' else '食物'}\n{effect}")
-            owned = owned or count > 0
+            text.setText(f"{item['tier']}级 · {effect} · 剩余 {count}")
         self.empty_inventory.setVisible(not owned)
         unknown = [f"{key} ×{count}" for key, count in data.inventory.items() if key not in self.model.catalog.items and count > 0]
-        self.unknown_inventory.setText("保留的扩展物品：" + "、".join(unknown) if unknown else "")
-        self.unknown_inventory.setVisible(bool(unknown))
-        for item_id, (buy, feed, text) in self.shop_buttons.items():
-            item = self.model.item(item_id)
-            effect = f"好感 +{item['exp']}" if item["category"] == "gift" else f"饱食度 +{item['hunger']:g}"
-            self.shop_details[item_id].setText(f"{item['cost']} 糯米币   ·   {effect}")
-            buy.setEnabled(data.coins >= item["cost"])
-            feed.setEnabled(data.coins >= item["cost"])
-            text.setText(f"风味持续 {self.model.rules.buff_seconds:g} 秒" if "buff" in item else "赠送只增加好感，不影响饱食度" if item["category"] == "gift" else "食物只恢复饱食度，不增加好感")
+        self.unknown_inventory.setText("保留物品：" + plain_text("、".join(unknown)) if unknown else ""); self.unknown_inventory.setVisible(bool(unknown))
+        for key, (buy, use, time) in self.shop_buttons.items():
+            item = self.model.item(key); effect = f"好感 +{item['exp']}" if item["category"] == "gift" else f"饱食度 +{item['hunger']:g}"
+            self.shop_details[key].setText(f"{item['tier']}级 · {effect} · {item['cost']} 糯米币")
+            buy.setEnabled(data.coins >= item["cost"]); use.setEnabled(data.coins >= item["cost"])
+            time.setText((f"{item['buff']['name']} · {self.model.rules.buff_seconds:g}秒") if "buff" in item else "只增加好感" if item["category"] == "gift" else "补充饱食度")
         ready = set(data.unlocked_achievements) - set(data.claimed_achievements)
-        self.achievement_summary.setText(f"成就 {len(data.unlocked_achievements)}/{len(self.model.catalog.achievements)} · 待领取 {len(ready)}")
+        self.achievement_summary.setText(f"收集 {len(data.unlocked_achievements)}/{len(self.model.catalog.achievements)} · 可领取 {len(ready)}")
         for achievement in self.model.catalog.achievements:
-            aid = achievement["id"]
-            bar, status, claim, equip = self.achievement_widgets[aid]
+            aid = achievement["id"]; bar, status, claim, equip = self.achievement_widgets[aid]
             value, target = self.model.achievement_progress(achievement), achievement["target"]
-            bar.setValue(value)
-            bar.setFormat(f"{value} / {target}")
-            claimed = aid in data.claimed_achievements
-            unlocked = aid in data.unlocked_achievements
-            status.setText("✅ 已领取" if claimed else "🎉 已达成，记得领奖" if unlocked else "慢慢来，一起探索")
-            claim.setText("✅ 已领取" if claimed else "🎁 领取奖励" if unlocked else "未达成")
-            claim.setEnabled(unlocked and not claimed)
-            title = achievement.get("title")
-            equip.setVisible(bool(title) and claimed)
+            bar.setValue(value); bar.setFormat(f"{value}/{target}")
+            claimed, unlocked = aid in data.claimed_achievements, aid in data.unlocked_achievements
+            status.setText("已收集" if claimed else "达成了，领取礼物吧" if unlocked else "继续探索")
+            claim.setText("已领取" if claimed else "领取奖励" if unlocked else "未达成"); claim.setEnabled(unlocked and not claimed)
+            title = achievement.get("title"); equip.setVisible(bool(title) and claimed)
             equip.setEnabled(bool(title) and title in data.titles and title != data.equipped_title)
-            if title and title == data.equipped_title:
-                equip.setText("正在佩戴")
-            else:
-                equip.setText("佩戴称号")
+            equip.setText("已佩戴" if title == data.equipped_title else "佩戴称号")
+        self._refresh_home(); self._refresh_phase4()
 
-        self._refresh_home()
-        self._refresh_phase4()
-
-    def _refresh_home(self) -> None:
+    def _refresh_home(self):
         data = self.model.data
-        self.hud_name.setText(data.name + "的小窝")
-        self.hud_name.setToolTip(data.name + "的小窝")
-        self.hud_title.setText(f"{data.equipped_title}  ·  家里的陪伴和桌面陪伴，共享同一个汤圆")
+        self.hud_name.setText(plain_text(data.name)); self.hud_name.setToolTip(plain_text(data.name))
+        self.hud_title.setText(plain_text(data.equipped_title)); self.level_badge.setText(f"Lv.{data.affection_level}")
         required = self.model.exp_required
-        self.hud_exp_bar.setRange(0, required)
-        self.hud_exp_bar.setValue(required if data.affection_level == 30 else data.affection_exp)
-        self.hud_exp_bar.setFormat(f"Lv.{data.affection_level} · {data.affection_exp}/{required} EXP" if data.affection_level < 30 else "Lv.30 · 好感满级")
-        self.hud_hunger_bar.setValue(round(data.hunger))
-        self.hud_hunger_bar.setFormat(f"饱食度 {data.hunger:g} / 100")
-        buff = self.model.buff_view()
-        self.hud_buff.setText(f"{buff['name']} · {math.ceil(buff['remaining_seconds'])}秒" if buff else "🍡 原味 · 慢慢陪你")
-        self.overlay_button.blockSignals(True)
-        self.overlay_button.setChecked(data.overlay_visible)
-        self.overlay_button.setText("🖥 隐藏桌宠" if data.overlay_visible else "🖥 显示桌宠")
-        self.overlay_button.blockSignals(False)
+        self.hud_exp_bar.setRange(0, required); self.hud_exp_bar.setValue(required if data.affection_level == 30 else data.affection_exp)
+        self.hud_exp_bar.setFormat(f"好感 {data.affection_exp}/{required}" if data.affection_level < 30 else "好感满级")
+        self.hud_hunger_bar.setValue(round(data.hunger)); self.hud_hunger_bar.setFormat(f"饱食 {data.hunger:g}/100")
+        buff = self.model.buff_view(); self.hud_buff.setText(f"{buff['name']} {math.ceil(buff['remaining_seconds'])}秒" if buff else "原味汤圆")
+        self.overlay_button.blockSignals(True); self.overlay_button.setChecked(data.overlay_visible)
+        self.overlay_button.setText("收起桌宠" if data.overlay_visible else "桌面宠"); self.overlay_button.blockSignals(False)
         any_food = False
         for key, button in self.feeding_buttons.items():
-            count = data.inventory.get(key, 0)
-            item = self.model.catalog.items[key]
-            button.setText(f"{item['icon']} {item['name']} ×{count}")
-            button.setVisible(count > 0)
-            button.setEnabled(count > 0)
-            any_food = any_food or count > 0
-        self.shelf_empty.setVisible(not any_food)
-        self.feeding_scroll.setVisible(any_food)
+            count = data.inventory.get(key, 0); button.setText(f"×{count}"); button.setVisible(count > 0); button.setEnabled(count > 0); any_food |= count > 0
+        self.shelf_empty.setVisible(not any_food); self.feeding_scroll.setVisible(any_food)
         for key, button in self.furniture_buttons.items():
-            item = self.model.catalog.furniture[key]
-            owned = key in data.owned_furniture
+            item = self.model.catalog.furniture[key]; owned = key in data.owned_furniture
             equipped = data.equipped_furniture.get(item["slot"]) == key
-            button.setText("✓ 已布置" if equipped else "布置" if owned else "尚未拥有 · 商城选购")
-            button.setEnabled(owned and not equipped)
+            button.blockSignals(True); button.setChecked(equipped); button.blockSignals(False)
+            button.setEnabled(owned); button.badge = "已布置" if equipped else "未拥有" if not owned else "布置"; button.update()
         for key, button in self.furniture_shop_buttons.items():
-            owned = key in data.owned_furniture
-            item = self.model.catalog.furniture[key]
-            button.setText("✓ 已拥有" if owned else f"购买 · {item['price']} 币")
-            button.setEnabled(not owned and data.coins >= item["price"])
-        self.lamp_check.blockSignals(True)
-        self.lamp_check.setChecked(data.lamp_on)
-        self.lamp_check.setEnabled(data.equipped_furniture.get("corner") == "warm_lamp")
-        self.lamp_check.blockSignals(False)
+            item = self.model.catalog.furniture[key]; owned = key in data.owned_furniture
+            button.setText("已拥有" if owned else f"{item['price']} 币 · 购买"); button.setEnabled(not owned and data.coins >= item["price"])
+        self.lamp_check.blockSignals(True); self.lamp_check.setChecked(data.lamp_on); self.lamp_check.setEnabled(data.equipped_furniture.get("corner") == "warm_lamp"); self.lamp_check.blockSignals(False)
         if self._home_engine_owned:
-            self._home_engine.set_starving(self.model.starving)
-            self._home_engine.set_buff(self.model.buff_view())
-            self._home_renderer.set_accessories(self.model.effective_accessories())
+            self._home_engine.set_starving(self.model.starving); self._home_engine.set_buff(self.model.buff_view()); self._home_renderer.set_accessories(self.model.effective_accessories())
         self.room.set_home_state(self.model.snapshot())
+        renderer = self._renderer_provider(); source = renderer.source_state(self._home_engine.state)
+        if source in renderer.pixmaps:
+            self.hud_avatar.setPixmap(renderer.pixmaps[source].scaled(72, 68, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def reload_artwork(self):
+        self.atlas._cache.clear(); self.atlas._stamps.clear()
+        for widget in self.findChildren(QPushButton):
+            key = widget.property("icon_id")
+            if key: widget.setIcon(self.atlas.icon(key))
+        for widget in self.findChildren(QLabel):
+            key = widget.property("icon_id")
+            if key: widget.setPixmap(self.atlas.pixmap(key, int(widget.property("art_size") or 80)))
+        self.refresh(); self.room.update()
 
     def stop(self) -> None:
         self.room.stop()
@@ -1008,25 +752,21 @@ class DashboardWindow(QMainWindow):
             self._home_renderer.stop()
 
     def _feedback(self, text: str, _tone: str) -> None:
-        self.notice.setText(text)
+        self.notice.setText(plain_text(text))
 
-    def summon(self) -> None:
+    def summon(self):
         screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
         if screen is not None:
-            area = screen.availableGeometry()
-            width, height = max(1, area.width() - 24), max(1, area.height() - 40)
-            self.setMinimumSize(min(560, width), min(420, height))
-            self.resize(min(self.width(), width), min(self.height(), height))
+            area = screen.availableGeometry(); width, height = max(1, area.width() - 24), max(1, area.height() - 40)
+            self.setMinimumSize(min(580, width), min(500, height)); self.resize(min(self.width(), width), min(self.height(), height))
             frame = self.frameGeometry()
-            x = max(area.left(), min(frame.left(), area.right() - frame.width() + 1))
-            y = max(area.top(), min(frame.top(), area.bottom() - frame.height() + 1))
-            self.move(x, y)
-        self.showNormal()
-        self.raise_()
-        self.activateWindow()
-        self.refresh()
+            self.move(max(area.left(), min(frame.left(), area.right() - frame.width() + 1)), max(area.top(), min(frame.top(), area.bottom() - frame.height() + 1)))
+        self.show_section("home", animate=False)
+        self.showNormal(); self.raise_(); self.activateWindow(); self.refresh()
 
-    def closeEvent(self, event: QCloseEvent) -> None:
-        # Accepting closes/hides without deletion; ignoring would veto app.quit().
-        event.accept()
-        self.hide()
+    def hideEvent(self, event):
+        if hasattr(self, "drawer"): self.drawer.hide()
+        super().hideEvent(event)
+
+    def closeEvent(self, event: QCloseEvent):
+        event.accept(); self.drawer.hide(); self.hide()

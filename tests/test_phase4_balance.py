@@ -193,7 +193,7 @@ class NavigationAndCommerceTests(unittest.TestCase):
         self.assertTrue(self.window.tabs.widget(4).isAncestorOf(self.window.pin_check))
     def test_navigation_spans_divider_and_has_no_native_overlap(self):
         self.assertTrue(self.window.tabs.tabBar().isHidden())
-        self.assertEqual(list(self.window.nav_buttons), ['home','furniture','shop','dress','achievements'])
+        self.assertEqual(list(self.window.nav_buttons), ['home','bag','shop','dress','achievements'])
         for width in (700,900,1100):
             self.window.resize(width,760);QTest.qWait(25)
             buttons=list(self.window.nav_buttons.values())

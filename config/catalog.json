@@ -15,7 +15,7 @@
   "items": {
     "water": {
       "name": "温开水",
-      "icon": "💧",
+      "icon": "water",
       "cost": 10,
       "hunger": 15,
       "exp": 0,
@@ -24,7 +24,7 @@
     },
     "sugar": {
       "name": "白砂糖",
-      "icon": "🍬",
+      "icon": "sugar",
       "cost": 10,
       "hunger": 15,
       "exp": 0,
@@ -33,7 +33,7 @@
     },
     "osmanthus": {
       "name": "桂花酒酿",
-      "icon": "🍶",
+      "icon": "osmanthus",
       "cost": 45,
       "hunger": 65,
       "exp": 0,
@@ -42,7 +42,7 @@
     },
     "sesame": {
       "name": "黑芝麻糊",
-      "icon": "🥣",
+      "icon": "sesame",
       "cost": 25,
       "hunger": 35,
       "exp": 0,
@@ -57,7 +57,7 @@
     },
     "strawberry": {
       "name": "草莓果酱",
-      "icon": "🍓",
+      "icon": "strawberry",
       "cost": 25,
       "hunger": 35,
       "exp": 0,
@@ -72,7 +72,7 @@
     },
     "matcha": {
       "name": "宇治抹茶粉",
-      "icon": "🍵",
+      "icon": "matcha",
       "cost": 25,
       "hunger": 35,
       "exp": 0,
@@ -87,7 +87,7 @@
     },
     "chili": {
       "name": "变态辣油",
-      "icon": "🌶️",
+      "icon": "chili",
       "cost": 45,
       "hunger": 65,
       "exp": 0,
@@ -103,7 +103,7 @@
     },
     "paper_star": {
       "name": "折纸星星",
-      "icon": "🌟",
+      "icon": "paper_star",
       "category": "gift",
       "tier": 1,
       "hunger": 0,
@@ -112,7 +112,7 @@
     },
     "flower_bouquet": {
       "name": "小花束",
-      "icon": "💐",
+      "icon": "flower_bouquet",
       "category": "gift",
       "tier": 2,
       "hunger": 0,
@@ -121,7 +121,7 @@
     },
     "music_box": {
       "name": "八音盒",
-      "icon": "🎁",
+      "icon": "music_box",
       "category": "gift",
       "tier": 3,
       "hunger": 0,
@@ -130,7 +130,7 @@
     },
     "spinning_top": {
       "name": "陀螺",
-      "icon": "🌀",
+      "icon": "spinning_top",
       "category": "gift",
       "tier": 3,
       "hunger": 0,
@@ -271,62 +271,62 @@
   },
   "perks": {
     "accessory_sprout": {
-      "name": "🌱 呆毛嫩芽",
+      "name": "呆毛嫩芽",
       "level": 2,
       "kind": "accessory",
       "slot": "head",
       "item": "sprout"
     },
     "trick_flip": {
-      "name": "🌀 原地空翻",
+      "name": "原地空翻",
       "level": 2,
       "kind": "trick"
     },
     "accessory_crown": {
-      "name": "👑 迷你金皇冠",
+      "name": "迷你金皇冠",
       "level": 3,
       "kind": "accessory",
       "slot": "head",
       "item": "crown"
     },
     "custom_import": {
-      "name": "🎨 本地自定义皮肤导入",
+      "name": "本地自定义皮肤导入",
       "level": 3,
       "kind": "system"
     },
     "effect_steam": {
-      "name": "♨️ 暖心热气",
+      "name": "暖心热气",
       "level": 4,
       "kind": "accessory",
       "slot": "effect",
       "item": "steam"
     },
     "trick_clone": {
-      "name": "✨ Q弹影分身",
+      "name": "Q弹影分身",
       "level": 4,
       "kind": "trick"
     },
     "accessory_sunglasses": {
-      "name": "🕶️ 酷盖墨镜",
+      "name": "酷盖墨镜",
       "level": 5,
       "kind": "accessory",
       "slot": "face",
       "item": "sunglasses"
     },
     "trick_ball": {
-      "name": "⚽ 芝麻弹力球",
+      "name": "芝麻弹力球",
       "level": 5,
       "kind": "trick"
     },
     "accessory_bow": {
-      "name": "🎀 樱粉蝴蝶结",
+      "name": "樱粉蝴蝶结",
       "level": 6,
       "kind": "accessory",
       "slot": "head",
       "item": "bow"
     },
     "title_guardian": {
-      "name": "✨ 阿一古",
+      "name": "阿一古",
       "level": 6,
       "kind": "title",
       "title": "阿一古"
@@ -416,7 +416,7 @@
   "trick_products": {
     "screen_roll": {
       "name": "绕屏滚一圈",
-      "icon": "🛞",
+      "icon": "screen_roll",
       "cost": 120,
       "description": "永久解锁；沿当前屏幕四边滚动约12秒，回到原位。冷却20秒，途中点击可提前结束，固定状态保留。"
     }
@@ -478,8 +478,9 @@
       "slot": "theme",
       "price": 0,
       "description": "奶油墙面与温暖原木地板，初始自带的小家。",
-      "emoji": "🧀",
-      "default": true
+      "emoji": "cheese_room",
+      "default": true,
+      "icon": "cheese_room"
     },
     "sakura_room": {
       "id": "sakura_room",
@@ -487,8 +488,9 @@
       "slot": "theme",
       "price": 100,
       "description": "浅樱粉的墙面与柔和木地板，做一场甜甜的梦。",
-      "emoji": "🌸",
-      "default": false
+      "emoji": "sakura_room",
+      "default": false,
+      "icon": "sakura_room"
     },
     "matcha_room": {
       "id": "matcha_room",
@@ -496,8 +498,9 @@
       "slot": "theme",
       "price": 100,
       "description": "清新的抹茶墙面与榻榻米色调，静静陪伴。",
-      "emoji": "🍵",
-      "default": false
+      "emoji": "matcha_room",
+      "default": false,
+      "icon": "matcha_room"
     },
     "cloud_cushion": {
       "id": "cloud_cushion",
@@ -505,8 +508,9 @@
       "slot": "rug",
       "price": 0,
       "description": "像云朵一样蓬松的软垫，初始自带。",
-      "emoji": "☁️",
-      "default": true
+      "emoji": "cloud_cushion",
+      "default": true,
+      "icon": "cloud_cushion"
     },
     "lotus_cushion": {
       "id": "lotus_cushion",
@@ -514,8 +518,9 @@
       "slot": "rug",
       "price": 40,
       "description": "一片清凉荷叶，托住软乎乎的汤圆。",
-      "emoji": "🍃",
-      "default": false
+      "emoji": "lotus_cushion",
+      "default": false,
+      "icon": "lotus_cushion"
     },
     "cat_paw_rug": {
       "id": "cat_paw_rug",
@@ -523,8 +528,9 @@
       "slot": "rug",
       "price": 80,
       "description": "粉嘟嘟的猫爪毛绒地毯，踩上去特别软。",
-      "emoji": "🐾",
-      "default": false
+      "emoji": "cat_paw_rug",
+      "default": false,
+      "icon": "cat_paw_rug"
     },
     "sunflower_painting": {
       "id": "sunflower_painting",
@@ -532,8 +538,9 @@
       "slot": "wall",
       "price": 60,
       "description": "把晴天的小太阳挂在墙上。",
-      "emoji": "🌻",
-      "default": false
+      "emoji": "sunflower_painting",
+      "default": false,
+      "icon": "sunflower_painting"
     },
     "rice_clock": {
       "id": "rice_clock",
@@ -541,8 +548,9 @@
       "slot": "wall",
       "price": 70,
       "description": "圆圆的汤圆钟面，记录一起相伴的时光。",
-      "emoji": "🕰️",
-      "default": false
+      "emoji": "rice_clock",
+      "default": false,
+      "icon": "rice_clock"
     },
     "ficus_plant": {
       "id": "ficus_plant",
@@ -550,8 +558,9 @@
       "slot": "corner",
       "price": 60,
       "description": "角落里的一抹绿意，让房间更有生气。",
-      "emoji": "🪴",
-      "default": false
+      "emoji": "ficus_plant",
+      "default": false,
+      "icon": "ficus_plant"
     },
     "warm_lamp": {
       "id": "warm_lamp",
@@ -559,8 +568,9 @@
       "slot": "corner",
       "price": 90,
       "description": "点击房间里的灯可开关暖光，陪伴晚归的小汤圆。",
-      "emoji": "💡",
-      "default": false
+      "emoji": "warm_lamp",
+      "default": false,
+      "icon": "warm_lamp"
     },
     "wood_bowl": {
       "id": "wood_bowl",
@@ -568,8 +578,9 @@
       "slot": "bowl",
       "price": 0,
       "description": "盛着每一口温柔，初始自带的小木碗。",
-      "emoji": "🥣",
-      "default": true
+      "emoji": "wood_bowl",
+      "default": true,
+      "icon": "wood_bowl"
     },
     "porcelain_bowl": {
       "id": "porcelain_bowl",
@@ -577,8 +588,9 @@
       "slot": "bowl",
       "price": 50,
       "description": "绘着蓝色花纹的瓷碗，吃饭也要有仪式感。",
-      "emoji": "🍚",
-      "default": false
+      "emoji": "porcelain_bowl",
+      "default": false,
+      "icon": "porcelain_bowl"
     }
   }
 }

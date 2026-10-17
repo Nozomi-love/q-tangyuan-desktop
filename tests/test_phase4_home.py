@@ -372,7 +372,7 @@ class HomeControllerTests(unittest.TestCase):
         self.assertFalse(self.pet.isVisible())
         self.assertFalse(self.model.data.overlay_visible)
         self.assertTrue(self.panel.tabs.tabBar().isHidden())
-        self.assertEqual(set(self.panel.nav_buttons), {"home", "furniture", "shop", "dress", "achievements"})
+        self.assertEqual(set(self.panel.nav_buttons), {"home", "bag", "shop", "dress", "achievements"})
 
     def test_tray_double_click_summons_dashboard_without_resetting_position(self):
         self.pet.set_pinned(True)
@@ -452,7 +452,7 @@ class HomeControllerTests(unittest.TestCase):
         self.assertFalse(self.pet.isVisible())
 
     def test_all_five_navigation_drawers_keep_room_visible(self):
-        for section in ("furniture", "shop", "dress", "achievements", "home"):
+        for section in ("bag", "shop", "dress", "achievements", "home"):
             with self.subTest(section=section):
                 self.panel.nav_buttons[section].click()
                 QTest.qWait(20)
@@ -482,7 +482,7 @@ class HomeControllerTests(unittest.TestCase):
 
     def test_shop_keeps_food_gifts_and_permanent_trick_beside_furniture(self):
         self.panel.show_section("shop")
-        self.assertEqual(self.panel.market_tabs.count(), 2)
+        self.assertEqual(self.panel.market_tabs.count(), 3)
         self.assertEqual([self.panel.shop_tabs.tabText(i) for i in range(2)], ["食物", "礼物"])
         self.assertEqual(set(self.panel.shop_buttons), set(self.model.catalog.items))
         self.assertIn("screen_roll", self.panel.shop_trick_buttons)

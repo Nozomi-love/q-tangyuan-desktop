@@ -24,6 +24,8 @@ from PySide6.QtGui import (
 
 from PySide6.QtWidgets import QWidget
 
+from illustrated_assets import plain_text
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -1315,7 +1317,7 @@ class RoomCanvas(QWidget):
                 self._notifications.append((str(text), tone, duration))
                 return
             self._notifications.appendleft((self._message, self._message_tone, max(1.0, expires - now)))
-        self._message = str(text)
+        self._message = plain_text(text)
         self._message_tone = tone
         self._message_started = now
         self._message_duration = duration + 0.3
@@ -1507,7 +1509,7 @@ class RoomCanvas(QWidget):
         painter.setPen(QColor("#876754"))
         painter.setFont(QFont("Microsoft YaHei UI", 20, QFont.Weight.DemiBold))
         title = QFontMetricsF(painter.font()).elidedText(
-            str(self._home.get("name", "白汤圆")) + "的小窝", Qt.TextElideMode.ElideRight,
+            plain_text(self._home.get("name", "白汤圆")) + "的小窝", Qt.TextElideMode.ElideRight,
             max(80.0, width - 380))
         painter.drawText(QRectF(40, 24, width - 380, 42),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, title)

@@ -27,6 +27,7 @@ except ModuleNotFoundError as error:
     raise
 
 from dashboard import DashboardWindow
+from illustrated_assets import IconAtlas, plain_text
 from models import GameRules, PetData, PetModel
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from pet_window import PetWindow
@@ -84,6 +85,7 @@ class PetApplication:
         self.icon = create_tray_icon(self.window.renderer)
         app.setWindowIcon(self.icon)
         self.window.setWindowIcon(self.icon)
+        self.ui_icons = IconAtlas()
         self._build_menu()
         self.dashboard = DashboardWindow(self.model, self.window.engine, lambda: self.window.renderer)
         self.dashboard.setWindowIcon(self.icon)
@@ -163,7 +165,7 @@ class PetApplication:
         elif self._skin_restore_warning:
             self.window.show_message(self._skin_restore_warning, "special")
         elif accelerated:
-            self.window.show_message(f"🧪 加速：饥饿 {self.model.rules.hunger_seconds:g} 秒 -1，礼包 {self.model.rules.gift_seconds:g} 秒自动入账", "normal")
+            self.window.show_message(f" 加速：饥饿 {self.model.rules.hunger_seconds:g} 秒 -1，礼包 {self.model.rules.gift_seconds:g} 秒自动入账", "normal")
 
     @staticmethod
     def _load_rules(accelerated: bool) -> GameRules:
@@ -183,20 +185,20 @@ class PetApplication:
         self.menu.addSeparator()
         self.feed_action = self.menu.addAction("")
         self.pet_action = self.menu.addAction("")
-        self.pin_action = self.menu.addAction("📌 固定当前位置（可拖动调整）")
+        self.pin_action = self.menu.addAction(" 固定当前位置（可拖动调整）")
         self.pin_action.setCheckable(True)
-        self.dashboard_action = self.menu.addAction("🏠 打开汤圆小窝")
-        self.overlay_action = self.menu.addAction("🖥 显示桌面悬浮窗")
+        self.dashboard_action = self.menu.addAction(" 打开汤圆小窝")
+        self.overlay_action = self.menu.addAction(" 显示桌面悬浮窗")
         self.overlay_action.setCheckable(True)
         self.overlay_action.toggled.connect(self.model.set_overlay_visible)
-        self.trick_menu = self.menu.addMenu("🎪 表演特技")
+        self.trick_menu = self.menu.addMenu(" 表演特技")
         self.trick_actions = {}
         for trick_id in self.model.trick_cooldowns:
             action = self.trick_menu.addAction(self.model.trick_name(trick_id))
             action.triggered.connect(lambda checked=False, tid=trick_id: self._perform_trick(tid))
             self.trick_actions[trick_id] = action
         self.menu.addSeparator()
-        self.debug_menu = self.menu.addMenu("🧪 调试与外观")
+        self.debug_menu = self.menu.addMenu(" 调试与外观")
         self.hunger_zero_action = self.debug_menu.addAction("[调试] 饥饿值归零")
         self.hunger_full_action = self.debug_menu.addAction("[调试] 饥饿值恢复满值")
         self.flat_action = self.debug_menu.addAction("手动测试饿扁（独立于真实饥饿）")
@@ -207,7 +209,7 @@ class PetApplication:
         self.reset_action = self.menu.addAction("重置回主屏幕右下角")
         self.reload_action = self.debug_menu.addAction("重新加载当前皮肤")
         self.menu.addSeparator()
-        self.quit_action = self.menu.addAction("❌ 退出程序")
+        self.quit_action = self.menu.addAction(" 退出程序")
         self.feed_action.triggered.connect(self.model.feed_sugar)
         self.pet_action.triggered.connect(self._pet_head)
         self.pin_action.toggled.connect(self.window.set_pinned)
@@ -220,6 +222,13 @@ class PetApplication:
         self.reset_action.triggered.connect(self.window.reset_to_primary)
         self.reload_action.triggered.connect(self._reload_skins)
         self.quit_action.triggered.connect(self.app.quit)
+        for action, icon_id in ((self.feed_action, "sugar"), (self.pet_action, "sprout"),
+            (self.pin_action, "desktop"), (self.dashboard_action, "home"), (self.overlay_action, "desktop"),
+            (self.reset_action, "home"), (self.reload_action, "dress"), (self.quit_action, "remove"),
+            (self.level_info, "avatar"), (self.hunger_info, "water"), (self.coins_info, "coin")):
+            action.setIcon(self.ui_icons.icon(icon_id))
+        for key, action in self.trick_actions.items():
+            action.setIcon(self.ui_icons.icon(key))
         self.menu.aboutToShow.connect(self._refresh_menu)
 
     def _connect_dashboard(self) -> None:
@@ -253,7 +262,7 @@ class PetApplication:
         self.dashboard.set_settings(self.window.engine.pinned, self.dev_action.isChecked(), self.flat_action.isChecked())
 
     def _achievement_unlocked(self, achievement: dict) -> None:
-        self.window.show_message(f"🏆 解锁成就：《{achievement['name']}》！可前往主面板领奖", "achievement")
+        self.window.show_message(f" 解锁成就：《{achievement['name']}》！可前往主面板领奖", "achievement")
         if hasattr(self, "save_timer"):
             self.save_timer.start()
 
@@ -264,13 +273,13 @@ class PetApplication:
     def _refresh_menu(self) -> None:
         data, rules = self.model.data, self.model.rules
         exp = "MAX" if data.affection_level == 30 else f"{data.affection_exp}/{self.model.exp_required}"
-        self.level_info.setText(f"🍡 等级: Lv.{data.affection_level} (EXP: {exp})")
-        self.hunger_info.setText(f"🍙 饱食度: {data.hunger:g}/100" + (" · 饿扁啦" if self.model.starving else ""))
-        self.coins_info.setText(f"🪙 糯米币: {data.coins}")
-        self.feed_action.setText(f"🍬 快捷投喂白砂糖 (-{rules.sugar_cost}币, 饱食度+{rules.sugar_hunger:g})")
+        self.level_info.setText(f" 等级: Lv.{data.affection_level} (EXP: {exp})")
+        self.hunger_info.setText(f" 饱食度: {data.hunger:g}/100" + (" · 饿扁啦" if self.model.starving else ""))
+        self.coins_info.setText(f" 糯米币: {data.coins}")
+        self.feed_action.setText(f" 快捷投喂白砂糖 (-{rules.sugar_cost}币, 饱食度+{rules.sugar_hunger:g})")
         self.feed_action.setEnabled(data.coins >= rules.sugar_cost)
         remaining = math.ceil(data.timers["pet_cooldown_remaining"])
-        self.pet_action.setText("👋 摸摸头 (好感+3)" + (f" · 冷却 {remaining} 秒" if remaining else ""))
+        self.pet_action.setText(" 摸摸头 (好感+3)" + (f" · 冷却 {remaining} 秒" if remaining else ""))
         self.pet_action.setEnabled(remaining == 0)
         self.gift_action.setEnabled(not self.model.has_collectible)
         for trick_id, action in self.trick_actions.items():
@@ -290,7 +299,7 @@ class PetApplication:
             self.window.set_overlay_visible(enabled)
         self.overlay_action.blockSignals(True)
         self.overlay_action.setChecked(enabled)
-        self.overlay_action.setText("🖥 隐藏桌面悬浮窗" if enabled else "🖥 显示桌面悬浮窗")
+        self.overlay_action.setText(" 隐藏桌面悬浮窗" if enabled else " 显示桌面悬浮窗")
         self.overlay_action.blockSignals(False)
         self.dashboard.room.set_home_state(self.model.snapshot())
         self._refresh_menu()
@@ -313,7 +322,7 @@ class PetApplication:
 
     def _upgraded(self, level: int) -> None:
         self.window.engine.celebrate()
-        self.window.show_message(f"🎉 好感度升至 Lv.{level}！奖励 30 糯米币", "level")
+        self.window.show_message(f" 好感度升至 Lv.{level}！奖励 30 糯米币", "level")
 
     def _fed(self) -> None:
         # Feeding also ends the cosmetic test, while true starvation is model-owned.
@@ -330,7 +339,7 @@ class PetApplication:
         self._dirty = True
         self._refresh_menu()
         rules = self.model.rules
-        self.window.show_message(f"{'🧪 加速已开启' if enabled else '正常计时'}：{rules.hunger_seconds:g} 秒掉饥饿 / {rules.gift_seconds:g} 秒自动入账")
+        self.window.show_message(f"{' 加速已开启' if enabled else '正常计时'}：{rules.hunger_seconds:g} 秒掉饥饿 / {rules.gift_seconds:g} 秒自动入账")
 
     def _tick(self) -> None:
         now = time.monotonic()
@@ -356,11 +365,12 @@ class PetApplication:
 
     def _reload_skins(self) -> None:
         self.window.reload_skins()
+        self.dashboard.reload_artwork()
         self._reload_icon()
 
     def _perks_unlocked(self, names: list) -> None:
         self.window.set_accessories(self.model.effective_accessories())
-        self.window.show_message("🎊 新特权解锁：" + "、".join(names), "achievement")
+        self.window.show_message(" 新特权解锁：" + "、".join(names), "achievement")
 
     def _perform_trick(self, trick_id: str) -> bool:
         if not self.model.can_perform_trick(trick_id):
@@ -414,7 +424,7 @@ class PetApplication:
         target = Path(destination) / datetime.now().strftime("汤圆皮肤模板-%Y%m%d-%H%M%S-%f")
         try:
             result = self.skin_manager.export_template(target)
-            self.model.feedback.emit("📄 皮肤包模板已生成：" + str(result), "normal")
+            self.model.feedback.emit(" 皮肤包模板已生成：" + str(result), "normal")
         except (SkinImportError, OSError, ValueError) as error:
             self.model.feedback.emit("模板导出未完成：" + str(error), "hungry")
 

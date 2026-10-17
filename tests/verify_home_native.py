@@ -35,6 +35,8 @@ def worker(mode, file):
     def capture(name):
         QTest.qWait(70)
         assert panel.grab().save(str(file.parent / (name + ".png")))
+        if panel.drawer.isVisible():
+            assert panel.drawer.grab().save(str(file.parent / (name + "-book.png")))
 
     def reveal(button):
         for tabs in (panel.tabs, panel.market_tabs, panel.shop_tabs, panel.dress_tabs):
@@ -161,7 +163,7 @@ def worker(mode, file):
             assert not pet.isVisible()
             result["local_gif_crown_flip_in_room_no_overlay"] = True
 
-            for section in ("furniture", "shop", "dress", "achievements", "home"):
+            for section in ("bag", "shop", "dress", "achievements", "home"):
                 QTest.mouseClick(panel.nav_buttons[section], Qt.MouseButton.LeftButton)
                 QTest.qWait(210)
                 assert panel.current_section == section and panel.room.isVisible()
