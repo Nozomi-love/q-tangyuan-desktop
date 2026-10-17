@@ -2,7 +2,7 @@
 
 本地离线养成游戏，Python 3.10+、PySide6 6.8.3。启动进入可互动的「汤圆小窝」：命名、喂养、装修、装扮和成就都在家里完成，桌面悬浮宠物可按需显示。现有四图/GIF皮肤、物理动画、风味Buff、三级食物与赠礼、特技和存档完整保留，新增12款家具与第12项成就《温馨小家》。
 
-[GitHub 私有仓库](https://github.com/Nozomi-love/q-tangyuan-desktop) · [项目规范](docs/项目规范.md) · [开发日志](docs/开发日志.md) · [目录说明](docs/目录说明.md) · [插画游戏界面验收](docs/插画游戏界面验收.md) · [汤圆小窝验收](docs/汤圆小窝验收.md) · [商城与互动更新验收](docs/商城与互动更新验收.md) · [绕屏特技验收](docs/绕屏特技验收.md) · [养成平衡验收](docs/养成平衡更新验收.md) · [Phase 4 记录](docs/Phase4验收.md) · [Phase 3 记录](docs/Phase3验收.md) · [Phase 2 记录](docs/Phase2验收.md) · [素材记录](docs/素材记录.md)
+[GitHub 仓库](https://github.com/Nozomi-love/q-tangyuan-desktop) · [项目规范](docs/项目规范.md) · [开发日志](docs/开发日志.md) · [目录说明](docs/目录说明.md) · [插画游戏界面验收](docs/插画游戏界面验收.md) · [汤圆小窝验收](docs/汤圆小窝验收.md) · [商城与互动更新验收](docs/商城与互动更新验收.md) · [绕屏特技验收](docs/绕屏特技验收.md) · [养成平衡验收](docs/养成平衡更新验收.md) · [Phase 4 记录](docs/Phase4验收.md) · [Phase 3 记录](docs/Phase3验收.md) · [Phase 2 记录](docs/Phase2验收.md) · [素材记录](docs/素材记录.md)
 
 ![插画游戏小屋 · Windows原生预览](docs/images/illustrated-game-home.png)
 
@@ -212,6 +212,6 @@ GIF 内存策略依据 Qt 官方 [QMovie 文档](https://doc.qt.io/qt-6.8/qmovie
 
 ## 持续版本记录
 
-用户已授权在本项目后续开发任务中自行提交、推送经过验证的进展；每阶段更新 docs/开发日志.md。GitHub 保持私有，运行数据不入库；规则见 AGENTS.md。
+用户已授权在本项目后续开发任务中自行提交、推送经过验证的进展；每阶段更新 docs/开发日志.md。运行数据不入库；规则见 AGENTS.md。2026-10-18收尾API核验显示仓库当前为公开，本次未修改其可见性。
 
 Qt API 依据：[QTabWidget](https://doc.qt.io/qtforpython-6/PySide6/QtWidgets/QTabWidget.html)、[QPainter](https://doc.qt.io/qtforpython-6/PySide6/QtGui/QPainter.html)、[Signal](https://doc.qt.io/qtforpython-6/PySide6/QtCore/Signal.html)、[QWidget](https://doc.qt.io/qtforpython-6/PySide6/QtWidgets/QWidget.html)、[QTimer](https://doc.qt.io/qtforpython-6/PySide6/QtCore/QTimer.html)。
