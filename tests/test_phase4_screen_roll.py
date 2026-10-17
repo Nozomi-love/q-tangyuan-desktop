@@ -230,9 +230,9 @@ class RollWindowAndDashboardTests(unittest.TestCase):
     def test_shop_filter_purchase_and_buttons_update_live(self):
         model=PetModel(PetData(coins=120));panel=DashboardWindow(model)
         try:
-            panel.show();panel.tabs.setCurrentIndex(1);panel.shop_filter.setCurrentIndex(3)
+            panel.show();panel.tabs.setCurrentIndex(1);panel.shop_tabs.setCurrentIndex(0)
             self.assertFalse(panel.shop_groups['trick'].isHidden())
-            self.assertTrue(panel.shop_groups['food'].isHidden());self.assertTrue(panel.shop_groups['gift'].isHidden())
+            self.assertTrue(panel.shop_groups['food'].isVisible());self.assertFalse(panel.shop_groups['gift'].isVisible())
             buy,perform,status=panel.shop_trick_buttons['screen_roll']
             self.assertTrue(buy.isEnabled());self.assertFalse(perform.isEnabled())
             buy.click();self.assertEqual(model.data.coins,0)

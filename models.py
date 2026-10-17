@@ -16,6 +16,58 @@ from typing import Callable
 from PySide6.QtCore import QObject, Signal
 
 
+DEFAULT_DIALOGUES = {
+    "poke": [
+        "别急别急。"
+    ],
+    "feed_full": [
+        "别吃，别吃，饿吗，饿死了吗。"
+    ],
+    "feed": [
+        "吃一点，慢慢来。",
+        "这口糯米，舒服了。"
+    ],
+    "feed_recover": [
+        "这波有救了，我又能弹了！"
+    ],
+    "pet_head": [
+        "太舒服了！",
+        "这个摸摸头，可以的。"
+    ],
+    "gift": [
+        "礼物收到啦，陪我坐一会儿。",
+        "心意收下，今天也一起玩吧。"
+    ],
+    "gift_top": [
+        "陀螺收到，突然就想转起来了！"
+    ],
+    "drag": [
+        "你们是来抓我的吗？"
+    ],
+    "drop": [
+        "落地，站稳，这波没问题。"
+    ],
+    "dizzy": [
+        "阿一古，头都转晕啦！"
+    ],
+    "hungry": [
+        "这波真的饿了，给我留一口。"
+    ],
+    "trick_flip": [
+        "看我操作，先转一圈！"
+    ],
+    "trick_clone": [
+        "分身拉开，快乐加倍。"
+    ],
+    "trick_ball": [
+        "接住这颗芝麻球！"
+    ],
+    "trick_screen_roll": [
+        "绕屏走位，转一圈就回来。"
+    ]
+}
+
+
 EXP_PER_LEVEL = 500
 GUARDIAN_TITLE = "阿一古"
 LEGACY_GUARDIAN_TITLES = {"✨ 汤圆守护神", "汤圆守护神"}
@@ -73,6 +125,15 @@ class Catalog:
     """Validated, data-driven food and achievement definitions."""
     def __init__(self, source: dict) -> None:
         self.items = deepcopy(source["items"])
+        self.dialogues = deepcopy(DEFAULT_DIALOGUES)
+        configured_dialogues = source.get("dialogues", {})
+        if not isinstance(configured_dialogues, dict):
+            raise ValueError("互动台词必须为对象")
+        self.dialogues.update(deepcopy(configured_dialogues))
+        for event, lines in self.dialogues.items():
+            if (not isinstance(event, str) or not isinstance(lines, list) or not lines
+                    or len(lines) > 20 or any(not isinstance(line, str) or not 1 <= len(line) <= 80 for line in lines)):
+                raise ValueError("互动台词需要1～20句、每句1～80字")
         self.food_tiers = deepcopy(source.get("food_tiers", {}))
         self.gift_tiers = deepcopy(source.get("gift_tiers", {}))
         for tiers, metric in ((self.food_tiers, "hunger"), (self.gift_tiers, "exp")):
@@ -126,6 +187,10 @@ class Catalog:
                 raise ValueError("商品价格和效果必须与等级配置一致")
             if (category == "food" and item["exp"] != 0) or (category == "gift" and (item["hunger"] != 0 or "buff" in item)):
                 raise ValueError("食物只恢复饱食度，礼物只增加好感度")
+            if "dialogue" in item and (not isinstance(item["dialogue"], str) or item["dialogue"] not in self.dialogues):
+                raise ValueError("商品互动台词事件不存在")
+            if "description" in item and not isinstance(item["description"], str):
+                raise ValueError("商品说明必须为文本")
             if "buff" in item:
                 buff = item["buff"]
                 if not isinstance(buff, dict) or not isinstance(buff.get("name"), str):
@@ -291,6 +356,7 @@ class PetModel(QObject):
         self.rules = rules or GameRules()
         self.rng = rng or random.Random()
         self.catalog = catalog or Catalog.load()
+        self._dialogue_cursors = {}
         self._clock = clock
         self._poke_times: deque[float] = deque()
         self._dizzy_until = 0.0
@@ -302,6 +368,11 @@ class PetModel(QObject):
         self.trick_busy = 0.0
         self._active_trick_id = ""
         self._known_perks = set()
+        # Old saves may contain a waiting coin gift. Settle its original amount
+        # once before the first save/UI; new online income never waits for a click.
+        self.restored_income_levels = []
+        if self.has_collectible:
+            _amount, self.restored_income_levels = self._take_collectible()
         self._refresh_perks(announce=False)
         self.initial_achievements = self._detect_achievements()
 
@@ -326,6 +397,12 @@ class PetModel(QObject):
                               ("coin_elapsed", rules.gift_seconds),
                               ("hungry_notice_elapsed", rules.hungry_notice_seconds)):
             self.data.timers[key] %= interval
+
+    def dialogue(self, event: str) -> str:
+        lines = self.catalog.dialogues.get(event, ["今天也一起玩吧。"])
+        index = self._dialogue_cursors.get(event, 0)
+        self._dialogue_cursors[event] = index + 1
+        return lines[index % len(lines)]
 
     def _roll_day(self) -> bool:
         value = self._today().isoformat()
@@ -378,8 +455,9 @@ class PetModel(QObject):
             return False
         previous = self.starving
         amount, levels = self._take_collectible()
-        prefix = "礼包已自动收好" if automatic else "捡到糯米币啦"
-        self._publish(previous, levels, f"🎁 {prefix}：+{amount} 币，好感 +5", "reward")
+        # Currency goes straight to the status panel, leaving the head bubble
+        # available for dialogue. Level/achievement signals still run normally.
+        self._publish(previous, levels)
         return True
 
     def poke(self) -> None:
@@ -397,19 +475,14 @@ class PetModel(QObject):
         amount, levels = self._take_collectible()
         exp = 2 if self.data.hunger >= 50 else 1
         levels.extend(self._add_exp(exp))
-        message = f"好喜欢你戳戳我～ 好感 +{exp}" if exp == 2 else "肚子有点饿啦… 好感 +1"
-        tone = "normal"
+        message = self.dialogue("poke")
+        tone = "interaction"
         daily = self.data.daily_stats
         if daily["poke_attempts"] < 20:
             daily["poke_attempts"] += 1
             if self.rng.random() < 0.35:
                 daily["poke_coin_drops"] += 1
                 self.data.coins += 2
-                message = f"✨ 戳出 2 枚糯米币！好感 +{exp}"
-                tone = "reward"
-        if amount:
-            message = f"🎁 已领取 {amount} 币！礼包好感 +5，戳戳好感 +{exp}"
-            tone = "reward"
         self._publish(previous, levels, message, tone)
         if trigger_dizzy:
             self.dizzy_requested.emit()
@@ -454,10 +527,10 @@ class PetModel(QObject):
         if item["category"] == "gift":
             self.data.stats["total_presents"] += 1
             levels = self._add_exp(item["exp"])
-            self._publish(previous, levels, "{} 收到{}啦，心里暖暖的！好感 +{}".format(item["icon"], item["name"], item["exp"]), "reward")
+            self._publish(previous, levels, self.dialogue(item.get("dialogue", "gift")), "interaction")
             self.gifted.emit()
             return
-        gained = min(item["hunger"], 100 - self.data.hunger)
+        was_full = self.data.hunger >= 100
         self.data.hunger = min(100.0, self.data.hunger + item["hunger"])
         self.data.stats["total_feeds"] += 1
         if previous and not self.starving:
@@ -469,7 +542,8 @@ class PetModel(QObject):
             if item_id not in self.data.flavors_seen:
                 self.data.flavors_seen.append(item_id)
             self.buff_changed.emit(self.buff_view())
-        self._publish(previous, message=f"{item['icon']} {item['name']}甜甜香香！饱食度 +{gained:g}")
+        event = "feed_full" if was_full else "feed_recover" if previous and not self.starving else "feed"
+        self._publish(previous, message=self.dialogue(event), tone="interaction")
         self.fed.emit()
 
     def buff_view(self) -> dict:
@@ -647,14 +721,12 @@ class PetModel(QObject):
         self._active_trick_id = trick_id
         self.trick_cooldowns[trick_id] = 20.0 if trick_id == "screen_roll" else max(5.0, duration)
         levels = self._add_exp(5) if trick_id == "flip" else []
-        text = {"flip": "🌀 看我翻个跟头！好感 +5", "clone": "✨ 看我的糯米分身术！", "ball": "⚽ 芝麻小球，接住啦！",
-                "screen_roll": "🛞 出发！绕屏滚一圈，再回到你身边～"}[trick_id]
-        self._publish(self.starving, levels, text, "special")
+        self._publish(self.starving, levels, self.dialogue("trick_" + trick_id), "interaction")
         return True
 
     def record_drop(self) -> None:
         self.data.stats["total_drops"] += 1
-        self._publish(self.starving)
+        self._publish(self.starving, message=self.dialogue("drop"), tone="interaction")
 
     def record_shake(self) -> None:
         self.data.stats["total_shakes"] += 1
@@ -668,7 +740,7 @@ class PetModel(QObject):
         self.data.timers["pet_cooldown_remaining"] = self.rules.pet_cooldown
         self.data.stats["total_pets"] += 1
         levels = self._add_exp(3)
-        self._publish(self.starving, levels, "👋 摸摸头，今天也有你陪着真好～ 好感 +3")
+        self._publish(self.starving, levels, self.dialogue("pet_head"), "interaction")
         return True
 
     def set_hunger(self, value: float) -> None:
@@ -677,17 +749,15 @@ class PetModel(QObject):
         self.data.hunger = value
         self.data.timers["hunger_elapsed"] = 0.0
         self.data.timers["hungry_notice_elapsed"] = 0.0
-        text = "好饿呀…要变成糯米饼了 T_T" if value == 0 else f"🍙 饥饿值恢复至 {value:g}"
+        text = self.dialogue("hungry") if value == 0 else f"🍙 饥饿值恢复至 {value:g}"
         self._publish(previous, message=text, tone="hungry" if value == 0 else "normal")
 
     def offer_collectible(self) -> bool:
+        """Credit one online reward now; retained name for older integrations."""
         if self.has_collectible:
-            return False
-        self.data.pending_reward.update(coins=self.rng.randint(10, 20),
-                                        remaining_seconds=self.rules.gift_lifetime)
-        self.collectible_changed.emit(True)
-        self.state_changed.emit(self.snapshot())
-        return True
+            return self.claim_collectible(automatic=True)
+        self.data.pending_reward.update(coins=self.rng.randint(10, 20), remaining_seconds=0.0)
+        return self.claim_collectible(automatic=True)
 
     def advance(self, seconds: float) -> None:
         """Advance online time at event boundaries; no wall-clock/offline catch-up."""
@@ -729,7 +799,7 @@ class PetModel(QObject):
                 was_starving = self.starving
                 self.data.hunger = max(0.0, self.data.hunger - 1)
                 if self.starving and not was_starving:
-                    self.feedback.emit("好饿呀…要变成糯米饼了 T_T", "hungry")
+                    self.feedback.emit(self.dialogue("hungry"), "interaction")
             if self.has_collectible and self.data.pending_reward["remaining_seconds"] <= 1e-8:
                 self.claim_collectible(automatic=True)
             if timers["coin_elapsed"] >= self.rules.gift_seconds - 1e-8:
@@ -737,5 +807,5 @@ class PetModel(QObject):
                 self.offer_collectible()
             if self.starving and timers["hungry_notice_elapsed"] >= self.rules.hungry_notice_seconds - 1e-8:
                 timers["hungry_notice_elapsed"] = 0.0
-                self.feedback.emit("好饿呀…要变成糯米饼了 T_T", "hungry")
+                self.feedback.emit(self.dialogue("hungry"), "interaction")
         self._publish(previous)

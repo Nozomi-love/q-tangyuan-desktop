@@ -25,7 +25,7 @@ def worker(mode,file):
     errors=[];result=dict(mode=mode,platform=QGuiApplication.platformName(),dpr=pet.devicePixelRatioF())
     sys.excepthook=lambda typ,val,tb:(errors.append(''.join(traceback.format_exception(typ,val,tb))),app.exit(1))
     def click(button):
-        for tabs in (panel.tabs,panel.dress_tabs):
+        for tabs in (panel.tabs,panel.shop_tabs,panel.dress_tabs):
             for index in range(tabs.count()):
                 if tabs.widget(index).isAncestorOf(button):tabs.setCurrentIndex(index);break
         node=button
@@ -51,7 +51,7 @@ def worker(mode,file):
                 assert pet.renderer.movies
                 result['permanent_purchase_gif_accessory_and_home_restored']=True
                 return
-            panel.summon();panel.tabs.setCurrentIndex(1);panel.shop_filter.setCurrentIndex(3)
+            panel.summon();panel.tabs.setCurrentIndex(1);panel.shop_tabs.setCurrentIndex(0)
             buy,perform,status=panel.shop_trick_buttons['screen_roll']
             assert not perform.isEnabled()
             click(buy);assert model.data.coins==80;assert not buy.isEnabled();assert perform.isEnabled()

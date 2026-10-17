@@ -33,7 +33,7 @@ def worker(mode, file):
         QTest.qWait(20)
         assert tabs.currentIndex() == index
     def click(button):
-        for tabs in (panel.tabs, panel.dress_tabs):
+        for tabs in (panel.tabs, panel.shop_tabs, panel.dress_tabs):
             for index in range(tabs.count()):
                 if tabs.widget(index).isAncestorOf(button):
                     tabs.setCurrentIndex(index)
@@ -96,11 +96,11 @@ def worker(mode, file):
             capture('02-dressing-accessories')
             choose(panel.dress_tabs,2); capture('03-dressing-tricks-rewards')
             choose(panel.tabs,4); capture('04-settings')
-            choose(panel.tabs,1); panel.shop_filter.setCurrentIndex(1)
+            choose(panel.tabs,1); panel.shop_tabs.setCurrentIndex(0)
             capture('05-food-tiers')
-            panel.shop_filter.setCurrentIndex(2)
+            panel.shop_tabs.setCurrentIndex(1)
             capture('06-gift-tiers-top')
-            page=panel.tabs.currentWidget();page.verticalScrollBar().setValue(page.verticalScrollBar().maximum())
+            page=panel.shop_tabs.currentWidget();page.verticalScrollBar().setValue(page.verticalScrollBar().maximum())
             capture('07-gift-tiers-bottom')
             hunger, exp, coins = model.data.hunger, model.data.affection_exp, model.data.coins
             click(panel.shop_buttons['paper_star'][0])
@@ -115,12 +115,12 @@ def worker(mode, file):
             click(panel.shop_buttons['paper_star'][1])
             assert pet.engine.flat and model.data.hunger == 0
             before_food = model.data.affection_exp
-            panel.shop_filter.setCurrentIndex(1)
+            panel.shop_tabs.setCurrentIndex(0)
             click(panel.shop_buttons['water'][1])
             assert model.data.hunger == 15 and not pet.engine.flat
             assert model.data.affection_exp == before_food
             model.data.affection_exp = 2999
-            panel.refresh();panel.shop_filter.setCurrentIndex(2)
+            panel.refresh();panel.shop_tabs.setCurrentIndex(1)
             before_coins=model.data.coins
             click(panel.shop_buttons['paper_star'][1])
             assert (model.data.affection_level,model.data.affection_exp)==(7,19)

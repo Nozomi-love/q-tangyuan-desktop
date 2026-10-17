@@ -184,19 +184,30 @@ class DashboardWindow(QMainWindow):
         page.addStretch()
 
     def _build_shop(self) -> None:
-        page = self._page("免费商城")
-        header = QHBoxLayout()
-        header.addWidget(label("食物补充饱食度 · 礼物积累好感", "sectionTitle"), 1)
-        self.shop_filter = QComboBox()
-        self.shop_filter.addItems(["全部商品", "三级食物", "三级礼物", "永久特技"])
-        self.shop_filter.currentIndexChanged.connect(self._filter_shop)
-        header.addWidget(self.shop_filter)
-        page.addLayout(header)
-        page.addWidget(label("购买放入背包，或立即投喂 / 赠送。食物不增加好感；礼物不恢复饱食度。", "muted"))
+        shop = QWidget()
+        shop.setObjectName("page")
+        page = QVBoxLayout(shop)
+        page.setContentsMargins(0, 12, 0, 0)
+        page.setSpacing(12)
+        page.addWidget(label("食物补充饱食度 · 礼物积累好感", "sectionTitle"))
+        self.shop_tabs = QTabWidget()
+        self.shop_tabs.setObjectName("shopTabs")
+        self.shop_tabs.setTabBar(NavigationTabBar(self.shop_tabs))
+        self.shop_tabs.setDocumentMode(True)
+        self.shop_tabs.tabBar().setExpanding(True)
+        self.shop_tabs.tabBar().setDrawBase(False)
+        self.shop_tabs.tabBar().setAutoFillBackground(True)
+        page.addWidget(self.shop_tabs, 1)
+        self.tabs.addTab(shop, "免费商城")
         self.shop_groups = {}
-        for category, title in (("food", "🍡 每日食物"), ("gift", "🎁 心意礼物")):
-            group = QGroupBox(title)
+        for category, title in (("food", "食物"), ("gift", "礼物")):
+            section = self._page(title, self.shop_tabs)
+            explanation = ("分三级恢复饱食度，食物不增加好感。可买进背包或立即投喂。" if category == "food"
+                           else "分三级增加好感，礼物不恢复饱食度。可买进背包或立即赠送。")
+            section.addWidget(label(explanation, "muted"))
+            group = QWidget()
             group_layout = QVBoxLayout(group)
+            group_layout.setContentsMargins(0, 0, 0, 0)
             group_layout.setSpacing(14)
             definitions = self.model.catalog.food_tiers if category == "food" else self.model.catalog.gift_tiers
             for tier in (1, 2, 3):
@@ -214,10 +225,9 @@ class DashboardWindow(QMainWindow):
                     content.addWidget(details)
                     buff = item.get("buff")
                     description = (f"【{buff['name']}】{buff['description']}" if buff else
-                                   "把心意送给汤圆，慢慢积累好感。" if category == "gift" else "安心补充能量，饱食度最多恢复到 100。")
-                    description_label = label(description, "muted")
-                    description_label.setMinimumHeight(48)
-                    content.addWidget(description_label, 1)
+                                   item.get("description", "把心意送给汤圆，慢慢积累好感。") if category == "gift"
+                                   else "安心补充能量，饱食度最多恢复到 100。")
+                    content.addWidget(label(description, "muted"), 1)
                     time_label = label("", "muted")
                     content.addWidget(time_label)
                     actions = QHBoxLayout()
@@ -234,36 +244,30 @@ class DashboardWindow(QMainWindow):
                 grid.setColumnStretch(0, 1)
                 grid.setColumnStretch(1, 1)
                 group_layout.addLayout(grid)
-            page.addWidget(group)
+            section.addWidget(group)
+            section.addStretch()
             self.shop_groups[category] = group
-        special = QGroupBox("🎪 永久特技")
+        special = QGroupBox("🎪 永久特技 · 购买一次永久拥有")
         special_layout = QVBoxLayout(special)
         self.shop_trick_buttons = {}
         for trick_id, product in self.model.catalog.trick_products.items():
-            panel, content = card()
-            content.addWidget(label(f"{product['icon']} {product['name']}", "sectionTitle"))
-            content.addWidget(label(product["description"], "muted"))
-            status = label("")
-            content.addWidget(status)
-            actions = QHBoxLayout()
+            line = QHBoxLayout()
+            name = label(f"{product['icon']} {product['name']}", "sectionTitle")
+            name.setToolTip(product["description"])
+            line.addWidget(name, 1)
             buy = QPushButton("购买特技")
             buy.setProperty("primary", True)
             buy.clicked.connect(lambda checked=False, key=trick_id: self.model.buy_trick(key))
             perform = QPushButton("立即表演")
             perform.clicked.connect(lambda checked=False, key=trick_id: self.trick_requested.emit(key))
-            actions.addWidget(buy)
-            actions.addWidget(perform)
-            content.addLayout(actions)
-            special_layout.addWidget(panel)
+            line.addWidget(buy)
+            line.addWidget(perform)
+            special_layout.addLayout(line)
+            status = label("", "muted")
+            special_layout.addWidget(status)
             self.shop_trick_buttons[trick_id] = (buy, perform, status)
         page.addWidget(special)
         self.shop_groups["trick"] = special
-        page.addStretch()
-
-    def _filter_shop(self, index: int) -> None:
-        category_filter = {1: "food", 2: "gift", 3: "trick"}.get(index)
-        for category, group in self.shop_groups.items():
-            group.setVisible(index == 0 or category == category_filter)
 
     def _build_achievements(self) -> None:
         page = self._page("成就图鉴")
@@ -479,7 +483,7 @@ class DashboardWindow(QMainWindow):
         for index, (title, signal) in enumerate((("重置回主屏幕右下角", self.reset_requested),
                                                ("调试：饥饿归零", self.hunger_zero_requested),
                                                ("调试：恢复满饥饿", self.hunger_full_requested),
-                                               ("调试：立即生成拾币气泡", self.gift_requested),
+                                               ("调试：立即结算在线糯米币", self.gift_requested),
                                                ("重新加载当前皮肤", self.reload_requested))):
             button = QPushButton(title)
             button.clicked.connect(lambda checked=False, output=signal: output.emit())
@@ -644,7 +648,7 @@ class DashboardWindow(QMainWindow):
         buff = self.model.buff_view()
         self.buff_label.setText(f"{buff['name']} · 剩余 {math.ceil(buff['remaining_seconds'])} 秒" + (f" · 狂奔 / 跺脚 {math.ceil(buff['behavior_remaining'])} 秒" if buff.get("behavior_remaining") else "") if buff else "原味白汤圆 · 当前没有风味 Buff")
         stats = data.stats
-        self.stats_label.setText(f"累计戳戳 {stats['total_clicks']} 次  ·  投喂 {stats['total_feeds']} 次  ·  挂机礼包 {stats['total_gifts']} 次  ·  赠礼 {stats['total_presents']} 次\n在线陪伴 {int(stats['total_idle_seconds'] // 60)} 分钟  ·  摸头 {stats['total_pets']} 次  ·  高空落地 {stats['total_drops']} 次")
+        self.stats_label.setText(f"累计戳戳 {stats['total_clicks']} 次  ·  投喂 {stats['total_feeds']} 次  ·  在线入账 {stats['total_gifts']} 次  ·  赠礼 {stats['total_presents']} 次\n在线陪伴 {int(stats['total_idle_seconds'] // 60)} 分钟  ·  摸头 {stats['total_pets']} 次  ·  高空落地 {stats['total_drops']} 次")
         owned = False
         for item_id, (row, text, button) in self.inventory_widgets.items():
             item, count = self.model.item(item_id), data.inventory.get(item_id, 0)

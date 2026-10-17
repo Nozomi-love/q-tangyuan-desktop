@@ -42,12 +42,12 @@ def simulate(engine: PetEngine, seconds: float):
 
 
 class CommerceTests(unittest.TestCase):
-    def test_seven_foods_three_gifts_and_sugar_rules_share_config(self):
+    def test_seven_foods_four_gifts_and_sugar_rules_share_config(self):
         pet = wealthy()
-        self.assertEqual(len(pet.catalog.items), 10)
+        self.assertEqual(len(pet.catalog.items), 11)
         rules = GameRules.from_catalog(ROOT / "config/catalog.json")
         self.assertEqual((rules.sugar_cost, rules.sugar_hunger, rules.sugar_exp), (10, 15, 0))
-        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [10, 10, 45, 25, 25, 25, 45, 20, 70, 180])
+        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [10, 10, 45, 25, 25, 25, 45, 20, 70, 180, 180])
 
     def test_purchase_stores_without_feeding_and_use_does_not_recharge(self):
         pet = wealthy()
@@ -523,7 +523,7 @@ class DashboardInputTests(unittest.TestCase):
         self.assertFalse(self.dashboard.isVisible())
         self.assertIn("rapid_pokes", self.model.data.unlocked_achievements)
         self.assertEqual(self.window.engine.state, PetState.DIZZY)
-        self.assertIn("糯米糍", self.window.bubble._text)
+        self.assertIn("头都转晕", self.window.bubble._text)
 
     def test_pending_click_does_not_release_a_later_drag(self):
         point = QPointF(self.window.engine.x, self.window.engine.y - 50)

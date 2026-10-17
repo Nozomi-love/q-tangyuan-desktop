@@ -25,6 +25,7 @@ class SpeechBubble(QWidget):
                          | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setFont(QFont("Microsoft YaHei UI", 10))
         self._notifications = deque()
         self._text = ""
@@ -42,17 +43,21 @@ class SpeechBubble(QWidget):
         self.timer.timeout.connect(self._tick)
 
     def set_collectible(self, available: bool) -> None:
-        self._gift = available
-        if available and self._tone not in ("level", "achievement", "special"):
-            self._expires = 0.0
+        # Compatibility entry point: coin income is now always collected by
+        # the model. Never replace or clear an interaction message with a gift.
+        self._gift = self._showing_gift = False
         self._refresh()
 
     def show_message(self, text: str, tone: str = "normal", duration: float = 2.5) -> None:
         now = time.perf_counter()
-        priority = {"achievement": 2, "level": 3, "special": 4}
+        priority = {"achievement": 2, "level": 3, "special": 4, "interaction": 5}
         current = priority.get(self._tone, 0) if self._expires > now else 0
         incoming = priority.get(tone, 0)
-        if current:
+        if tone == "interaction":
+            # Repeated pokes replace the current line, never queue a backlog.
+            if current and self._tone != "interaction":
+                self._notifications.appendleft((self._text, self._tone, max(1.0, self._expires - now)))
+        elif current:
             if incoming == 0:
                 return
             if incoming <= current:

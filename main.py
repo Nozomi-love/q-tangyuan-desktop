@@ -105,6 +105,7 @@ class PetApplication:
         self.window.trick_finished.connect(self.model.finish_trick)
         self.window.clicked.connect(self.model.poke)
         self.window.dashboard_requested.connect(self.dashboard.summon)
+        self.window.drag_started.connect(lambda: self.window.show_message(self.model.dialogue("drag"), "interaction"))
         self.window.drag_landed.connect(self.model.record_drop)
         self.window.shaken.connect(self.model.record_shake)
         interactions = self.model.catalog.interactions
@@ -158,7 +159,7 @@ class PetApplication:
         elif self._skin_restore_warning:
             self.window.show_message(self._skin_restore_warning, "special")
         elif accelerated:
-            self.window.show_message(f"🧪 加速：饥饿 {self.model.rules.hunger_seconds:g} 秒 -1，礼包 {self.model.rules.gift_seconds:g} 秒", "normal")
+            self.window.show_message(f"🧪 加速：饥饿 {self.model.rules.hunger_seconds:g} 秒 -1，礼包 {self.model.rules.gift_seconds:g} 秒自动入账", "normal")
 
     @staticmethod
     def _load_rules(accelerated: bool) -> GameRules:
@@ -195,7 +196,7 @@ class PetApplication:
         self.flat_action.setCheckable(True)
         self.dev_action = self.debug_menu.addAction("开发测试加速模式")
         self.dev_action.setCheckable(True)
-        self.gift_action = self.debug_menu.addAction("[调试] 立即生成拾币气泡")
+        self.gift_action = self.debug_menu.addAction("[调试] 立即结算在线糯米币")
         self.reset_action = self.menu.addAction("重置回主屏幕右下角")
         self.reload_action = self.debug_menu.addAction("重新加载当前皮肤")
         self.menu.addSeparator()
@@ -246,7 +247,7 @@ class PetApplication:
 
     def _dizzy(self) -> None:
         self.window.engine.get_dizzy()
-        self.window.show_message("要被戳成糯米糍啦 @﹏@", "special")
+        self.window.show_message(self.model.dialogue("dizzy"), "interaction")
 
     def _refresh_menu(self) -> None:
         data, rules = self.model.data, self.model.rules
@@ -303,7 +304,7 @@ class PetApplication:
         self._dirty = True
         self._refresh_menu()
         rules = self.model.rules
-        self.window.show_message(f"{'🧪 加速已开启' if enabled else '正常计时'}：{rules.hunger_seconds:g} 秒掉饥饿 / {rules.gift_seconds:g} 秒礼包")
+        self.window.show_message(f"{'🧪 加速已开启' if enabled else '正常计时'}：{rules.hunger_seconds:g} 秒掉饥饿 / {rules.gift_seconds:g} 秒自动入账")
 
     def _tick(self) -> None:
         now = time.monotonic()

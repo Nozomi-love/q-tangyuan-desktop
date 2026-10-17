@@ -212,16 +212,16 @@ class NavigationAndCommerceTests(unittest.TestCase):
             else:
                 self.assertIn('好感',text);self.assertNotIn('饱食度',text)
                 self.assertEqual(self.window.shop_buttons[key][1].text(),'购买并赠送')
-    def test_shop_filter_shows_food_and_gifts_separately(self):
+    def test_shop_subtabs_show_food_and_gifts_separately(self):
         self.window.tabs.setCurrentIndex(1)
-        self.window.shop_filter.setCurrentIndex(2)
-        self.assertTrue(self.window.shop_groups['food'].isHidden())
-        self.assertFalse(self.window.shop_groups['gift'].isHidden())
-        self.window.shop_filter.setCurrentIndex(1)
-        self.assertFalse(self.window.shop_groups['food'].isHidden())
-        self.assertTrue(self.window.shop_groups['gift'].isHidden())
+        self.window.shop_tabs.setCurrentIndex(1)
+        self.assertFalse(self.window.shop_groups['food'].isVisible())
+        self.assertTrue(self.window.shop_groups['gift'].isVisible())
+        self.window.shop_tabs.setCurrentIndex(0)
+        self.assertTrue(self.window.shop_groups['food'].isVisible())
+        self.assertFalse(self.window.shop_groups['gift'].isVisible())
     def test_buy_give_and_backpack_buttons_share_live_model(self):
-        self.window.tabs.setCurrentIndex(1);self.window.shop_filter.setCurrentIndex(2)
+        self.window.tabs.setCurrentIndex(1);self.window.shop_tabs.setCurrentIndex(1)
         self.window.shop_buttons['paper_star'][0].click()
         self.assertEqual(self.model.data.inventory['paper_star'],1)
         self.assertEqual(self.model.data.affection_exp,0)

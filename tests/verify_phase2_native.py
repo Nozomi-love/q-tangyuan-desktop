@@ -61,8 +61,9 @@ def worker(mode: str, file: Path) -> int:
         return run
 
     def after_real_timer() -> None:
-        assert model.has_collectible, "real QTimer did not offer a gift after ten seconds"
-        assert bubble.isVisible() and bubble._showing_gift
+        assert model.data.stats["total_gifts"] == 1, "real QTimer did not auto-credit income after ten seconds"
+        assert not model.has_collectible and not bubble._showing_gift
+        window.show_message(model.dialogue("drag"), "interaction")
         area = window.active_screen.availableGeometry()
         assert area.contains(bubble.geometry()), (area, bubble.geometry())
         assert bubble.isWindow()
@@ -72,15 +73,16 @@ def worker(mode: str, file: Path) -> int:
         style = getter(int(bubble.winId()), -20)
         assert style & 0x00000008 and style & 0x00000080 and style & 0x00080000
         result["bubble_extended_style"] = hex(style)
-        result["real_timer_gift_visible"] = True
+        result["real_timer_income_silent"] = True
         result["online_seconds_at_gift"] = model.data.stats["total_idle_seconds"]
         snapshot("gift")
         before = model.data.coins
-        gift = model.data.pending_reward["coins"]
-        QTest.mouseClick(bubble, Qt.MouseButton.LeftButton, pos=bubble.rect().center())
-        assert not model.has_collectible and model.data.coins == before + gift
+        gift = before - result["coins_before_income"]
+        assert 10 <= gift <= 20
+        assert not model.claim_collectible()
+        assert not model.has_collectible and model.data.coins == before
         assert model.data.stats["total_clicks"] == 20
-        result["native_bubble_claim"] = gift
+        result["native_automatic_income"] = gift
         controller.dev_action.setChecked(False)
         controller.hunger_zero_action.trigger()
         assert window.engine.starving and window.engine.state == PetState.FLAT
@@ -93,15 +95,15 @@ def worker(mode: str, file: Path) -> int:
         model.data.affection_exp = 499
         assert model.buy_item("paper_star", True)
         assert model.data.affection_level == 2
-        assert model.data.coins == before + gift - 10 - 20 + 30
+        assert model.data.coins == before - 10 - 20 + 30
         assert window.engine._celebration_hops > 0
-        assert "Lv.2" in bubble._text
+        assert any("Lv.2" in row[0] for row in bubble._notifications)
         snapshot("level-up-and-recovered")
         controller.menu.popup(window.mapToGlobal(window.local_foot()).toPoint())
         QTest.qWait(100)
         assert controller.menu.grab().save(str(file.parent / "menu.png"))
         controller.menu.hide()
-        result["five_scenarios"] = ["poke_drops", "timed_gift_claim", "zero_hunger_flat", "sugar_recovery", "level_reward"]
+        result["five_scenarios"] = ["poke_drops", "timed_automatic_income", "zero_hunger_flat", "sugar_recovery", "level_reward"]
         controller.model.offer_collectible()
         controller._save()
         result["saved_growth"] = model.snapshot()
@@ -123,23 +125,23 @@ def worker(mode: str, file: Path) -> int:
             result["poke_drops"] = model.data.daily_stats["poke_coin_drops"]
             controller.pet_action.trigger()
             assert model.data.affection_exp == 43
+            result["coins_before_income"] = model.data.coins
             QTimer.singleShot(10800, guarded(after_real_timer))
         else:
             saved = json.loads(file.read_text(encoding="utf-8"))
             assert model.data.affection_level == 2
-            assert model.has_collectible and bubble._showing_gift
+            assert not model.has_collectible and not bubble._showing_gift
             assert model.data.stats["total_clicks"] == 20
             assert model.data.stats["total_feeds"] == 1
             assert abs(window.capture_position()["x_ratio"] - 0.55) < 0.001
             assert abs(window.capture_position()["y_ratio"] - 0.50) < 0.001
-            amount = model.data.pending_reward["coins"]
             coins = model.data.coins
-            assert model.claim_collectible()
             assert not model.claim_collectible()
-            assert model.data.coins == coins + amount
+            assert model.data.coins == coins
+            assert model.data.stats["total_gifts"] == 2
             assert saved["inventory"] == {"future_item": 2}
             result["growth_and_pin_restored"] = True
-            result["pending_gift_claimed_once_after_restart"] = True
+            result["automatic_income_not_repeated_after_restart"] = True
             finish()
 
     QTimer.singleShot(200, guarded(begin))

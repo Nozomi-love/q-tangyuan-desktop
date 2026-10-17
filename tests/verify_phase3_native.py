@@ -42,8 +42,16 @@ def worker(mode: str, file: Path) -> int:
         result.setdefault("capture_times", {})[name] = round(time.perf_counter() - started, 3)
 
     def ensure_button(button):
-        page = panel.tabs.currentWidget()
-        page.ensureWidgetVisible(button)
+        for tabs in (panel.tabs, panel.shop_tabs, panel.dress_tabs):
+            for index in range(tabs.count()):
+                if tabs.widget(index).isAncestorOf(button):
+                    tabs.setCurrentIndex(index)
+                    break
+        page = button
+        while page.parentWidget() is not None:
+            page = page.parentWidget()
+            if hasattr(page, 'ensureWidgetVisible'):
+                page.ensureWidgetVisible(button)
         QTest.qWait(40)
         QTest.mouseClick(button, Qt.MouseButton.LeftButton)
 
@@ -97,7 +105,7 @@ def worker(mode: str, file: Path) -> int:
             ensure_button(panel.shop_buttons["sesame"][0])
             assert model.data.inventory["sesame"] == 1
             capture("02-shop-top", 1)
-            page = panel.tabs.currentWidget()
+            page = panel.shop_tabs.currentWidget()
             page.verticalScrollBar().setValue(page.verticalScrollBar().maximum())
             capture("03-shop-bottom", 1)
             capture("04-backpack", 0)

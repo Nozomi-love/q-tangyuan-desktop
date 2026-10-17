@@ -58,7 +58,7 @@ def worker(mode,file):
         QTest.qWait(80)
         assert widget.grab().save(str(file.parent/(name+'.png')))
     def click(button):
-        for tabs in (panel.tabs, panel.dress_tabs):
+        for tabs in (panel.tabs, panel.shop_tabs, panel.dress_tabs):
             for index in range(tabs.count()):
                 if tabs.widget(index).isAncestorOf(button):
                     tabs.setCurrentIndex(index)

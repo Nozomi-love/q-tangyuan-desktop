@@ -122,7 +122,7 @@ class GrowthTests(unittest.TestCase):
         self.model.feedback.connect(lambda text, tone: messages.append((text, tone)))
         self.model.set_hunger(0)
         self.model.advance(45)
-        self.assertEqual(sum("糯米饼" in x[0] for x in messages), 2)
+        self.assertEqual(sum("给我留一口" in x[0] for x in messages), 2)
         self.assertEqual(self.model.data.affection_exp, 0)
 
     def test_sugar_purchase_feed_recovery_and_statistics(self):
@@ -180,20 +180,20 @@ class GrowthTests(unittest.TestCase):
         self.assertEqual(pet.data.stats["total_presents"], 6)
         self.assertEqual(pet.data.stats["total_feeds"], 0)
 
-    def test_gift_appears_at_ninety_seconds_and_claims_once(self):
+    def test_income_credits_at_ninety_seconds_without_claim(self):
         self.model.advance(89.9)
         self.assertFalse(self.model.has_collectible)
         self.model.advance(0.1)
-        self.assertTrue(self.model.has_collectible)
-        self.assertEqual(self.model.data.coins, 100)
-        self.assertTrue(self.model.claim_collectible())
+        self.assertFalse(self.model.has_collectible)
+        self.assertEqual(self.model.data.coins, 113)
+        self.assertFalse(self.model.claim_collectible())
         self.assertFalse(self.model.claim_collectible())
         self.assertEqual((self.model.data.coins, self.model.data.affection_exp), (113, 5))
 
-    def test_gift_timeout_automatically_credits_once(self):
+    def test_income_does_not_double_credit_after_old_timeout(self):
         self.model.advance(90)
         self.model.advance(29.9)
-        self.assertEqual(self.model.data.coins, 100)
+        self.assertEqual(self.model.data.coins, 113)
         self.model.advance(0.1)
         self.assertEqual(self.model.data.coins, 113)
         self.assertFalse(self.model.has_collectible)
@@ -208,12 +208,14 @@ class GrowthTests(unittest.TestCase):
         self.assertEqual(self.model.data.stats["total_clicks"], 1)
 
     def test_gift_amount_bounds_across_seeded_samples(self):
-        pet = PetModel(rng=random.Random(42))
+        pet = PetModel(PetData(affection_level=30), rng=random.Random(42))
         seen = set()
         for _ in range(100):
+            before = pet.data.coins
             pet.offer_collectible()
-            seen.add(pet.data.pending_reward["coins"])
-            pet.claim_collectible()
+            # Max level isolates coin randomness from upgrade rewards.
+            seen.add(pet.data.coins - before)
+            self.assertFalse(pet.claim_collectible())
         self.assertEqual(seen, set(range(10, 21)))
 
     def test_event_boundary_processing_matches_one_second_steps(self):
@@ -226,12 +228,14 @@ class GrowthTests(unittest.TestCase):
     def test_pending_reward_and_partial_timers_survive_model_restart(self):
         self.model.advance(102.5)
         restored = PetModel(PetData.from_dict(self.model.snapshot()), rng=self.rng)
-        self.assertAlmostEqual(restored.data.pending_reward["remaining_seconds"], 17.5)
+        self.assertEqual(restored.data.pending_reward, {"coins": 0, "remaining_seconds": 0.0})
+        self.assertAlmostEqual(restored.data.timers["coin_elapsed"], 12.5)
         restored.advance(17.5)
         self.assertEqual(restored.data.coins, 113)
         restored.advance(168)
         self.assertEqual(restored.data.hunger, 79)
-        self.assertTrue(restored.has_collectible)
+        self.assertFalse(restored.has_collectible)
+        self.assertEqual(restored.data.stats["total_gifts"], 3)
 
     def test_new_day_on_loading_resets_only_daily_counters(self):
         self.model.poke()
@@ -253,7 +257,8 @@ class GrowthTests(unittest.TestCase):
         pet = PetModel(rules=fast)
         pet.advance(10)
         self.assertEqual(pet.data.hunger, 75)
-        self.assertTrue(pet.has_collectible)
+        self.assertFalse(pet.has_collectible)
+        self.assertEqual(pet.data.stats["total_gifts"], 1)
 
     def test_gift_lifetime_must_fit_the_persistent_thirty_second_limit(self):
         with self.assertRaises(ValueError):
@@ -403,9 +408,10 @@ class UIIntegrationTests(unittest.TestCase):
         self.window.clicked.emit()
         self.assertEqual(self.controller.model.data.affection_level, 2)
         self.assertEqual(self.window.engine._celebration_hops, 3)
-        self.assertIn("Lv.2", self.bubble._text)
+        self.assertEqual(self.bubble._text, "别急别急。")
+        self.assertTrue(any("Lv.2" in row[0] for row in self.bubble._notifications))
         self.window.show_message("普通提示")
-        self.assertIn("Lv.2", self.bubble._text)
+        self.assertEqual(self.bubble._text, "别急别急。")
         anchor = (self.window.engine.x, self.window.engine.y)
         for _ in range(180):
             self.window.engine.advance(1 / 60)
@@ -432,12 +438,12 @@ class UIIntegrationTests(unittest.TestCase):
         self.window.mouseReleaseEvent(QMouseEvent(QEvent.Type.MouseButtonRelease, at + QPointF(-30, -40), start + QPointF(-30, -40), Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier))
         self.assertEqual(self.controller.model.data.stats["total_clicks"], 1)
 
-    def test_clickable_bubble_claims_exactly_once_without_pet_poke(self):
+    def test_income_is_silent_without_any_pet_poke(self):
         self.controller.model.rng = FixedRandom()
         self.controller.gift_action.trigger()
-        self.assertTrue(self.bubble._showing_gift)
-        self.assertTrue(self.bubble.isVisible())
-        QTest.mouseClick(self.bubble, Qt.MouseButton.LeftButton, pos=self.bubble.rect().center())
+        self.assertFalse(self.bubble._showing_gift)
+        self.assertTrue(self.bubble.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+        self.assertFalse(self.controller.model.claim_collectible())
         self.assertFalse(self.controller.model.has_collectible)
         self.assertEqual(self.controller.model.data.coins, 113)
         self.assertEqual(self.controller.model.data.stats["total_clicks"], 0)
@@ -455,7 +461,7 @@ class UIIntegrationTests(unittest.TestCase):
         self.assertTrue(self.bubble.isWindow())
         self.assertTrue(self.bubble.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus)
 
-    def test_bubble_normal_message_fades_and_gift_returns_after_level(self):
+    def test_bubble_normal_message_fades_without_old_gift_returning(self):
         with patch("pet_window.time.perf_counter", return_value=100):
             self.bubble.show_message("测试气泡")
         with patch("pet_window.time.perf_counter", return_value=100.09):
@@ -469,8 +475,8 @@ class UIIntegrationTests(unittest.TestCase):
             self.assertFalse(self.bubble._showing_gift)
         with patch("pet_window.time.perf_counter", return_value=106):
             self.bubble._refresh()
-            self.assertTrue(self.bubble._showing_gift)
-            self.assertTrue(self.bubble.isVisible())
+            self.assertFalse(self.bubble._showing_gift)
+            self.assertFalse(self.bubble.isVisible())
 
     def test_gift_follow_uses_pet_position_and_pause_does_not_catch_up(self):
         self.controller.model.rng = FixedRandom()
@@ -498,7 +504,8 @@ class UIIntegrationTests(unittest.TestCase):
         try:
             self.assertEqual(second.model.snapshot(), before)
             self.assertTrue(second.window.engine.pinned)
-            self.assertTrue(second.window.bubble._showing_gift)
+            self.assertFalse(second.window.bubble._showing_gift)
+            self.assertFalse(second.model.has_collectible)
         finally:
             second.stop()
             second.window.deleteLater()
