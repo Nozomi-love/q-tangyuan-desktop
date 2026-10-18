@@ -1,0 +1,3 @@
+# Build dependencies only; your friends do not install these.
+-r requirements.txt
+PyInstaller==6.22.3

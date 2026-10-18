@@ -287,7 +287,7 @@ class DashboardWindow(QMainWindow):
     def _build_navigation(self, layout):
         row = QHBoxLayout(); row.setSpacing(10); self.nav_buttons = {}
         for section, text, art in (("home", "小屋主页", "home"), ("bag", "背包与投喂", "bag"),
-                                  ("shop", "插画商城", "shop"), ("dress", "换装与小窝装修", "dress"),
+                                  ("shop", "商城", "shop"), ("dress", "换装与小窝装修", "dress"),
                                   ("achievements", "成就与设置", "achievements")):
             button = IconTile(text, art, self.atlas); button.setMinimumHeight(146); button.setMaximumHeight(146)
             button.setCheckable(True); button.clicked.connect(lambda checked=False, key=section: self.show_section(key))
@@ -306,7 +306,7 @@ class DashboardWindow(QMainWindow):
         self.drawer.move(max(area.left() + 8, x), y)
 
     def show_section(self, section, *, animate=True):
-        pages = {"bag": (0, "背包与投喂"), "shop": (1, "插画杂货铺"), "achievements": (2, "成就图鉴"),
+        pages = {"bag": (0, "背包与投喂"), "shop": (1, "商城"), "achievements": (2, "成就图鉴"),
                  "dress": (3, "换装衣橱"), "settings": (4, "游戏设置"), "furniture": (5, "小窝装修")}
         if section != "home" and section not in pages: return
         self.current_section = section; self.drawer_animation.stop()

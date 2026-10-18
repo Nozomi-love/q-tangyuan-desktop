@@ -33,10 +33,37 @@ from pet_engine import PetEngine, SkinRenderer, WorkArea
 from pet_window import PetWindow
 from save_manager import SaveDataError, SaveManager, SkinManager, SkinImportError
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
+                else Path(__file__).resolve().parent)
+WINDOWS_APP_ID = "Nozomi.QTangyuan.Desktop"
+
+
+def configure_windows_identity() -> bool:
+    """Give the Python-hosted window its own taskbar group before creating Qt."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    try:
+        set_id = ctypes.WinDLL("shell32", use_last_error=True).SetCurrentProcessExplicitAppUserModelID
+        set_id.argtypes = [ctypes.c_wchar_p]
+        set_id.restype = ctypes.c_long
+        result = set_id(WINDOWS_APP_ID)
+        if result < 0:
+            raise OSError(f"SetCurrentProcessExplicitAppUserModelID: {result:#x}")
+        return True
+    except (OSError, AttributeError) as error:
+        logging.warning("Windows任务栏身份设置失败，仍可继续运行：%s", error)
+        return False
+
 
 
 def create_tray_icon(renderer: SkinRenderer | None = None) -> QIcon:
+    # Stable product identity: shortcut, window, taskbar and tray share the ICO.
+    icon_path = PROJECT_ROOT / "assets" / "icons" / "tangyuan.ico"
+    if icon_path.is_file():
+        icon = QIcon(str(icon_path))
+        if not icon.isNull():
+            return icon
     pixmap = QPixmap(64, 64)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -461,13 +488,17 @@ def main() -> int:
     parser.add_argument("--dev-mode", action="store_true", help="开启养成计时加速：饥饿 2 秒、拾币 10 秒")
     parser.add_argument("--demo", action="store_true", help="创建独立演示存档，不影响正式玩家数据")
     parser.add_argument("--resume-demo", type=Path, help="继续已有演示存档（仅允许 tests/artifacts 内的 save_data.json）")
+    parser.add_argument("--smoke-report", type=Path, help="仅配合--smoke-test，将诊断写入一个新的JSON文件")
     args = parser.parse_args()
+    if args.smoke_report is not None and not args.smoke_test:
+        parser.error("--smoke-report 仅可配合 --smoke-test 使用")
     if args.resume_demo is not None:
         args.resume_demo = args.resume_demo.resolve()
         if args.demo or not args.resume_demo.is_relative_to((PROJECT_ROOT / "tests" / "artifacts").resolve()) or args.resume_demo.name != "save_data.json" or not args.resume_demo.is_file():
             parser.error("--resume-demo 需要 tests/artifacts 内已有的独立演示存档，且不能与 --demo 同时使用")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    windows_identity_configured = configure_windows_identity()
     # Qt 6 already enables high DPI. Never multiply globalPosition or screen
     # geometry by devicePixelRatio; only painting uses the backing-store DPR.
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -501,6 +532,11 @@ def main() -> int:
             area = window.engine.area
             diagnostics = {
                 "platform": QGuiApplication.platformName(),
+                "frozen": bool(getattr(sys, "frozen", False)),
+                "resource_root": str(PROJECT_ROOT),
+                "windows_identity_configured": windows_identity_configured,
+                "windows_app_id": WINDOWS_APP_ID if windows_identity_configured else "",
+                "application_icon": str(PROJECT_ROOT / "assets" / "icons" / "tangyuan.ico"),
                 "screens": len(QGuiApplication.screens()),
                 "active_screen": window.active_screen.name(),
                 "device_pixel_ratio": window.devicePixelRatioF(),
@@ -517,6 +553,12 @@ def main() -> int:
                 "overlay_enabled": controller.model.data.overlay_visible,
                 "home_scene": controller.dashboard.room.isVisible(),
             }
+            if args.smoke_report is not None:
+                report = args.smoke_report.resolve()
+                report.parent.mkdir(parents=True, exist_ok=True)
+                with report.open("x", encoding="utf-8") as output:
+                    json.dump(diagnostics, output, ensure_ascii=False, indent=2)
+                    output.write("\n")
             print("PHASE4_SMOKE_OK " + json.dumps(diagnostics, ensure_ascii=False), flush=True)
             app.quit()
         QTimer.singleShot(2000, finish_smoke)

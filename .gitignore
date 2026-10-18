@@ -18,3 +18,6 @@ assets/skins/user_*/
 
 # Machine-local Windows shortcuts
 *.lnk
+
+# Local Windows portable builds (never include saves, personal skins or binaries in Git)
+releases/
