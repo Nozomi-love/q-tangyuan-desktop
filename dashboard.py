@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from PySide6.QtCore import QEvent, QEasingCurve, QPoint, QPropertyAnimation, QRectF, QSize, Qt, QTimer, Signal, Property
+from PySide6.QtCore import QEvent, QEasingCurve, QPoint, QPropertyAnimation, QPointF, QRectF, QSize, Qt, QTimer, Signal, Property
 from PySide6.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPainter, QPen, QLinearGradient
 from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog,
     QLabel, QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QSizePolicy,
@@ -225,6 +225,7 @@ class DashboardWindow(QMainWindow):
     debug_unlock_requested = Signal(bool)
     rename_requested = Signal(str)
     overlay_requested = Signal(bool)
+    mute_requested = Signal(bool)
     furniture_requested = Signal(str, str)
     poke_requested = Signal()
     pet_requested = Signal()
@@ -294,10 +295,24 @@ class DashboardWindow(QMainWindow):
         self.notice = label("左键戳戳，右键摸摸头。今天也陪你慢慢长大。", "muted"); self.notice.setMaximumHeight(0); self.notice.hide(); layout.addWidget(self.notice)
         model.state_changed.connect(self._model_changed); model.feedback.connect(self._feedback)
         self.model.presentation_requested.connect(self.room.present_item)
+        self.model.gains_received.connect(self.room.receive_gains)
+        self.model.interaction_started.connect(lambda kind: self.room.interact())
+        self.room.mood_requested.connect(self._home_engine.enjoy_interaction)
         for control in self.findChildren(QAbstractButton):
             control.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._fit_home()
         self.refresh()
+
+    def _use_item(self, item_id, purchase=False, source=None):
+        button = source if source is not None else self.sender()
+        if isinstance(button, QWidget):
+            local = self.room.mapFromGlobal(button.mapToGlobal(button.rect().center()))
+            self.room._next_food_origin = QPointF(max(26, min(self.room.width() - 26, local.x())),
+                                                  max(120, min(self.room.height() - 20, local.y())))
+        try:
+            return self.model.buy_item(item_id, feed_now=True) if purchase else self.model.use_item(item_id)
+        finally:
+            self.room._next_food_origin = None
 
     def _button(self, text, icon_id=None):
         button = QPushButton(plain_text(text))
@@ -336,13 +351,16 @@ class DashboardWindow(QMainWindow):
         lower = QHBoxLayout(); lower.setContentsMargins(0, 0, 0, 0); lower.setSpacing(3)
         self.hud_buff = label("", "buffBadge"); self.hud_buff.setWordWrap(False)
         self.hud_buff.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        lower.addWidget(self.hud_buff, 1); lower.addWidget(self.overlay_button); right.addLayout(lower); right.addStretch()
+        self.mute_button = self._button("", "music_box"); self.mute_button.setObjectName("muteControl"); self.mute_button.setFixedSize(30, 30)
+        self.mute_button.setCheckable(True); self.mute_button.setAccessibleName("静音开关")
+        self.mute_button.toggled.connect(self.mute_requested.emit)
+        lower.addWidget(self.hud_buff, 1); lower.addWidget(self.mute_button); lower.addWidget(self.overlay_button); right.addLayout(lower); right.addStretch()
         outer.addWidget(self.hud_right); self.hud.raise_()
 
     def _layout_hud(self):
         width = max(264, self.room.width() - 18)
         self.hud.setGeometry(9, 8, width, 102)
-        right = max(82, min(190, int(width * .27)))
+        right = max(92, min(190, int(width * .30)))
         self.hud_right.setFixedWidth(right)
         self.hud_profile.setFixedWidth(min(340, width - right - 8))
         self.hud.layout().activate()
@@ -373,7 +391,7 @@ class DashboardWindow(QMainWindow):
         for key, item in self.model.catalog.items.items():
             if item["category"] != "food": continue
             button = self._button("", key); button.setIconSize(QSize(44, 44)); button.setFixedHeight(58)
-            button.clicked.connect(lambda checked=False, food=key: self.model.use_item(food)); button.setToolTip(item["name"])
+            button.clicked.connect(lambda checked=False, food=key, origin=button: self._use_item(food, source=origin)); button.setToolTip(item["name"])
             foods.addWidget(button); self.feeding_buttons[key] = button
         foods.addStretch(); self.feeding_scroll.setWidget(content); row.addWidget(self.feeding_scroll, 1)
         buy = self._button("买粮", "shop"); buy.clicked.connect(self._buy_food); row.addWidget(buy)
@@ -479,7 +497,7 @@ class DashboardWindow(QMainWindow):
         for i, (key, item) in enumerate(self.model.catalog.items.items()):
             frame, body = self._item_card(key, item["name"]); text = label("", "itemTag"); body.addWidget(text)
             use = self._button("赠送" if item["category"] == "gift" else "投喂")
-            use.clicked.connect(lambda checked=False, k=key: self.model.use_item(k)); body.addWidget(use)
+            use.clicked.connect(lambda checked=False, k=key, origin=use: self._use_item(k, source=origin)); body.addWidget(use)
             grid.addWidget(frame, i // 2, i % 2); self.inventory_widgets[key] = frame, text, use
         self.inventory_grid = grid
         grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); page.addLayout(grid)
@@ -506,7 +524,7 @@ class DashboardWindow(QMainWindow):
                 line = QHBoxLayout(); buy = self._button("购买"); use = self._button("购买并赠送" if category == "gift" else "购买并投喂")
                 use.setProperty("primary", True)
                 buy.clicked.connect(lambda checked=False, k=key: self.model.buy_item(k))
-                use.clicked.connect(lambda checked=False, k=key: self.model.buy_item(k, feed_now=True))
+                use.clicked.connect(lambda checked=False, k=key, origin=use: self._use_item(k, purchase=True, source=origin))
                 line.addWidget(buy); line.addWidget(use); body.addLayout(line)
                 grid.addWidget(frame, i // 2, i % 2); self.shop_buttons[key] = buy, use, time
             grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); page.addLayout(grid); page.addStretch()
@@ -613,9 +631,10 @@ class DashboardWindow(QMainWindow):
             button = self._button(text, art); button.clicked.connect(lambda checked=False, s=signal: s.emit()); page.addWidget(button)
         self.room_debug = QFrame(); debug = QVBoxLayout(self.room_debug); debug.setContentsMargins(0, 4, 0, 0)
         debug.addWidget(label("房间日常预览（仅开发模式）", "sectionTitle"))
-        for key, text in (("window", "去看看窗外"), ("nap", "打盹与伸懒腰"), ("bowl", "去茶几闻一闻")):
+        self.activity_buttons = {}
+        for key, text in (("window", "去看看窗外"), ("nap", "打盹与伸懒腰"), ("bowl", "去茶几闻一闻"), ("hum", "摇晃哼歌"), ("hop", "开心小跳")):
             button = self._button(text, "avatar")
-            button.clicked.connect(lambda checked=False, k=key: self.room.start_activity(k)); debug.addWidget(button)
+            button.clicked.connect(lambda checked=False, k=key: self.room.start_activity(k)); debug.addWidget(button); self.activity_buttons[key] = button
         debug.addWidget(label("昼夜环境预览（仅本次运行）", "sectionTitle"))
         environment = QHBoxLayout(); self.environment_buttons = {}
         for key, text, mode in (("auto", "随电脑时间", None), ("day", "白天预览", True), ("night", "夜晚预览", False)):
@@ -623,6 +642,12 @@ class DashboardWindow(QMainWindow):
             button.clicked.connect(lambda checked=False, value=mode: self._preview_environment(value))
             environment.addWidget(button); self.environment_buttons[key] = button
         debug.addLayout(environment)
+        self.preview_gift_buttons = {}
+        debug.addWidget(label("礼物演出预览（不扣币、不加经验）", "sectionTitle"))
+        for key, text in (("spinning_top", "试玩陀螺"), ("music_box", "试听八音盒"), ("paper_star", "看看折纸星星"), ("flower_bouquet", "闻闻花束")):
+            button = self._button(text, key); self.preview_gift_buttons[key] = button
+            button.clicked.connect(lambda checked=False, k=key: self.room.present_item({"item_id": k, "category": "gift", "duration": 7}))
+            debug.addWidget(button)
         self.room_debug.hide(); page.addWidget(self.room_debug)
         page.addStretch()
 
@@ -855,6 +880,8 @@ class DashboardWindow(QMainWindow):
         self.hud_exp_bar.setFormat(f"好感 {data.affection_exp}/{required}" if data.affection_level < 30 else "好感满级")
         self.hud_hunger_bar.setValue(round(data.hunger)); self.hud_hunger_bar.setFormat(f"饱食 {data.hunger:g}/100")
         buff = self.model.buff_view(); self.hud_buff.setText(f"{buff['name']} {math.ceil(buff['remaining_seconds'])}秒" if buff else "原味汤圆")
+        self.mute_button.blockSignals(True); self.mute_button.setChecked(data.muted)
+        self.mute_button.setToolTip("已静音，点击开启音效" if data.muted else "音效开启，点击静音"); self.mute_button.blockSignals(False)
         self.overlay_button.blockSignals(True); self.overlay_button.setChecked(data.overlay_visible)
         self.overlay_button.setToolTip("隐藏桌面宠" if data.overlay_visible else "显示桌面宠"); self.overlay_button.blockSignals(False)
         any_food = False
@@ -874,7 +901,10 @@ class DashboardWindow(QMainWindow):
             self._home_engine.set_starving(self.model.starving); self._home_engine.set_buff(self.model.buff_view()); self._home_renderer.set_accessories(self.model.effective_accessories())
         self._layout_hud()
         self.room.set_home_state(self.model.snapshot())
-        self.room.life.accelerated = self.model.rules.hunger_seconds < 288
+        accelerated = self.model.rules.hunger_seconds < 288
+        if accelerated != self.room.life.accelerated:
+            self.room.life.accelerated = accelerated
+            self.room.life.wait = self.room.life._next_wait()
         renderer = self._renderer_provider(); source = renderer.source_state(self._home_engine.state)
         if source in renderer.pixmaps:
             self.hud_avatar.setPixmap(renderer.pixmaps[source].scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))

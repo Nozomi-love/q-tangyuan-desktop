@@ -110,7 +110,7 @@
       "exp": 20,
       "cost": 20,
       "room_effect": "paper_star",
-      "performance_seconds": 10
+      "performance_seconds": 7
     },
     "flower_bouquet": {
       "name": "小花束",
@@ -121,7 +121,7 @@
       "exp": 80,
       "cost": 70,
       "room_effect": "flower_bouquet",
-      "performance_seconds": 10
+      "performance_seconds": 7
     },
     "music_box": {
       "name": "八音盒",
@@ -132,7 +132,7 @@
       "exp": 240,
       "cost": 180,
       "room_effect": "music_box",
-      "performance_seconds": 12
+      "performance_seconds": 7
     },
     "spinning_top": {
       "name": "陀螺",
@@ -145,7 +145,7 @@
       "description": "TES「陀螺」梗彩蛋：送一份会转起来的心意。",
       "dialogue": "gift_top",
       "room_effect": "spinning_top",
-      "performance_seconds": 10
+      "performance_seconds": 7
     }
   },
   "achievements": [

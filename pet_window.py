@@ -3,17 +3,122 @@ from __future__ import annotations
 
 from collections import deque
 import math
+import logging
+import struct
+import wave
+from io import BytesIO
 from pathlib import Path
 import time
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QUrl, QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
-    QColor, QCloseEvent, QFont, QFontMetrics, QGuiApplication, QMouseEvent, QPaintEvent, QPainter, QPen, QScreen,
+    QColor, QCloseEvent, QFont, QFontMetrics, QGuiApplication, QMouseEvent, QPaintEvent, QPainter, QPainterPath, QPen, QScreen,
 )
 from PySide6.QtWidgets import QWidget
 
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from illustrated_assets import plain_text
+
+
+
+SOUND_NAMES = ("poke", "eat", "coin", "music_box")
+
+
+def synthesize_sound(name: str) -> bytes:
+    """Quiet, band-limited PCM tones with attack/release envelopes; no recordings."""
+    if name not in SOUND_NAMES:
+        raise ValueError("Unknown built-in sound")
+    rate = 22050
+    notes = {
+        "poke": [(0, .19, 650)],
+        "eat": [(0, .15, 784), (.16, .21, 1046.5)],
+        "coin": [(0, .18, 1318.5), (.105, .32, 1760)],
+        "music_box": [(i * .29, .75, hz) for i, hz in enumerate(
+            (523.25, 659.25, 783.99, 1046.5, 783.99, 659.25, 587.33, 783.99,
+             987.77, 1174.66, 987.77, 783.99, 659.25, 783.99, 1046.5, 1318.5,
+             1046.5, 783.99, 659.25, 523.25))],
+    }[name]
+    duration = max(start + length for start, length, _ in notes) + .025
+    samples = [0.0] * math.ceil(duration * rate)
+    for start, length, hz in notes:
+        for index in range(int(length * rate)):
+            t = index / rate
+            attack = min(1.0, t / .008)
+            release = min(1.0, (length - t) / .04)
+            envelope = attack * release * math.exp(-t * (5 if name != "music_box" else 4))
+            # The falling chirp makes a soft jelly droplet, without a sharp click.
+            phase = math.tau * (hz * t - (850 * t * t if name == "poke" else 0))
+            tone = math.sin(phase) + .16 * math.sin(phase * 2) + .05 * math.sin(phase * 3)
+            samples[int(start * rate) + index] += tone * envelope * .18
+    pcm = b"".join(struct.pack("<h", round(max(-.75, min(.75, value)) * 32767)) for value in samples)
+    output = BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(rate); wav.writeframes(pcm)
+    return output.getvalue()
+
+
+def ensure_sound_files(directory: Path) -> dict[str, Path]:
+    """Create only missing built-ins. Existing audio is always preserved."""
+    directory = Path(directory).absolute()
+    for part in (directory, *directory.parents):
+        if part.exists() and (part.is_symlink() or getattr(part.stat(), "st_file_attributes", 0) & 0x400):
+            raise OSError("音效目录不能经过链接")
+    directory.mkdir(parents=True, exist_ok=True)
+    result = {}
+    for name in SOUND_NAMES:
+        target = directory / (name + ".wav")
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            raise OSError("音效文件路径无效")
+        if not target.exists():
+            payload = synthesize_sound(name)
+            try:
+                with target.open("xb") as output:
+                    output.write(payload)
+                if target.read_bytes() != payload:
+                    raise OSError("音效写后核对失败")
+            except FileExistsError:
+                pass  # Another instance generated it first; never replace it.
+        result[name] = target
+    return result
+
+
+class ProceduralAudio(QObject):
+    """One shared sound bank for room/overlay; sound is optional, never gameplay."""
+    def __init__(self, directory: Path, muted=False, parent=None):
+        super().__init__(parent)
+        self.muted = bool(muted)
+        self.effects = {}
+        self._last_play = {}
+        self.errors = []
+        try:
+            from PySide6.QtMultimedia import QSoundEffect
+            for name, target in ensure_sound_files(directory).items():
+                effect = QSoundEffect(self)
+                effect.setVolume(.32 if name == "music_box" else .45)
+                effect.setMuted(self.muted)
+                effect.setSource(QUrl.fromLocalFile(str(target)))
+                self.effects[name] = effect
+        except (ImportError, OSError, RuntimeError) as error:
+            self.errors.append(str(error))
+            logging.warning("音效暂不可用，养成与动画正常继续：%s", error)
+
+    def set_muted(self, enabled):
+        self.muted = bool(enabled)
+        for effect in self.effects.values():
+            effect.setMuted(self.muted)
+            if self.muted: effect.stop()
+
+    def play(self, name):
+        now = time.monotonic()
+        effect = self.effects.get(name)
+        if self.muted or effect is None or now - self._last_play.get(name, -100) < .09:
+            return False
+        self._last_play[name] = now
+        effect.play()
+        return True
+
+    def stop(self):
+        for effect in self.effects.values(): effect.stop()
 
 
 class SpeechBubble(QWidget):
@@ -224,6 +329,7 @@ class PetWindow(QWidget):
         self._overlay_enabled = True
         self.bubble = SpeechBubble(self)
         self.bubble.claimed.connect(self.collectible_clicked.emit)
+        self._floating_gains = []
         self._pending_pokes = deque()
         self.click_timer = QTimer(self)
         self.click_timer.setSingleShot(True)
@@ -478,6 +584,16 @@ class PetWindow(QWidget):
             self._next_frame = now + self.FRAME_PERIOD
         self._schedule_frame()
 
+    def show_gains(self, gains):
+        now = time.monotonic()
+        names = {"hunger": "饱食度", "exp": "好感", "coins": "糯米币"}
+        self._floating_gains = [entry for entry in self._floating_gains if now - entry[1] < 1.2]
+        for key, amount in gains.items():
+            if key in names and amount > 0:
+                self._floating_gains.append((f"+{amount:g} {names[key]}", now, key))
+        self._floating_gains = self._floating_gains[-5:]
+        self.update()
+
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         # Clear the previous alpha surface so flattening cannot leave ghosts.
@@ -485,6 +601,15 @@ class PetWindow(QWidget):
         painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         self.renderer.paint(painter, self.engine, self.local_foot())
+        self._floating_gains = [entry for entry in self._floating_gains if time.monotonic() - entry[1] < 1.2]
+        bounds = self.renderer.scene_bounds(self.engine, self.local_foot())
+        for i, (text, born, key) in enumerate(self._floating_gains):
+            age = time.monotonic() - born
+            painter.save(); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setOpacity(max(0, min(1, age * 12, (1.2 - age) / .35)))
+            font = QFont("Microsoft YaHei UI", 11, QFont.Weight.Bold); painter.setFont(font)
+            line = QPainterPath(); line.addText(QPointF(bounds.right() + 8, max(28, bounds.top() + 20 + i * 24 - age * 32)), font, text)
+            painter.setPen(QPen(QColor("#70513b"), 3)); painter.setBrush(QColor({"hunger": "#d7f0ac", "exp": "#ffccd8", "coins": "#ffe097"}[key])); painter.drawPath(line); painter.restore()
         painter.end()
 
     def _inside_body(self, point: QPointF) -> bool:

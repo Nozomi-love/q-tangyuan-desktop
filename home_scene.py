@@ -6,7 +6,7 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from time import monotonic
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (QColor, QFont, QLinearGradient, QPainter, QPainterPath,
                            QPen, QPixmap, QPolygonF, QRadialGradient, QTransform)
 from pet_engine import RoomCanvas, PetState, Pose, clamp
@@ -23,37 +23,50 @@ def ink(width=3.0):
 
 
 class RoomLife:
-    """Local scene time; it never pays rewards or changes desktop coordinates."""
+    """Room-only activity clock. Input cancels a pose through a short blend."""
+    KINDS = ("bowl", "window", "nap", "hum", "hop")
+
     def __init__(self, rng=None):
         self.rng = rng or random.Random()
         self.accelerated = False
         self.elapsed = self.phase_time = self.quiet = 0.0
         self.state = "idle"
         self.x = self.target = .48
-        self.wait = 18.0
+        self.wait = self.rng.uniform(12, 25)
         self.last_line = -80.0
         self.cycle = 0
         self.toy_available = False
         self._nap_announced = False
+        self._previous_kind = ""
+        self._blend_from = (1, 1, 0, 0)
+        self._blend_age = .22
+
+    def _next_wait(self):
+        return self.rng.uniform(2, 4) if self.accelerated else self.rng.uniform(12, 25)
 
     def interact(self):
+        if self.state != "idle":
+            self._blend_from = self.pose; self._blend_age = 0.0
         self.state = "idle"
         self.phase_time = self.quiet = 0.0
-        self.wait = self.rng.uniform(16, 28) if not self.accelerated else 4.0
+        self.wait = self._next_wait()
 
     def start_activity(self, kind):
         choices = {"bowl": ("walk_bowl", .68), "window": ("walk_window", .60),
-                   "nap": ("nap", self.x), "toy": ("walk_toy", .63)}
+                   "nap": ("nap", self.x), "toy": ("walk_toy", .63),
+                   "hum": ("hum", self.x), "hop": ("hop", self.x)}
         if kind not in choices: return False
+        self._blend_from = self.pose; self._blend_age = 0
         self.state, self.target = choices[kind]; self.phase_time = 0.0
-        self._nap_announced = False
+        self._nap_announced = False; self._previous_kind = kind
         return True
 
     @staticmethod
     def daily_line(hour, hunger, level):
         if hunger < 35: return "饭香好像从那边飘过来了。"
-        if hour < 6: return "夜深啦，我陪你慢慢收个尾。"
+        if hour < 6 or hour >= 23: return "夜深啦，我陪你慢慢收个尾，记得早点休息。"
         if hour < 11: return "早安，今天也要软乎乎地出发。"
+        if hour < 14: return "午饭时间，别忘了也照顾好自己。"
         if hour < 17: return "午后的光好暖，想和你坐一会儿。"
         if level >= 3: return "你回来啦，这盏小灯一直为你留着。"
         return "月亮来值班，我也在这里陪你。"
@@ -62,15 +75,16 @@ class RoomLife:
         messages = []; remaining = max(0.0, min(float(dt), 60.0))
         while remaining > 1e-9:
             step = min(.05, remaining); remaining -= step; self.elapsed += step
+            self._blend_age += step
             if blocked:
                 self.interact(); continue
             self.quiet += step; self.phase_time += step
             if self.state == "idle":
                 self.wait -= step
-                if self.wait <= 0 and self.quiet >= (2 if self.accelerated else 6):
-                    options = ["bowl", "window", "nap"]
-                    if self.toy_available: options.append("toy")
-                    choice = "bowl" if hunger < 35 and self.cycle % 2 == 0 else options[self.cycle % len(options)]
+                if self.wait <= 0 and self.quiet >= (1 if self.accelerated else 6):
+                    options = list(self.KINDS) + (["toy"] if self.toy_available else [])
+                    options = [kind for kind in options if kind != self._previous_kind]
+                    choice = "bowl" if hunger < 35 and self._previous_kind != "bowl" else self.rng.choice(options)
                     self.cycle += 1; self.start_activity(choice)
             elif self.state.startswith("walk_") or self.state == "return":
                 difference = self.target - self.x
@@ -79,8 +93,7 @@ class RoomLife:
                     self.x = self.target
                     self.state = {"walk_bowl": "sniff", "walk_window": "look_window", "walk_toy": "inspect", "return": "idle"}[self.state]
                     self.phase_time = 0.0
-                    if self.state == "idle":
-                        self.wait = self.rng.uniform(16, 28) if not self.accelerated else 4.0
+                    if self.state == "idle": self.wait = self._next_wait()
                     elif self.elapsed - self.last_line >= (20 if self.accelerated else 55):
                         text = ("闻到香味了，给我留一口好不好？" if self.state == "sniff" and hunger < 50
                                 else "看看小玩具，还在乖乖等我。" if self.state == "inspect"
@@ -91,18 +104,19 @@ class RoomLife:
             elif self.state == "nap":
                 if not self._nap_announced:
                     self._nap_announced = True
-                    if self.elapsed - self.last_line > 8:
+                    if self.elapsed - self.last_line >= 55:
                         messages.append("zZ  眯一小会儿"); self.last_line = self.elapsed
                 if self.phase_time >= 5: self.state = "stretch"; self.phase_time = 0.0
             elif self.state == "stretch":
                 if self.phase_time >= 2: self.state = "return"; self.target = .48; self.phase_time = 0.0
-            elif self.phase_time >= 3.5:
+            elif self.phase_time >= (1.3 if self.state == "hop" else 3.5):
                 self.state = "return"; self.target = .48; self.phase_time = 0.0
+            if self.quiet > 6 and self.elapsed - self.last_line >= (20 if self.accelerated else 70):
+                messages.append(self.daily_line(hour, hunger, level)); self.last_line = self.elapsed
             self.x = clamp(self.x, .28, .70)
         return messages
 
-    @property
-    def pose(self):
+    def _pose(self):
         t = self.phase_time
         if self.state == "nap":
             sy = 1 - .22 * min(1, t * 2) + .015 * math.sin(t * 2)
@@ -115,35 +129,53 @@ class RoomLife:
         if self.state == "sniff": return 1.02, .98, math.sin(t * 5) * 4, 0.0
         if self.state == "look_window": return .98, 1.02, -6.0, -2.0
         if self.state == "inspect": return 1.02, .98, math.sin(t * 4) * 5, -abs(math.sin(t * 3)) * 5
+        if self.state == "hum": return 1.02, .98, math.sin(t * 4) * 7, 0.0
+        if self.state == "hop": return 1.0, 1.0, math.sin(t * 5) * 3, -28 * max(0, math.sin(min(1, t / 1.3) * math.pi))
         return 1.0, 1.0, 0.0, 0.0
+
+    @property
+    def pose(self):
+        t = clamp(self._blend_age / .22, 0, 1); t = t * t * (3 - 2 * t)
+        return tuple(a + (b - a) * t for a, b in zip(self._blend_from, self._pose()))
 
 
 @dataclass
 class GiftPerformance:
     item_id: str
-    duration: float = 10.0
+    duration: float = 7.0
     age: float = 0.0
     angle: float = 0.0
     speed: float = 620.0
     bumped: bool = False
+    top_x: float = .735
+    top_velocity: float = 0.0
+    bump_age: float = -1.0
+    start_x: float = .48
 
     def advance(self, dt):
-        old = self.age; self.age += dt
-        if self.item_id == "spinning_top":
-            if not self.bumped and old < 2.6 <= self.age:
-                self.speed = 1240.0; self.bumped = True
-            self.angle = (self.angle + self.speed * dt) % 360
-            self.speed = max(240, self.speed * math.exp(-.045 * dt))
+        remaining = max(0.0, min(float(dt), 60))
+        while remaining > 1e-9:
+            step = min(.02, remaining); remaining -= step; self.age += step
+            if self.item_id == "spinning_top":
+                # Its contact point meets the pet's right side, then rebounds.
+                if not self.bumped and self.age >= 2.6 and self.top_x - self.pet_x < .13:
+                    self.speed = 1240.0; self.top_velocity = .15
+                    self.bumped = True; self.bump_age = self.age
+                self.top_velocity *= math.exp(-1.5 * step)
+                self.top_x += self.top_velocity * step
+                if self.top_x >= .84:
+                    self.top_x = .84; self.top_velocity = -abs(self.top_velocity) * .65
+                self.angle = (self.angle + self.speed * step) % 360
+                self.speed = max(240, self.speed * math.exp(-.045 * step))
 
     @property
     def active(self): return self.age < self.duration
 
     @property
     def pet_x(self):
-        if self.item_id in {"spinning_top", "flower_bouquet"}:
-            t = min(1, self.age / 2.5); t = t * t * (3 - 2 * t)
-            return .48 + .13 * t
-        return .48
+        target = .61 if self.item_id in {"spinning_top", "flower_bouquet"} else .48
+        t = min(1, self.age / 2.5); t = t * t * (3 - 2 * t)
+        return self.start_x + (target - self.start_x) * t
 
     @property
     def pose(self):
@@ -171,6 +203,12 @@ class RoomPetView:
 
 class IllustratedRoomCanvas(RoomCanvas):
     """A large pet, curtained window, wallpaper detail and feeding flight."""
+    sound_requested = Signal(str)
+    mood_requested = Signal(float)
+
+    FLIGHT_SECONDS = .78
+    CHEW_SECONDS = .9
+
     def __init__(self, engine, renderer_provider, parent=None, atlas: IconAtlas | None = None):
         super().__init__(engine, renderer_provider, parent)
         self.atlas = atlas or IconAtlas()
@@ -187,16 +225,34 @@ class IllustratedRoomCanvas(RoomCanvas):
         self._last_external = (-1.0, -1.0, -1.0)
         self._chew_started = -100.0
         self._last_toy = ""
+        self._food_age = 100.0
+        self._food_queue = []
+        self._food_arrived = False
+        self._pending_hunger = 0.0
+        self._food_gain = 0.0
+        self._next_food_origin = None
         self.environment_time = 0.0
         self.poke_requested.connect(self.interact)
         self.pet_requested.connect(self.interact)
 
-    def interact(self):
+    def _mood(self, duration):
+        self.mood_requested.emit(duration)
+        e = self.engine
+        self._last_external = (e.happy_until, e.dizzy_until, e.last_drag_time)
+
+    def interact(self, cancel_gift=False):
+        if cancel_gift and self.performance:
+            self.life.x = self.performance.pet_x
+            self.performance = None
         self.life.interact()
 
     def start_activity(self, kind):
         if self._busy(): return False
-        return self.life.start_activity(kind)
+        self.interact(cancel_gift=True)
+        started = self.life.start_activity(kind)
+        if started and kind == "nap": self._mood(5.0)
+        if started and kind == "hop": self.mood_requested.emit(1.5)
+        return started
 
     def _busy(self):
         e = self.engine
@@ -205,9 +261,10 @@ class IllustratedRoomCanvas(RoomCanvas):
     def _local_pose(self):
         if self._busy(): return (1, 1, 0, 0)
         pose = self.performance.pose if self.performance else self.life.pose
-        age = monotonic() - self._chew_started
-        if .65 <= age <= 2.5:
-            wave = .09 * math.sin((age - .65) * math.tau * 3) * math.sin((age - .65) / 1.85 * math.pi)
+        age = self._food_age - self.FLIGHT_SECONDS
+        if self._food_arrived and 0 <= age <= self.CHEW_SECONDS:
+            # Three closed squash/stretch cycles, then exactly the neutral pose.
+            wave = -.12 * math.sin(age / self.CHEW_SECONDS * math.pi * 3) ** 2
             return pose[0] / (1 + wave), pose[1] * (1 + wave), pose[2], pose[3]
         return pose
 
@@ -221,7 +278,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         e = self.engine
         external = (e.happy_until, e.dizzy_until, e.last_drag_time)
         if external != self._last_external:
-            self.interact(); self._last_external = external
+            self.life.interact(); self._last_external = external
         self.advance_scene(dt)
         self._advance_message(); self.update()
 
@@ -231,41 +288,71 @@ class IllustratedRoomCanvas(RoomCanvas):
         busy = self._busy()
         self.life.toy_available = bool(self._last_toy or any(self._home.get("inventory", {}).get(k, 0)
             for k in ("spinning_top", "music_box", "paper_star", "flower_bouquet")))
+        old_state = self.life.state
         messages = self.life.advance(dt, hunger=self._home.get("hunger", 80),
             level=self._home.get("affection_level", 1), hour=datetime.now().hour if hour is None else hour,
-            blocked=busy or bool(self.performance) or monotonic() - self._chew_started < 2.5)
+            blocked=busy or bool(self.performance) or self._food_age < self.FLIGHT_SECONDS + self.CHEW_SECONDS)
+        if old_state != "nap" and self.life.state == "nap": self.mood_requested.emit(5.0)
         for text in messages:
             self.show_message(text, "ambient", 2.7)
         if self.performance and not busy:
+            bumped = self.performance.bumped
             self.performance.advance(dt)
+            if not bumped and self.performance.bumped:
+                self.show_message("碰一下，再转快一点！", "interaction", 2.3)
+                self.mood_requested.emit(2.0)
             if not self.performance.active:
                 self.life.x = self.performance.pet_x
                 self.performance = None
                 self.life.state = "return"; self.life.target = .48; self.life.phase_time = 0
         if not self.performance and self._gift_queue and not busy:
             item_id, duration = self._gift_queue.pop(0)
-            self.performance = GiftPerformance(item_id, duration)
-            self._last_toy = item_id
-        self._floating = [f for f in self._floating if monotonic() - f[1] < 2.8]
+            self._begin_gift(item_id, duration)
+        self._advance_food(dt)
+        self._floating = [f for f in self._floating if monotonic() - f[1] < 1.2]
+
+    def _begin_gift(self, item_id, duration):
+        self.performance = GiftPerformance(item_id, duration, start_x=self.life.x)
+        self._last_toy = item_id
+        self.mood_requested.emit(duration)
+        if item_id == "music_box": self.sound_requested.emit("music_box")
+
+    def receive_gains(self, gains):
+        # Hunger arrives with its food. Other rewards need no item performance.
+        self._pending_hunger += max(0, gains.get("hunger", 0))
+        self.show_gains({key: value for key, value in gains.items() if key != "hunger"})
+
+    def show_gains(self, gains):
+        now = monotonic()
+        names = {"hunger": "饱食度", "exp": "好感", "coins": "糯米币"}
+        self._floating = [f for f in self._floating if now - f[1] < 1.2]
+        for key, value in gains.items():
+            if key not in names or value <= 0: continue
+            suffix = names[key]
+            # Combine a rapid stream in the same lane instead of covering dialogue.
+            index = next((i for i, (text, born) in enumerate(self._floating)
+                          if text.endswith(suffix) and now - born < .18), None)
+            if index is not None:
+                previous = float(self._floating[index][0].split()[0][1:])
+                self._floating[index] = (f"+{previous + value:g} {suffix}", now)
+            else:
+                self._floating.append((f"+{value:g} {suffix}", now))
+        self._floating = self._floating[-6:]
+        self.update()
 
     def present_item(self, event):
         self.interact()
         if event.get("category") == "food":
-            self.show_food(event["item_id"])
-            gain = event.get("hunger_gain", 0)
-            text = f"+{gain:g} 饱食" if gain else "已经吃饱啦"
+            gain = max(0, event.get("hunger_gain", 0))
+            self._pending_hunger = max(0, self._pending_hunger - gain)
+            self.show_food(event["item_id"], gain)
         else:
             item_id = event.get("effect", event["item_id"])
             if item_id in {"spinning_top", "music_box", "paper_star", "flower_bouquet"}:
-                duration = clamp(float(event.get("duration", 10)), 3, 20)
-                if not self.performance and not self._busy():
-                    self.performance = GiftPerformance(item_id, duration); self._last_toy = item_id
+                duration = clamp(float(event.get("duration", 7)), 6, 8)
+                if not self.performance and not self._busy(): self._begin_gift(item_id, duration)
                 else:
                     self._gift_queue.append((item_id, duration)); self._gift_queue = self._gift_queue[-8:]
-            gain = event.get("exp_gain", 0)
-            text = f"+{gain:g} 好感" if gain else "心意收下啦"
-        # A fresh gain replaces the older one, keeping the dialogue lane clear.
-        self._floating = [(text, monotonic())]
         self.update()
 
     def _render_foot(self):
@@ -317,16 +404,54 @@ class IllustratedRoomCanvas(RoomCanvas):
     def show_message(self, text, tone="info", duration=2.5):
         super().show_message(plain_text(text), tone, duration)
 
-    def show_food(self, item_id):
+    def _begin_food(self, item_id, gain, origin):
         super().show_food(item_id)
-        self.interact()
-        self._fly_started = monotonic()
-        self._chew_started = self._fly_started
-        self._fly_from = None
+        self._fly_started = monotonic(); self._chew_started = self._fly_started + self.FLIGHT_SECONDS
+        self._food_age = 0.0; self._food_arrived = False
+        self._food_gain = gain; self._fly_from = origin
+        self._food_audio_already = not self.isVisible()
+
+    def show_food(self, item_id, gain=0):
+        self.interact(cancel_gift=True)
+        origin = self._next_food_origin
+        self._next_food_origin = None
+        if self._food_age < self.FLIGHT_SECONDS + self.CHEW_SECONDS:
+            if len(self._food_queue) < 6: self._food_queue.append((item_id, gain, origin))
+            else:
+                key, amount, point = self._food_queue[-1]
+                self._food_queue[-1] = (key, amount + gain, point)
+        else: self._begin_food(item_id, gain, origin)
 
     def launch_food(self, item_id, origin: QPointF):
+        self._next_food_origin = QPointF(origin)
         self.show_food(item_id)
-        self._fly_from = QPointF(origin)
+
+    def _advance_food(self, dt):
+        self._food_age += max(0, dt)
+        if not self._food_arrived and self._food_age >= self.FLIGHT_SECONDS and self._food_age < 100:
+            self._food_arrived = True
+            self.mood_requested.emit(1.2)
+            if not self._food_audio_already: self.sound_requested.emit("eat")
+            self.show_gains({"hunger": self._food_gain})
+        if self._food_age >= self.FLIGHT_SECONDS + self.CHEW_SECONDS and self._food_queue:
+            self._begin_food(*self._food_queue.pop(0))
+
+    def _paint_life_particles(self, p):
+        if self._busy() or self.performance: return
+        bounds = self.pet_bounds()
+        if self.life.state == "nap":
+            p.save(); p.setPen(QColor("#827a9f"))
+            for i in range(3):
+                phase = (self.life.phase_time * .3 + i / 3) % 1
+                p.setOpacity(math.sin(phase * math.pi)); p.setFont(QFont("Microsoft YaHei UI", 10 + i * 2, QFont.Weight.Bold))
+                p.drawText(QPointF(bounds.right() - 8 + phase * 15, bounds.top() + 20 - phase * 40), "z" if i == 0 else "Z")
+            p.restore()
+        elif self.life.state == "hum":
+            for i in range(3):
+                phase = (self.life.phase_time * .32 + i / 3) % 1
+                p.save(); p.setOpacity(math.sin(phase * math.pi))
+                self._note(p, QPointF(bounds.right() + math.sin(phase * 5) * 14, bounds.top() + 35 - phase * 50),
+                           ("#b88298", "#8b9f76", "#c69c5e")[i]); p.restore()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -353,6 +478,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         painter.restore()
         self._paint_ambient(painter, width, height)
         painter.restore()
+        self._paint_life_particles(painter)
         self._paint_food_flight(painter)
         self._paint_gains(painter)
         self._advance_message()
@@ -473,8 +599,8 @@ class IllustratedRoomCanvas(RoomCanvas):
         p.restore()
 
     def _paint_food_flight(self, p):
-        age = monotonic() - self._fly_started
-        if not 0 <= age <= 1.5 or not self._food_id:
+        age = self._food_age
+        if not 0 <= age <= 2.0 or not self._food_id:
             return
         scale, width, height = self._geometry()
         destination = self.pet_center() + QPointF(0, 20)
@@ -487,13 +613,18 @@ class IllustratedRoomCanvas(RoomCanvas):
             p.save(); p.translate(point); p.rotate(math.sin(t * math.pi) * -22)
             p.drawPixmap(QRectF(-side / 2, -side / 2, side, side), self.atlas.pixmap(self._food_id), QRectF(0, 0, 80, 80)); p.restore()
         else:
-            fade = max(0, 1 - (age - .78) / .72)
+            fade = max(0, 1 - (age - .78) / 1.2)
             p.save(); p.setOpacity(fade); p.setPen(Qt.PenStyle.NoPen)
             for n in range(6):
                 angle = n * math.tau / 6
-                radius = (1 - fade) * 36 + 5
-                p.setBrush(QColor("#e4bc6c" if n % 2 else "#fff4ce"))
-                p.drawEllipse(destination + QPointF(math.cos(angle) * radius, math.sin(angle) * radius - 8), 3, 3)
+                radius = (1 - fade) * 40 + 14
+                point = destination + QPointF(math.cos(angle) * radius, -18 - (1 - fade) * 66 + math.sin(angle) * 18)
+                p.save(); p.translate(point); p.setPen(ink(1.2)); p.setBrush(QColor("#e4bc6c" if n % 2 else "#e6a5ac"))
+                if n % 2:
+                    heart = QPainterPath(QPointF(0, 6)); heart.cubicTo(-14, -1, -6, -12, 0, -5); heart.cubicTo(6, -12, 14, -1, 0, 6); p.drawPath(heart)
+                else:
+                    p.drawPolygon(QPolygonF([QPointF(math.sin(i * math.pi / 5) * (7 if i % 2 == 0 else 3), -math.cos(i * math.pi / 5) * (7 if i % 2 == 0 else 3)) for i in range(10)]))
+                p.restore()
             p.restore()
 
     @staticmethod
@@ -588,19 +719,19 @@ class IllustratedRoomCanvas(RoomCanvas):
         head = pet.top()
         for index, (text, started) in enumerate(self._floating):
             age = monotonic() - started
-            if not 0 <= age <= 2.8: continue
-            opacity = min(1, age * 6, (2.8 - age) * 2)
+            if not 0 <= age <= 1.2: continue
+            opacity = min(1, age * 12, (1.2 - age) / .35)
             p.save(); p.setOpacity(max(0, opacity)); p.setFont(QFont("Microsoft YaHei UI", 12, QFont.Weight.Bold))
             # Use the side of the head; the centered lane belongs to dialogue.
             if pet.right() + 165 < self.width():
-                rect = QRectF(pet.right() + 10, max(114, head - 12 - age * 12), 150, 26)
+                rect = QRectF(pet.right() + 10, max(114, head - 12 - age * 32 + index * 27), 150, 26)
             elif pet.left() > 165:
                 rect = QRectF(pet.left() - 160, max(114, head - 12 - age * 12), 150, 26)
             else:
-                rect = QRectF(center.x() - 75, max(114, head + 14 - age * 9), 150, 26)
-            p.setPen(QPen(QColor("#fff9e8"), 4)); path_text = QPainterPath()
+                rect = QRectF(center.x() - 75, max(114, head + 14 - age * 24 + index * 27), 150, 26)
+            p.setPen(QPen(QColor(OUTLINE), 3.2)); path_text = QPainterPath()
             metrics = p.fontMetrics(); path_text.addText(rect.center().x() - metrics.horizontalAdvance(text) / 2, rect.bottom() - 5, p.font(), text)
-            p.drawPath(path_text); p.fillPath(path_text, QColor("#71834c" if "饱食" in text else "#b27672")); p.restore()
+            p.drawPath(path_text); p.fillPath(path_text, QColor("#d7f0ac" if "饱食" in text else "#ffe097" if "糯米币" in text else "#ffccd8")); p.restore()
 
     @staticmethod
     def _note(p, point, color, tilt=0):
@@ -620,7 +751,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         opacity = min(1, max(.0, (perf.duration - t) / .7), t / .35)
         p.save(); p.setOpacity(opacity)
         if item == "spinning_top":
-            x += math.sin(t * 2.1) * 13
+            x = width * perf.top_x + math.sin(t * 2.1) * 9
             self._shadow(p, QPointF(x, y + 12), 42, 8)
             p.translate(x, y); p.rotate(math.sin(t * 7) * 4)
             p.setPen(ink(2.8)); p.setBrush(QColor("#c8945d"))
@@ -639,6 +770,11 @@ class IllustratedRoomCanvas(RoomCanvas):
             p.setBrush(QColor("#f6e7c4")); p.drawRoundedRect(QRectF(-36, -60, 72, 33), 6, 6)
             p.setBrush(QColor("#e8b5ac")); p.drawEllipse(QRectF(-32, -30, 64, 18))
             p.setBrush(QColor("#f9e3a3")); p.drawEllipse(QRectF(-11, -40, 22, 22))
+            p.save(); p.translate(0, -29); p.scale(1, .4); p.rotate(t * 145)
+            p.setPen(ink(1.8)); p.setBrush(QColor("#d9b969")); p.drawEllipse(QPointF(), 19, 19)
+            for n in range(8):
+                p.drawLine(QPointF(math.cos(n * math.pi / 4) * 11, math.sin(n * math.pi / 4) * 11), QPointF(math.cos(n * math.pi / 4) * 20, math.sin(n * math.pi / 4) * 20))
+            p.restore()
             p.setPen(ink(2)); p.drawLine(QPointF(-12, 10), QPointF(12, 10)); p.drawEllipse(QPointF(0, 8), 3, 3)
             for n, color in enumerate(("#b77e9c", "#8ba978", "#7398ad", "#cf9e58", "#ac8fb3", "#b59b58")):
                 phase = (t * .24 + n / 6) % 1

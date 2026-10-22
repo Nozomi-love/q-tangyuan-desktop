@@ -145,12 +145,12 @@ class IllustratedUI(unittest.TestCase):
 
     def test_room_food_icon_flies_into_bowl_without_charging_twice(self):
         room = self.panel.room; room.show_food("strawberry")
-        started = room._fly_started; before = self.panel.model.snapshot()
+        before = self.panel.model.snapshot()
         frames = []
-        for at in (started + .12, started + .4, started + 1):
-            with patch("home_scene.monotonic", return_value=at):
-                pixmap = room.grab().toImage(); frames.append(bytes(pixmap.constBits()))
-        self.assertNotEqual(frames[0], frames[1]); self.assertNotEqual(frames[1], frames[2])
+        for delta in (.12, .28, .6):
+            room.advance_scene(delta)
+            pixmap = room.grab().toImage(); frames.append(bytes(pixmap.constBits()))
+        self.assertTrue(frames[0] != frames[1]); self.assertTrue(frames[1] != frames[2])
         self.assertEqual(self.panel.model.snapshot(), before)
 
     def test_all_tricks_and_large_accessories_fit_below_hud_at_minimum_room_height(self):

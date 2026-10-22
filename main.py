@@ -30,7 +30,7 @@ from dashboard import DashboardWindow
 from illustrated_assets import IconAtlas, plain_text
 from models import GameRules, PetData, PetModel
 from pet_engine import PetEngine, SkinRenderer, WorkArea
-from pet_window import PetWindow
+from pet_window import PetWindow, ProceduralAudio
 from save_manager import SaveDataError, SaveManager, SkinManager, SkinImportError
 
 PROJECT_ROOT = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
@@ -103,6 +103,7 @@ class PetApplication:
                 logging.warning("存档读取失败，本次只在内存体验，原文件保留：%s", error)
         self.model = PetModel(data, self._load_rules(accelerated))
         self.window = PetWindow(PROJECT_ROOT / "assets" / "skins" / "default")
+        self.audio = ProceduralAudio(PROJECT_ROOT / "assets" / "sounds", data.muted, self.window)
         self._skin_restore_warning = ""
         if data.selected_skin_id != "default":
             restored = self.skin_manager.resolve(data.selected_skin_id)
@@ -119,6 +120,10 @@ class PetApplication:
         self.dashboard.set_phase4_context(self.skin_manager.list_skins(), self.dev_mode)
         self._connect_dashboard()
         self.window.dialogue_shown.connect(self.dashboard.room.show_message)
+        self.dashboard.room.sound_requested.connect(self.audio.play)
+        self.model.gains_received.connect(self._gains_received)
+        self.model.interaction_started.connect(self._interaction_started)
+        self.window.drag_started.connect(self.dashboard.room.interact)
 
         self.model.state_changed.connect(self._state_changed)
         self.model.starvation_changed.connect(self.window.set_starving)
@@ -217,6 +222,9 @@ class PetApplication:
         self.pin_action.setCheckable(True)
         self.dashboard_action = self.menu.addAction(" 打开汤圆小窝")
         self.overlay_action = self.menu.addAction(" 显示桌面悬浮窗")
+        self.mute_action = self.menu.addAction("静音")
+        self.mute_action.setCheckable(True); self.mute_action.toggled.connect(self.model.set_muted)
+        self.mute_action.setIcon(self.ui_icons.icon("music_box"))
         self.overlay_action.setCheckable(True)
         self.overlay_action.toggled.connect(self.model.set_overlay_visible)
         self.trick_menu = self.menu.addMenu(" 表演特技")
@@ -262,6 +270,7 @@ class PetApplication:
     def _connect_dashboard(self) -> None:
         self.dashboard.rename_requested.connect(self.model.rename_pet)
         self.dashboard.overlay_requested.connect(self.model.set_overlay_visible)
+        self.dashboard.mute_requested.connect(self.model.set_muted)
         self.dashboard.furniture_requested.connect(self.model.equip_furniture)
         self.dashboard.poke_requested.connect(self._room_poke)
         self.dashboard.pet_requested.connect(self._pet_head)
@@ -290,6 +299,7 @@ class PetApplication:
         self.dashboard.set_settings(self.window.engine.pinned, self.dev_action.isChecked(), self.flat_action.isChecked())
 
     def _achievement_unlocked(self, achievement: dict) -> None:
+        self.audio.play("coin")
         self.window.show_message(f" 解锁成就：《{achievement['name']}》！可前往主面板领奖", "achievement")
         if hasattr(self, "save_timer"):
             self.save_timer.start()
@@ -300,6 +310,7 @@ class PetApplication:
 
     def _refresh_menu(self) -> None:
         data, rules = self.model.data, self.model.rules
+        self.mute_action.blockSignals(True); self.mute_action.setChecked(data.muted); self.mute_action.blockSignals(False)
         exp = "MAX" if data.affection_level == 30 else f"{data.affection_exp}/{self.model.exp_required}"
         self.level_info.setText(f" 等级: Lv.{data.affection_level} (EXP: {exp})")
         self.hunger_info.setText(f" 饱食度: {data.hunger:g}/100" + (" · 饿扁啦" if self.model.starving else ""))
@@ -322,6 +333,8 @@ class PetApplication:
 
     def _state_changed(self, _state: dict) -> None:
         self._dirty = True
+        self.audio.set_muted(self.model.data.muted)
+        self.mute_action.blockSignals(True); self.mute_action.setChecked(self.model.data.muted); self.mute_action.blockSignals(False)
         enabled = self.model.data.overlay_visible
         if self.window._overlay_enabled != enabled:
             self.window.set_overlay_visible(enabled)
@@ -333,6 +346,14 @@ class PetApplication:
         self._refresh_menu()
         if hasattr(self, "save_timer"):
             self.save_timer.start()
+
+    def _gains_received(self, gains: dict) -> None:
+        self.window.show_gains(gains)
+        if gains.get("coins", 0) > 0: self.audio.play("coin")
+
+    def _interaction_started(self, kind: str) -> None:
+        if kind == "poke": self.audio.play("poke")
+        elif kind == "food" and not self.dashboard.room.isVisible(): self.audio.play("eat")
 
     def _room_poke(self) -> None:
         self.window.engine.click()
@@ -474,6 +495,7 @@ class PetApplication:
         self._stopped = True
         for timer in (self.tick_timer, self.autosave_timer, self.save_timer):
             timer.stop()
+        self.audio.stop()
         self.window.stop()
         self.menu.hide()
         self.tray.hide()

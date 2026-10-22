@@ -34,6 +34,7 @@ def pixels(widget):
 class LifeTests(unittest.TestCase):
     def test_wait_then_autonomous_bowl_visit_and_return(self):
         life = RoomLife(random.Random(3)); states = set()
+        life.rng.choice = lambda choices: "bowl"
         for _ in range(650):
             life.advance(.05); states.add(life.state)
         self.assertTrue({"walk_bowl", "sniff", "return", "idle"} <= states)
@@ -70,6 +71,7 @@ class LifeTests(unittest.TestCase):
 
     def test_toy_is_only_an_autonomous_choice_when_available(self):
         life = RoomLife(); life.accelerated = True; life.toy_available = True; life.cycle = 3; life.wait = 0
+        life.rng.choice = lambda choices: "toy"
         life.advance(2.1); self.assertEqual(life.state, "walk_toy")
         life.advance(3); self.assertEqual(life.state, "inspect")
 
@@ -212,10 +214,11 @@ class RoomIntegrationTests(unittest.TestCase):
 
     def test_feeding_chews_and_displays_only_actual_hunger_gain(self):
         self.model.set_hunger(95); self.model.buy_item("water", True)
-        self.assertEqual(self.room._floating[-1][0], "+5 饱食")
-        start = self.room._chew_started
-        with patch("home_scene.monotonic", return_value=start + .85):
-            self.assertNotEqual(self.room._view().pose, self.engine.pose); self.room.grab()
+        self.assertFalse(self.room._floating)
+        self.room.advance_scene(.78)
+        self.assertEqual(self.room._floating[-1][0], "+5 饱食度")
+        self.room.advance_scene(.15)
+        self.assertNotEqual(self.room._view().pose, self.engine.pose); self.room.grab()
         self.assertIsNone(self.room.performance)
 
     def test_burst_gifts_queue_visuals_without_repeating_model_transactions(self):

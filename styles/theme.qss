@@ -69,3 +69,7 @@ QFrame#floatingHud QLabel#titlePlaque { font-size: 10px; }
 QFrame#floatingHud QLabel#buffBadge { font-size: 10px; }
 QFrame#floatingHud QLabel#coinAmount { font-size: 15px; min-width: 0; }
 QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: #a98b64; }
+
+/* A pressed sound capsule always means muted; keyboard controls remain available. */
+QPushButton#muteControl { background: #f5e4c7; border: 1px solid #b89b73; }
+QPushButton#muteControl:checked { background: #dbc6cf; border: 2px solid #aa7c8d; }

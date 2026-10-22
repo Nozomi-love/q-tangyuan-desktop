@@ -46,6 +46,7 @@ def resource_files(root: Path) -> list[str]:
     selected = ["assets/icons/tangyuan.ico", "config/catalog.json", "styles/theme.qss", expression_file]
     selected += ["assets/skins/default/" + name for name in dict.fromkeys(expressions["files"].values())]
     selected += ["assets/item_icons/" + icon + ".png" for icon in icons]
+    selected += ["assets/sounds/" + name + ".wav" for name in ("poke", "eat", "coin", "music_box")]
     for relative in selected:
         checked_source(root, relative)
     return sorted(set(selected))

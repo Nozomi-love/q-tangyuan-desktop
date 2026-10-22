@@ -71,8 +71,9 @@ def main():
                 if key == "spinning_top": assert room.performance.bumped and room.performance.speed > 1000
                 capture(str(index).zfill(2) + "-" + key)
             room.performance = None; model.set_hunger(94); model.buy_item("water", True)
-            assert room._floating[-1][0] == "+6 饱食" and room._food_id == "water"
-            with patch("home_scene.monotonic", return_value=room._fly_started + .4): capture("12-feeding-flight")
+            assert room._food_id == "water"
+            room.advance_scene(.4); capture("12-feeding-flight")
+            room.advance_scene(.4); assert room._floating[-1][0] == "+6 饱食度"
             room.performance = None; room._chew_started = -100; room.interact()
             assert pinned == (engine.x, engine.y, engine.pinned)
             result["pinned_desktop_and_single_physics_clock_preserved"] = True

@@ -124,7 +124,7 @@ class SaveManager:
             old_window = self._validate_window(data.get("window", {}))
             data["window"] = {**old_window, **window}
         if game is not None:
-            # Furniture, pet name and overlay preference are additive version-5
+            # Furniture, pet name, overlay and mute preferences are additive version-5
             # fields; merge retains older layouts and unrelated future metadata.
             data = self._merge(data, game)
             # An expired/replaced Buff must not be resurrected by recursive merge.

@@ -285,6 +285,7 @@ class PetData:
     placed_furniture: list[str] = field(default_factory=list)
     lamp_on: bool = True
     overlay_visible: bool = False
+    muted: bool = False
     coins: int = 100
     hunger: float = 80.0
     affection_level: int = 1
@@ -339,7 +340,7 @@ class PetData:
                 raise ValueError(f"{key} 必须为不重复的字符串列表")
         if any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", trick) for trick in item.purchased_tricks):
             raise ValueError("已购特技 ID 无效")
-        for key in ("lamp_on", "overlay_visible"):
+        for key in ("lamp_on", "overlay_visible", "muted"):
             if type(getattr(item, key)) is not bool:
                 raise ValueError(f"{key} 需要布尔值")
         for furniture_id in item.owned_furniture + item.placed_furniture:
@@ -411,6 +412,8 @@ class PetModel(QObject):
     food_consumed = Signal(str)
     gifted = Signal()
     presentation_requested = Signal(dict)
+    gains_received = Signal(dict)
+    interaction_started = Signal(str)
     achievement_unlocked = Signal(dict)
     buff_changed = Signal(dict)
     dizzy_requested = Signal()
@@ -482,7 +485,18 @@ class PetModel(QObject):
         self.data.daily_stats.update(date=value, poke_attempts=0, poke_coin_drops=0)
         return True
 
+    def _credit_coins(self, amount: int) -> None:
+        self.data.coins += amount
+        if amount > 0:
+            self.gains_received.emit({"coins": amount})
+
+    def set_muted(self, enabled: bool) -> None:
+        if type(enabled) is bool and self.data.muted != enabled:
+            self.data.muted = enabled
+            self._publish(self.starving)
+
     def _add_exp(self, amount: int) -> list[int]:
+        before = self._lifetime_exp()
         levels = []
         if self.data.affection_level >= self.MAX_LEVEL:
             return levels
@@ -490,10 +504,13 @@ class PetModel(QObject):
         while self.data.affection_level < self.MAX_LEVEL and self.data.affection_exp >= self.exp_required:
             self.data.affection_exp -= self.exp_required
             self.data.affection_level += 1
-            self.data.coins += 30
+            self._credit_coins(30)
             levels.append(self.data.affection_level)
         if self.data.affection_level == self.MAX_LEVEL:
             self.data.affection_exp = 0
+        actual = self._lifetime_exp() - before
+        if actual > 0:
+            self.gains_received.emit({"exp": actual})
         return levels
 
     def _publish(self, previous_starving: bool, levels: list[int] | None = None,
@@ -514,7 +531,7 @@ class PetModel(QObject):
         amount = self.data.pending_reward["coins"]
         if not amount:
             return 0, []
-        self.data.coins += amount
+        self._credit_coins(amount)
         self.data.stats["total_gifts"] += 1
         self.data.pending_reward.update(coins=0, remaining_seconds=0.0)
         levels = self._add_exp(5)
@@ -532,6 +549,7 @@ class PetModel(QObject):
         return True
 
     def poke(self) -> None:
+        self.interaction_started.emit("poke")
         previous = self.starving
         self._roll_day()
         self.data.stats["total_clicks"] += 1
@@ -553,7 +571,7 @@ class PetModel(QObject):
             daily["poke_attempts"] += 1
             if self.rng.random() < 0.35:
                 daily["poke_coin_drops"] += 1
-                self.data.coins += 2
+                self._credit_coins(2)
         self._publish(previous, levels, message, tone)
         if trigger_dizzy:
             self.dizzy_requested.emit()
@@ -595,6 +613,7 @@ class PetModel(QObject):
         return self.buy_item("sugar", feed_now=True)
 
     def _consume(self, item_id: str, item: dict, previous: bool) -> None:
+        self.interaction_started.emit(item["category"])
         if item["category"] == "gift":
             self.data.stats["total_presents"] += 1
             before_exp = self._lifetime_exp()
@@ -609,6 +628,9 @@ class PetModel(QObject):
         before_hunger = self.data.hunger
         was_full = self.data.hunger >= 100
         self.data.hunger = min(100.0, self.data.hunger + item["hunger"])
+        gain = self.data.hunger - before_hunger
+        if gain > 0:
+            self.gains_received.emit({"hunger": gain})
         self.data.stats["total_feeds"] += 1
         if previous and not self.starving:
             self.data.stats["starvation_recoveries"] += 1
@@ -662,7 +684,7 @@ class PetModel(QObject):
                 or achievement_id in self.data.claimed_achievements):
             return False
         self.data.claimed_achievements.append(achievement_id)
-        self.data.coins += achievement["coins"]
+        self._credit_coins(achievement["coins"])
         title = achievement.get("title")
         if title and title not in self.data.titles:
             self.data.titles.append(title)
@@ -889,6 +911,7 @@ class PetModel(QObject):
             return False
         self.data.timers["pet_cooldown_remaining"] = self.rules.pet_cooldown
         self.data.stats["total_pets"] += 1
+        self.interaction_started.emit("pet")
         levels = self._add_exp(3)
         self._publish(self.starving, levels, self.dialogue("pet_head"), "interaction")
         return True
