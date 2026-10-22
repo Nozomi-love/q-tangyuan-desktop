@@ -1564,6 +1564,13 @@ class RoomCanvas(QWidget):
         painter.drawRoundedRect(QRectF(rect.left() - 16, rect.bottom() + 6, rect.width() + 32, 12), 5, 5)
         painter.restore()
 
+    @staticmethod
+    def clock_angles(at: datetime | None = None) -> tuple[float, float, float]:
+        now = at or datetime.now()
+        seconds = now.second + now.microsecond / 1_000_000
+        minutes = now.minute + seconds / 60
+        return ((now.hour % 12 + minutes / 60) * 30, minutes * 6, seconds * 6)
+
     def _paint_wall_decoration(self, painter: QPainter, width: float, height: float) -> None:
         furniture = self._slot("wall")
         painter.save()
@@ -1589,7 +1596,7 @@ class RoomCanvas(QWidget):
             for x, y in [(-7, -4), (3, -8), (9, 3), (-1, 5), (-8, 8)]:
                 painter.drawEllipse(QPointF(x, y), 1.7, 1.7)
         elif furniture == "rice_clock":
-            painter.setPen(QPen(QColor("#c6a38a"), 6))
+            painter.setPen(QPen(QColor("#70513b"), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.setBrush(QColor("#fffaf1"))
             painter.drawEllipse(QPointF(), 58, 58)
             painter.setPen(QPen(QColor("#70513b"), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
@@ -1597,14 +1604,12 @@ class RoomCanvas(QWidget):
                 angle = index * math.tau / 12
                 painter.drawLine(QPointF(math.sin(angle) * 47, -math.cos(angle) * 47),
                                  QPointF(math.sin(angle) * 51, -math.cos(angle) * 51))
-            now = datetime.now()
-            for angle, length, thickness in [((now.hour % 12 + now.minute / 60) * 30, 25, 4),
-                                               ((now.minute + now.second / 60) * 6, 38, 2.5)]:
-                painter.save()
-                painter.rotate(angle)
-                painter.setPen(QPen(QColor("#846859"), thickness, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-                painter.drawLine(QPointF(), QPointF(0, -length))
-                painter.restore()
+            hour, minute, second = self.clock_angles()
+            for angle, length, thickness, color in ((hour, 25, 4, "#70513b"),
+                    (minute, 38, 2.5, "#70513b"), (second, 43, 1.1, "#b47769")):
+                painter.save(); painter.rotate(angle)
+                painter.setPen(QPen(QColor(color), thickness, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                painter.drawLine(QPointF(), QPointF(0, -length)); painter.restore()
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor("#e9b6ad"))
             painter.drawEllipse(QPointF(), 4, 4)

@@ -2,7 +2,9 @@
 QWidget { font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 13px; color: #6c523d; }
 QMainWindow#dashboard, QWidget#dashboardRoot { background: #eee0c8; }
 QScrollArea, QScrollArea > QWidget > QWidget, QWidget#bookPage { background: transparent; border: none; }
-QFrame#floatingHud { background: rgba(255, 246, 221, 238); border: 1px solid #9a7959; border-radius: 13px; }
+QFrame#floatingHud { background: transparent; border: none; }
+QFrame#hudProfile { background: rgba(255, 248, 230, 226); border: 1px solid #b29472; border-radius: 16px; }
+QFrame#coinCapsule { background: rgba(249, 229, 183, 238); border: 1px solid #b39767; border-radius: 17px; min-height: 29px; }
 QLabel { background: transparent; border: none; }
 QLabel#petName { color: #6a4935; font-size: 16px; font-weight: 700; }
 QLabel#titlePlaque { color: #9e7954; font-size: 11px; }
@@ -11,8 +13,8 @@ QLabel#coinAmount { font-size: 17px; font-weight: 700; color: #956f3b; min-width
 QLabel#buffBadge { color: #9d7257; font-size: 11px; padding: 2px; }
 QFrame#inventoryBook { background: #f9edd6; border: 2px solid #805f45; border-radius: 15px; }
 QLabel#bookTitle { font-size: 18px; font-weight: 700; color: #765339; padding: 2px; }
-QFrame#gameCard { background: #fff6e2; border: 2px solid #d0b18b; border-bottom: 4px solid #c5a781; border-radius: 17px; }
-QLabel#itemName { font-size: 15px; font-weight: 700; color: #79543a; qproperty-alignment: AlignCenter; }
+QFrame#gameCard { background: #fff6e2; border: 1px solid #b99a76; border-bottom: 2px solid #b99a76; border-radius: 13px; }
+QLabel#itemName { font-size: 14px; font-weight: 700; color: #79543a; qproperty-alignment: AlignCenter; }
 QLabel#itemTag { color: #9b774f; font-size: 12px; qproperty-alignment: AlignCenter; }
 QLabel#sectionTitle { font-size: 16px; color: #82603f; font-weight: 700; padding: 5px 0; }
 QLabel#muted { color: #9c846b; font-size: 12px; }
@@ -26,18 +28,18 @@ QPushButton:disabled { background: #e8ddc9; color: #b0a18a; border-color: #d2c2a
 QPushButton#gameToggle:checked { background: #d6e0bd; border: 2px solid #96a775; color: #56683e; }
 QTabWidget::pane { border: none; background: transparent; }
 QTabBar { background: transparent; }
-QTabBar::tab { background: #e9d6b6; color: #94744e; border: 1px solid #c7aa80; border-radius: 9px; margin: 0 3px 4px 0; padding: 9px 9px; min-width: 65px; }
+QTabBar::tab { background: #e9d6b6; color: #94744e; border: 1px solid #c7aa80; border-radius: 9px; margin: 0 3px 4px 0; padding: 7px 6px; min-width: 48px; }
 QTabBar::tab:selected { background: #cdd8b0; color: #5d6d45; border-color: #99a477; font-weight: 600; }
 QTabBar::tab:hover { background: #e1d2aa; }
 QProgressBar { background: #dfd0b7; border: 1px solid #c0a580; border-radius: 7px; min-height: 18px; max-height: 22px; text-align: center; color: #6f573c; font-size: 11px; }
 QProgressBar::chunk { background: #dcaeab; border-radius: 6px; }
 QProgressBar#hungerBar::chunk { background: #b8ca8d; }
 QProgressBar#affectionBar::chunk { background: #ddb3aa; }
-QScrollBar:vertical { background: #eee0c8; width: 10px; border-radius: 5px; margin: 3px 1px; }
+QScrollBar:vertical { background: #eee0c8; width: 7px; border-radius: 3px; margin: 3px 0; }
 QScrollBar::handle:vertical { background: #bfa27b; border-radius: 4px; min-height: 30px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-QScrollBar:horizontal { background: #eee0c8; height: 10px; border-radius: 4px; }
+QScrollBar:horizontal { background: #eee0c8; height: 7px; border-radius: 3px; }
 QScrollBar::handle:horizontal { background: #bfa27b; border-radius: 4px; min-width: 30px; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 QSlider::groove:horizontal { height: 8px; background: #dfc9aa; border: 1px solid #c3a37b; border-radius: 4px; }
@@ -59,3 +61,11 @@ QPushButton, QTabBar::tab { outline: none; }
 QPushButton:focus, QSlider:focus { border-color: #8e9b65; }
 QFrame#floatingHud QPushButton { padding: 1px; min-height: 14px; border-radius: 8px; }
 QFrame#floatingHud QProgressBar { min-height: 15px; max-height: 16px; font-size: 10px; }
+
+/* Compact book cards retain large illustrations and clear transaction buttons. */
+QFrame#gameCard QPushButton { padding: 4px 6px; min-height: 19px; border-radius: 8px; font-size: 12px; }
+QFrame#floatingHud QLabel#petName { font-size: 14px; }
+QFrame#floatingHud QLabel#titlePlaque { font-size: 10px; }
+QFrame#floatingHud QLabel#buffBadge { font-size: 10px; }
+QFrame#floatingHud QLabel#coinAmount { font-size: 15px; min-width: 0; }
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: #a98b64; }

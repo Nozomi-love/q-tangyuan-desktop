@@ -187,6 +187,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         self._last_external = (-1.0, -1.0, -1.0)
         self._chew_started = -100.0
         self._last_toy = ""
+        self.environment_time = 0.0
         self.poke_requested.connect(self.interact)
         self.pet_requested.connect(self.interact)
 
@@ -226,6 +227,7 @@ class IllustratedRoomCanvas(RoomCanvas):
 
     def advance_scene(self, dt, hour=None):
         """One visible-scene tick, exposed for deterministic animation tests."""
+        self.environment_time += clamp(float(dt), 0, 60)
         busy = self._busy()
         self.life.toy_available = bool(self._last_toy or any(self._home.get("inventory", {}).get(k, 0)
             for k in ("spinning_top", "music_box", "paper_star", "flower_bouquet")))
@@ -286,7 +288,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         bounds = self.renderer_provider().scene_bounds(self._view(), self._render_foot())
         # The HUD occupies widget pixels while the room uses logical scene
         # units. Fit the full accessory/trick envelope beneath it on small views.
-        zoom = min(self._pet_zoom, max(20.0, width - 50) / max(1.0, bounds.width()),
+        zoom = min(self._pet_zoom * min(1.9, max(1.0, 900 / max(1, self.width()))), max(20.0, width - 50) / max(1.0, bounds.width()),
                    max(20.0, height - 23 - top) / max(1.0, bounds.height()))
         transform = QTransform()
         transform.translate(foot.x(), foot.y())
@@ -338,6 +340,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         self._paint_wall_decoration(painter, width, height)
         self._paint_corner(painter, width, height)
         foot = self._base_foot()
+        self._shadow(painter, foot + QPointF(0, 19), 175, 24)
         painter.save(); painter.translate(foot.x(), foot.y()); painter.scale(1.36, 1.36); painter.translate(-foot.x(), -foot.y())
         self._paint_rug(painter, foot)
         painter.restore()
@@ -348,6 +351,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         painter.save(); painter.setTransform(self._pet_transform(), combine=True)
         self.renderer_provider().paint(painter, self._view(), self._render_foot())
         painter.restore()
+        self._paint_ambient(painter, width, height)
         painter.restore()
         self._paint_food_flight(painter)
         self._paint_gains(painter)
@@ -390,23 +394,40 @@ class IllustratedRoomCanvas(RoomCanvas):
         p.fillRect(QRectF(0, floor - 19, width, 6), QColor(trim).lighter(113))
         p.setPen(QPen(QColor("#94704f"), 1.5)); p.drawLine(QPointF(0, floor), QPointF(width, floor))
         # The upper 110 units belong to the floating HUD, not a second title.
-        window = QRectF(width - 298, 139, 174, min(157, floor - 154))
+        window = self.window_rect(width, height)
         self._paint_window(p, window, wood)
         self._curtains(p, window)
         if not self._slot("wall"):
             self._little_landscape(p, QRectF(width * .22 - 56, 161, 112, 91))
         self._shadow(p, QPointF(width - 91, height - 73), 37, 8)
         self._houseplant(p, width - 91, height - 78)
-        # Feathered window light exists by day and by moonlight; no hard blocks.
+    def window_rect(self, width, height):
+        scale = self._geometry()[0]
+        top = max(139, 112 / scale + 12)
+        return QRectF(width - 298, top, 174, min(157, max(95, height * .65 - top - 25)))
+
+    def _paint_ambient(self, p, width, height):
+        """Light the complete scene, including the pet and equipped furniture."""
+        p.save(); p.setPen(Qt.PenStyle.NoPen)
+        p.fillRect(QRectF(0, 0, width, height), QColor(255, 231, 188, 9) if self.daytime else QColor(53, 63, 102, 42))
+        window = self.window_rect(width, height)
         beam = QLinearGradient(window.left(), window.bottom(), width - 20, height)
-        beam.setColorAt(0, QColor(255, 237, 176, 65) if self.daytime else QColor(173, 197, 238, 43))
-        beam.setColorAt(1, QColor(255, 237, 176, 0) if self.daytime else QColor(173, 197, 238, 0))
-        p.setPen(Qt.PenStyle.NoPen); p.setBrush(beam)
-        p.drawPolygon(QPolygonF([window.bottomLeft(), window.bottomRight(), QPointF(width - 5, height), QPointF(window.left() - 180, height)]))
-        if not self.daytime:
-            soft = QLinearGradient(0, 0, width, height)
-            soft.setColorAt(0, QColor(112, 120, 165, 9)); soft.setColorAt(1, QColor(133, 135, 172, 25))
-            p.fillRect(QRectF(0, 0, width, height), soft)
+        beam.setColorAt(0, QColor(255, 239, 184, 40) if self.daytime else QColor(178, 202, 245, 53))
+        beam.setColorAt(1, QColor(255, 239, 184, 0) if self.daytime else QColor(178, 202, 245, 2))
+        p.setBrush(beam)
+        p.drawPolygon(QPolygonF([window.bottomLeft(), window.bottomRight(),
+            QPointF(width - 8, height), QPointF(window.left() - 190, height)]))
+        # A softly feathered patch catches the wood grain on the floor.
+        p.save(); p.translate(width - 195, height - 57); p.scale(1, .23)
+        local = QRadialGradient(QPointF(), 180)
+        local.setColorAt(0, QColor(255, 233, 172, 42) if self.daytime else QColor(190, 210, 247, 30))
+        local.setColorAt(1, QColor(255, 239, 190, 0)); p.setBrush(local); p.drawEllipse(QPointF(), 180, 180); p.restore()
+        if self._slot("corner") == "warm_lamp" and self._home.get("lamp_on", True):
+            glow = QRadialGradient(QPointF(width * .17, height - 208), 210)
+            glow.setColorAt(0, QColor(255, 199, 111, 74 if not self.daytime else 38))
+            glow.setColorAt(.55, QColor(255, 213, 141, 24)); glow.setColorAt(1, QColor(255, 218, 153, 0))
+            p.setBrush(glow); p.drawEllipse(QPointF(width * .17, height - 208), 210, 210)
+        p.restore()
 
     def _curtains(self, p, rect):
         p.save()
@@ -484,11 +505,57 @@ class IllustratedRoomCanvas(RoomCanvas):
         local.setColorAt(0, QColor(72, 48, 31, 65)); local.setColorAt(1, QColor(72, 48, 31, 0))
         p.setBrush(local); p.drawEllipse(QPointF(), width, width); p.restore()
 
+    @staticmethod
+    def cloud_centers(time, width):
+        return [(((phase + time * .006) % 1.0) * (width + 66) - 33, y)
+                for phase, y in ((.23, 55), (.72, 104))]
+
+    @staticmethod
+    def star_opacity(index, time):
+        return .58 + .22 * math.sin(time * .8 + index * 1.71)
+
     def _paint_window(self, p, rect, wood):
-        super()._paint_window(p, rect, wood)
-        p.save(); p.setBrush(Qt.BrushStyle.NoBrush); p.setPen(ink(4))
-        p.drawRoundedRect(rect.adjusted(-7, -7, 7, 7), 13, 13)
-        p.setPen(ink(2)); p.drawRoundedRect(rect, 8, 8); p.restore()
+        p.save(); p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(74, 49, 33, 25))
+        p.drawRoundedRect(rect.adjusted(-10, -6, 13, 14), 17, 17)
+        p.setPen(ink(4)); p.setBrush(QColor(wood)); p.drawRoundedRect(rect.adjusted(-7, -7, 7, 7), 13, 13)
+        p.save(); glass = QPainterPath(); glass.addRoundedRect(rect, 7, 7); p.setClipPath(glass)
+        sky = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        sky.setColorAt(0, QColor("#b8dbe6" if self.daytime else "#30395b"))
+        sky.setColorAt(1, QColor("#f2f5df" if self.daytime else "#6d7296")); p.fillRect(rect, sky)
+        p.setPen(Qt.PenStyle.NoPen)
+        if self.daytime:
+            glow = QRadialGradient(rect.topRight() + QPointF(-38, 35), 36)
+            glow.setColorAt(0, QColor(255, 242, 178, 180)); glow.setColorAt(1, QColor(255, 242, 178, 0))
+            p.setBrush(glow); p.drawEllipse(rect.topRight() + QPointF(-38, 35), 36, 36)
+            p.setBrush(QColor("#fff0ab")); p.drawEllipse(rect.topRight() + QPointF(-38, 35), 19, 19)
+            p.setBrush(QColor(255, 255, 250, 230))
+            for x, y in self.cloud_centers(self.environment_time, rect.width()):
+                center = rect.topLeft() + QPointF(x, y)
+                cloud = QPainterPath(); cloud.setFillRule(Qt.FillRule.WindingFill)
+                for dx, dy, rx, ry in ((-17, 1, 17, 10), (0, -5, 21, 15), (20, 2, 20, 10)):
+                    cloud.addEllipse(center + QPointF(dx, dy), rx, ry)
+                p.drawPath(cloud.simplified())
+        else:
+            moon = QPainterPath(); moon.addEllipse(rect.topRight() + QPointF(-39, 34), 20, 20)
+            cut = QPainterPath(); cut.addEllipse(rect.topRight() + QPointF(-30, 27), 19, 19)
+            p.setBrush(QColor("#fff0bc")); p.drawPath(moon.subtracted(cut))
+            for index, (x, y) in enumerate(((23, 25), (57, 62), (89, 31), (39, 119), (140, 126), (112, 96), (21, 86))):
+                color = QColor("#fff6d8"); color.setAlphaF(self.star_opacity(index, self.environment_time))
+                p.setBrush(color); p.drawEllipse(rect.topLeft() + QPointF(x, y), 1.8, 1.8)
+                if index % 3 == 0:
+                    p.setPen(QPen(color, .8)); c = rect.topLeft() + QPointF(x, y)
+                    p.drawLine(c + QPointF(-3, 0), c + QPointF(3, 0)); p.drawLine(c + QPointF(0, -3), c + QPointF(0, 3)); p.setPen(Qt.PenStyle.NoPen)
+        p.restore(); p.setBrush(Qt.BrushStyle.NoBrush); p.setPen(ink(2)); p.drawRoundedRect(rect, 7, 7)
+        for line in ((QPointF(rect.center().x(), rect.top()), QPointF(rect.center().x(), rect.bottom())),
+                     (QPointF(rect.left(), rect.center().y()), QPointF(rect.right(), rect.center().y()))):
+            p.setPen(ink(8)); p.drawLine(*line); p.setPen(QPen(QColor(wood), 4)); p.drawLine(*line)
+        p.setBrush(QColor("#f1d6b4")); p.setPen(ink(2.4))
+        p.drawRoundedRect(QRectF(rect.left() - 16, rect.bottom() + 7, rect.width() + 32, 10), 4, 4); p.restore()
+
+    def _paint_corner(self, p, width, height):
+        if self._slot("corner"):
+            self._shadow(p, QPointF(width * .17, height - 69), 73, 13)
+        super()._paint_corner(p, width, height)
 
     def _paint_bowl(self, p, width, height):
         # A separate side table gives the baked-in yellow character bowl room.

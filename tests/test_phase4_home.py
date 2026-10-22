@@ -458,7 +458,7 @@ class HomeControllerTests(unittest.TestCase):
                 QTest.qWait(20)
                 self.assertTrue(self.panel.room.isVisible())
                 self.assertGreater(self.panel.room.height(), 120)
-        QTest.qWait(200)
+        QTest.qWait(self.panel.drawer_animation.duration() + 40)
         self.assertTrue(self.panel.drawer.isHidden())
         self.assertFalse(self.panel.drawer.isWindow())
 

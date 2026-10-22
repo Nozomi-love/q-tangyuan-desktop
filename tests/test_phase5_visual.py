@@ -92,8 +92,8 @@ class IllustratedUI(unittest.TestCase):
     def test_all_five_navigation_entries_are_large_pixmap_buttons(self):
         self.assertEqual(set(self.panel.nav_buttons), {"home", "bag", "shop", "dress", "achievements"})
         for button in self.panel.nav_buttons.values():
-            self.assertFalse(button.icon().isNull()); self.assertEqual(button.iconSize().width(), 48)
-            self.assertGreaterEqual(button.height(), 76)
+            self.assertFalse(button.icon().isNull()); self.assertEqual(button.iconSize().width(), 36)
+            self.assertGreaterEqual(button.height(), 60)
 
     def test_every_book_opens_without_squeezing_room_or_clipping_page(self):
         before = self.panel.room.height()
@@ -103,7 +103,7 @@ class IllustratedUI(unittest.TestCase):
             self.assertTrue(self.panel.drawer.isVisible()); self.assertGreater(self.panel.drawer.height(), 450)
             self.assertFalse(self.panel.drawer.isWindow())
             self.assertTrue(self.panel.room.isVisible())
-        self.panel.show_section("home"); self.assertTrue(self.panel.drawer.isHidden())
+        self.panel.show_section("home", animate=False); self.assertTrue(self.panel.drawer.isHidden())
 
     def test_shop_has_separate_scrollable_food_gift_furniture_and_trick_galleries(self):
         self.panel.show_section("shop", animate=False)
