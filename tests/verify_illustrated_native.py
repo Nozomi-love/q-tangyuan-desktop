@@ -86,14 +86,14 @@ def worker(mode, file):
             original_height = panel.room.height()
             panel.show_section("shop", animate=False)
             count = 0
-            for width in (500, 580):
-                panel.drawer.resize(width, 740); QTest.qWait(35)
+            for width in (1000, 1280):
+                panel.resize(width, 820); QTest.qWait(35)
                 for _key, (buy, feed, _label) in panel.shop_buttons.items():
                     reveal(buy); reveal(feed); count += 1
                 for button in panel.furniture_shop_buttons.values(): reveal(button); count += 1
                 for buy, perform, _label in panel.shop_trick_buttons.values(): reveal(buy); reveal(perform); count += 1
-                assert panel.room.height() == original_height
-            result["all_shop_buttons_inside_scroll_viewport_at_500_580"] = count
+                assert panel.room.height() >= 420 and panel.room.isVisible() and not panel.drawer.isWindow()
+            result["all_shop_buttons_inside_same_window_drawer_at_1000_1280"] = count
             panel.show_section("shop", animate=False); panel.market_tabs.setCurrentIndex(0); panel.shop_tabs.setCurrentIndex(0)
             panel.shop_tabs.currentWidget().verticalScrollBar().setValue(0)
             capture("02-illustrated-food-shop", panel.drawer)

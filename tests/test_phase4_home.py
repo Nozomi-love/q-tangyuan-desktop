@@ -459,7 +459,8 @@ class HomeControllerTests(unittest.TestCase):
                 self.assertTrue(self.panel.room.isVisible())
                 self.assertGreater(self.panel.room.height(), 120)
         QTest.qWait(200)
-        self.assertEqual(self.panel.drawer.maximumHeight(), 0)
+        self.assertTrue(self.panel.drawer.isHidden())
+        self.assertFalse(self.panel.drawer.isWindow())
 
     def test_furniture_request_updates_canvas_and_achievement(self):
         self.model.buy_furniture("warm_lamp")

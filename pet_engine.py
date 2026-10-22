@@ -369,6 +369,11 @@ class PetEngine:
         self.spring_velocity = 0.0
         self.happy_until = self.elapsed + 0.8
 
+    def enjoy_interaction(self, duration: float) -> None:
+        """Both views choose the same expression, so multi-state QMovies agree."""
+        if not self.flat:
+            self.happy_until = max(self.happy_until, self.elapsed + clamp(float(duration), .8, 20.0))
+
     def celebrate(self) -> None:
         self.happy_until = self.elapsed + 2.5
         if self.flat:
@@ -1564,7 +1569,7 @@ class RoomCanvas(QWidget):
         painter.save()
         painter.translate(width * 0.27, height * 0.34)
         if furniture == "sunflower_painting":
-            painter.setPen(QPen(QColor("#b68c69"), 7))
+            painter.setPen(QPen(QColor("#70513b"), 4))
             painter.setBrush(QColor("#fffaf0"))
             painter.drawRoundedRect(QRectF(-67, -64, 134, 125), 4, 4)
             painter.setPen(QPen(QColor("#779266"), 4))
@@ -1587,7 +1592,7 @@ class RoomCanvas(QWidget):
             painter.setPen(QPen(QColor("#c6a38a"), 6))
             painter.setBrush(QColor("#fffaf1"))
             painter.drawEllipse(QPointF(), 58, 58)
-            painter.setPen(QPen(QColor("#ad8d77"), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.setPen(QPen(QColor("#70513b"), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             for index in range(12):
                 angle = index * math.tau / 12
                 painter.drawLine(QPointF(math.sin(angle) * 47, -math.cos(angle) * 47),
@@ -1614,20 +1619,20 @@ class RoomCanvas(QWidget):
         if furniture:
             painter.drawEllipse(QRectF(-52, -5, 104, 18))
         if furniture == "ficus_plant":
-            painter.setPen(QPen(QColor("#86916a"), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.setPen(QPen(QColor("#70513b"), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(QPointF(0, -36), QPointF(-5, -166))
             for index, (x, y, angle) in enumerate([(-23, -80, -45), (19, -112, 42),
                                                   (-23, -144, -46), (10, -176, 26)]):
                 painter.save()
                 painter.translate(x, y)
                 painter.rotate(angle)
-                painter.setPen(QPen(QColor("#63875d"), 1.2))
+                painter.setPen(QPen(QColor("#70513b"), 2.8))
                 painter.setBrush(QColor("#8db783" if index % 2 else "#729d6a"))
                 painter.drawEllipse(QRectF(-18, -27, 36, 54))
                 painter.setPen(QPen(QColor("#b8cf9a"), 1.3))
                 painter.drawLine(QPointF(0, -20), QPointF(0, 20))
                 painter.restore()
-            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setPen(QPen(QColor("#70513b"), 2.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
             painter.setBrush(QColor("#cf9f83"))
             painter.drawPolygon(QPolygonF([QPointF(-34, -53), QPointF(34, -53), QPointF(25, 0), QPointF(-25, 0)]))
             painter.setBrush(QColor("#e3baa0"))
@@ -1642,9 +1647,9 @@ class RoomCanvas(QWidget):
                 glow.setColorAt(1, QColor(255, 230, 158, 0))
                 painter.setBrush(glow)
                 painter.drawEllipse(QPointF(0, -132), 156, 156)
-            painter.setPen(QPen(QColor("#9e8164"), 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.setPen(QPen(QColor("#70513b"), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(QPointF(0, -22), QPointF(0, -171))
-            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setPen(QPen(QColor("#70513b"), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
             painter.setBrush(QColor("#a98a69"))
             painter.drawEllipse(QRectF(-37, -14, 74, 18))
             painter.setBrush(QColor("#fff1c3" if on else "#d4c1a9"))
@@ -1662,17 +1667,17 @@ class RoomCanvas(QWidget):
         rug = self._slot("rug")
         painter.save()
         painter.translate(foot + QPointF(0, 13))
-        painter.setPen(QPen(QColor("#d2b9a4"), 1.7))
+        painter.setPen(QPen(QColor("#70513b"), 2.3))
         painter.setBrush(QColor("#f8ecd9"))
         if rug == "lotus_cushion":
-            painter.setPen(QPen(QColor("#779f7a"), 2))
+            painter.setPen(QPen(QColor("#70513b"), 2.5))
             painter.setBrush(QColor("#a9c9a0"))
             painter.drawEllipse(QRectF(-120, -29, 240, 58))
             painter.setPen(QPen(QColor("#d7e6bf"), 1.7))
             for x in [-102, -66, -25, 25, 66, 102]:
                 painter.drawLine(QPointF(0, 2), QPointF(x, -19 if x % 2 else 19))
         elif rug == "cat_paw_rug":
-            painter.setPen(QPen(QColor("#dfb5b5"), 3))
+            painter.setPen(QPen(QColor("#70513b"), 2.5))
             painter.setBrush(QColor("#fae2e1"))
             painter.drawEllipse(QRectF(-135, -35, 270, 76))
             painter.setPen(Qt.PenStyle.NoPen)
@@ -1682,6 +1687,7 @@ class RoomCanvas(QWidget):
                 painter.drawEllipse(QRectF(x - 16, -24, 32, 22))
         else:
             cloud = QPainterPath()
+            cloud.setFillRule(Qt.FillRule.WindingFill)
             cloud.addRoundedRect(QRectF(-111, -22, 222, 54), 26, 26)
             for x, y, w in [(-119, -18, 68), (-77, -29, 77), (-20, -32, 87), (49, -20, 78)]:
                 cloud.addEllipse(QRectF(x, y, w, 48))

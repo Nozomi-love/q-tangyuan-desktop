@@ -7,7 +7,7 @@ from PySide6.QtCore import QEvent, QEasingCurve, QPoint, QPropertyAnimation, QRe
 from PySide6.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPainter, QPen, QLinearGradient
 from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog,
     QLabel, QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QSizePolicy,
-    QTabBar, QTabWidget, QVBoxLayout, QWidget)
+    QTabBar, QTabWidget, QVBoxLayout, QWidget, QGraphicsOpacityEffect, QAbstractButton)
 from models import PetModel
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from home_scene import IllustratedRoomCanvas
@@ -41,6 +41,7 @@ class IconTile(QPushButton):
     def __init__(self, title, icon_id, atlas, parent=None):
         super().__init__(plain_text(title), parent)
         self.setProperty("icon_id", icon_id)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setIcon(atlas.icon(icon_id)); self.setIconSize(QSize(80, 80))
         self.setMinimumSize(112, 141)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -76,6 +77,27 @@ class IconTile(QPushButton):
             p.setPen(QColor("#fff9e7")); p.setFont(QFont("Microsoft YaHei UI", 8))
             p.drawText(badge, Qt.AlignmentFlag.AlignCenter, text)
         p.end()
+
+
+class NavigationButton(IconTile):
+    """Compact illustrated dock; it never invokes the native focus painter."""
+    def __init__(self, title, icon_id, atlas):
+        super().__init__(title, icon_id, atlas)
+        self.setMinimumSize(100, 80); self.setMaximumHeight(80)
+        self.setIconSize(QSize(48, 48))
+
+    def sizeHint(self): return QSize(140, 80)
+    def minimumSizeHint(self): return QSize(100, 80)
+
+    def paintEvent(self, event):
+        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        area = QRectF(self.rect()).adjusted(2, 1, -2, -3)
+        p.setBrush(QColor("#dce3c4" if self.isChecked() else "#f4e5c9"))
+        p.setPen(QPen(QColor("#6f7851" if self.isChecked() else "#927153"), 2))
+        p.drawRoundedRect(area, 12, 12)
+        self.icon().paint(p, int((self.width() - 46) / 2), 1, 46, 46)
+        p.setFont(QFont("Microsoft YaHei UI", 9, QFont.Weight.DemiBold)); p.setPen(QColor("#654b36"))
+        p.drawText(QRectF(4, 49, self.width() - 8, 25), Qt.AlignmentFlag.AlignCenter, self.text()); p.end()
 
 
 class IconChoice(QWidget):
@@ -176,16 +198,18 @@ class DashboardWindow(QMainWindow):
         self.setObjectName("dashboard")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
-        self.resize(1120, 890); self.setMinimumSize(580, 500)
-        self.home_scroll = QScrollArea(); self.home_scroll.setWidgetResizable(True)
+        self.resize(1280, 820); self.setMinimumSize(780, 610)
+        self.home_scroll = QScrollArea(); self.home_scroll.setWidgetResizable(False)
         self.home_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.setCentralWidget(self.home_scroll)
-        root = QWidget(); root.setObjectName("dashboardRoot"); root.setMinimumWidth(740)
+        root = QWidget(); root.setObjectName("dashboardRoot"); root.setMinimumWidth(760)
         self.home_scroll.setWidget(root)
-        layout = QVBoxLayout(root); layout.setContentsMargins(18, 14, 18, 12); layout.setSpacing(10)
+        self.home_scroll.viewport().installEventFilter(self)
+        layout = QVBoxLayout(root); layout.setContentsMargins(10, 8, 10, 8); layout.setSpacing(6)
+        self.scene_row = QHBoxLayout(); self.scene_row.setSpacing(8); layout.addLayout(self.scene_row, 1)
         self.room = IllustratedRoomCanvas(self._home_engine, renderer_provider, self, self.atlas)
         self.room.setMinimumHeight(420); self.room.installEventFilter(self)
-        layout.addWidget(self.room, 1)
+        self.room.setMinimumWidth(300); self.scene_row.addWidget(self.room, 1)
         self.room.poke_requested.connect(self.poke_requested.emit)
         self.room.pet_requested.connect(self.pet_requested.emit)
         self.room.lamp_toggle_requested.connect(lambda: self.model.set_lamp_on(not self.model.data.lamp_on))
@@ -195,11 +219,13 @@ class DashboardWindow(QMainWindow):
             self.preview_timer.timeout.connect(lambda: self._home_engine.advance(.016)); self.preview_timer.start()
             self.poke_requested.connect(self._preview_poke); self.pet_requested.connect(self._preview_pet)
             self.model.feedback.connect(self.room.show_message); self.model.fed.connect(self._home_engine.rebound)
-            self.model.food_consumed.connect(self.room.show_food)
-        self.drawer = QFrame(self, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
+            self.model.presentation_requested.connect(
+                lambda event: self._home_engine.enjoy_interaction(event.get("duration", 2.5)))
+        self.drawer = QFrame(root)
         self.drawer.setObjectName("inventoryBook"); self.drawer.setWindowTitle("汤圆图鉴")
-        self.drawer.setMinimumSize(500, 460)
-        drawer_layout = QVBoxLayout(self.drawer); drawer_layout.setContentsMargins(16, 12, 16, 14); drawer_layout.setSpacing(8)
+        self.drawer.setMinimumHeight(420)
+        self.scene_row.addWidget(self.drawer)
+        drawer_layout = QVBoxLayout(self.drawer); drawer_layout.setContentsMargins(10, 8, 10, 10); drawer_layout.setSpacing(5)
         header = QHBoxLayout(); self.drawer_title = label("", "bookTitle"); header.addWidget(self.drawer_title, 1)
         close = QPushButton("回房间"); close.setIcon(self.atlas.icon("home")); close.setIconSize(QSize(28, 28))
         close.clicked.connect(lambda: self.show_section("home")); header.addWidget(close); drawer_layout.addLayout(header)
@@ -210,12 +236,17 @@ class DashboardWindow(QMainWindow):
         self.inventory_widgets = {}; self.shop_buttons = {}; self.shop_details = {}; self.achievement_widgets = {}; self.tier_groups = {}
         self._build_status(); self._build_shop(); self._build_achievements(); self._build_customization(); self._build_settings(); self._build_furniture()
         self.tabs.tabBar().hide(); self.tabs.currentChanged.connect(self._drawer_selected)
-        self.drawer_animation = QPropertyAnimation(self.drawer, b"windowOpacity", self)
+        self.drawer_opacity = QGraphicsOpacityEffect(self.drawer); self.drawer.setGraphicsEffect(self.drawer_opacity)
+        self.drawer_animation = QPropertyAnimation(self.drawer_opacity, b"opacity", self)
         self.drawer_animation.setDuration(160); self.drawer_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.drawer.setMaximumHeight(0); self.drawer.hide(); self.current_section = "home"
+        self.drawer.hide(); self.current_section = "home"
         self._build_shelf(layout); self._build_navigation(layout)
-        self.notice = label("左键戳戳，右键摸摸头。今天也陪你慢慢长大。", "muted"); self.notice.setMaximumHeight(28); layout.addWidget(self.notice)
+        self.notice = label("左键戳戳，右键摸摸头。今天也陪你慢慢长大。", "muted"); self.notice.setMaximumHeight(0); self.notice.hide(); layout.addWidget(self.notice)
         model.state_changed.connect(self._model_changed); model.feedback.connect(self._feedback)
+        self.model.presentation_requested.connect(self.room.present_item)
+        for control in self.findChildren(QAbstractButton):
+            control.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._fit_home()
         self.refresh()
 
     def _button(self, text, icon_id=None):
@@ -227,33 +258,36 @@ class DashboardWindow(QMainWindow):
 
     def _build_hud(self):
         self.hud = QFrame(self.room); self.hud.setObjectName("floatingHud")
-        content = QHBoxLayout(self.hud); content.setContentsMargins(12, 8, 12, 8); content.setSpacing(10)
-        avatar = QVBoxLayout(); self.hud_avatar = QLabel(); self.hud_avatar.setFixedSize(76, 69)
-        self.hud_avatar.setPixmap(self.atlas.pixmap("avatar", 68)); self.hud_avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        avatar.addWidget(self.hud_avatar); self.level_badge = label("Lv.1", "levelBadge"); self.level_badge.setAlignment(Qt.AlignmentFlag.AlignCenter); avatar.addWidget(self.level_badge)
-        content.addLayout(avatar)
-        profile = QVBoxLayout(); profile.setSpacing(3)
-        row = QHBoxLayout(); self.hud_name = label("", "petName"); self.hud_name.setWordWrap(False)
-        self.hud_name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred); row.addWidget(self.hud_name, 1)
-        self.rename_button = self._button("命名"); self.rename_button.clicked.connect(self._rename); row.addWidget(self.rename_button)
-        profile.addLayout(row); self.hud_title = label("", "titlePlaque"); profile.addWidget(self.hud_title)
+        content = QVBoxLayout(self.hud); content.setContentsMargins(9, 5, 9, 6); content.setSpacing(3)
+        top = QHBoxLayout(); top.setSpacing(5)
+        self.hud_avatar = QLabel(); self.hud_avatar.setFixedSize(42, 42)
+        self.hud_avatar.setPixmap(self.atlas.pixmap("avatar", 42)); top.addWidget(self.hud_avatar)
+        profile = QVBoxLayout(); profile.setSpacing(0)
+        self.hud_name = label("", "petName"); self.hud_name.setWordWrap(False)
+        self.hud_name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        profile.addWidget(self.hud_name)
+        self.hud_title = label("", "titlePlaque"); self.hud_title.setWordWrap(False); profile.addWidget(self.hud_title)
+        top.addLayout(profile, 1)
+        self.level_badge = label("Lv.1", "levelBadge"); top.addWidget(self.level_badge)
+        coin_art = QLabel(); coin_art.setPixmap(self.atlas.pixmap("coin", 28)); top.addWidget(coin_art)
+        self.balance = label("", "coinAmount"); top.addWidget(self.balance)
+        self.rename_button = self._button("", "title"); self.rename_button.setToolTip("给汤圆命名")
+        self.rename_button.setFixedSize(32, 32); self.rename_button.clicked.connect(self._rename); top.addWidget(self.rename_button)
+        self.overlay_button = self._button("", "desktop"); self.overlay_button.setFixedSize(34, 32)
+        self.overlay_button.setCheckable(True); self.overlay_button.toggled.connect(self.overlay_requested.emit); top.addWidget(self.overlay_button)
+        content.addLayout(top)
+        meters = QHBoxLayout(); meters.setSpacing(6)
         self.hud_hunger_bar = QProgressBar(); self.hud_hunger_bar.setRange(0, 100); self.hud_hunger_bar.setObjectName("hungerBar")
         self.hud_exp_bar = QProgressBar(); self.hud_exp_bar.setObjectName("affectionBar")
-        profile.addWidget(self.hud_hunger_bar); profile.addWidget(self.hud_exp_bar)
-        content.addLayout(profile, 1)
-        currency = QVBoxLayout(); coins = QHBoxLayout()
-        coin_art = QLabel(); coin_art.setPixmap(self.atlas.pixmap("coin", 52)); coins.addWidget(coin_art)
-        self.balance = label("", "coinAmount"); coins.addWidget(self.balance); currency.addLayout(coins)
-        self.hud_buff = label("", "buffBadge"); currency.addWidget(self.hud_buff)
-        content.addLayout(currency)
-        self.overlay_button = self._button("桌面宠", "desktop"); self.overlay_button.setIconSize(QSize(42, 42))
-        self.overlay_button.setCheckable(True); self.overlay_button.toggled.connect(self.overlay_requested.emit)
-        content.addWidget(self.overlay_button)
+        meters.addWidget(self.hud_hunger_bar); meters.addWidget(self.hud_exp_bar); content.addLayout(meters)
+        self.hud_buff = label("", "buffBadge"); self.hud_buff.setWordWrap(False); content.addWidget(self.hud_buff)
         self.hud.raise_()
 
     def eventFilter(self, watched, event):
+        if watched is self.home_scroll.viewport() and event.type() == QEvent.Type.Resize:
+            self._fit_home()
         if watched is getattr(self, "room", None) and event.type() == QEvent.Type.Resize and hasattr(self, "hud"):
-            self.hud.setGeometry(14, 14, max(100, self.room.width() - 28), 126)
+            self.hud.setGeometry(9, 8, max(100, self.room.width() - 18), 102)
         return super().eventFilter(watched, event)
 
     def _rename(self):
@@ -268,13 +302,13 @@ class DashboardWindow(QMainWindow):
         shelf = QFrame(); shelf.setObjectName("feedingShelf")
         row = QHBoxLayout(shelf); row.setContentsMargins(12, 4, 12, 4); row.setSpacing(7)
         self.shelf_empty = label("喂养架还空着\n去杂货铺买点好吃的", "muted"); row.addWidget(self.shelf_empty)
-        self.feeding_scroll = QScrollArea(); self.feeding_scroll.setWidgetResizable(True); self.feeding_scroll.setFixedHeight(92)
+        self.feeding_scroll = QScrollArea(); self.feeding_scroll.setWidgetResizable(True); self.feeding_scroll.setFixedHeight(66)
         self.feeding_scroll.setFrameShape(QFrame.Shape.NoFrame); self.feeding_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         content = QWidget(); foods = QHBoxLayout(content); foods.setContentsMargins(0, 0, 0, 0); foods.setSpacing(4)
         self.feeding_buttons = {}
         for key, item in self.model.catalog.items.items():
             if item["category"] != "food": continue
-            button = self._button("", key); button.setIconSize(QSize(62, 62)); button.setMinimumHeight(76)
+            button = self._button("", key); button.setIconSize(QSize(44, 44)); button.setFixedHeight(58)
             button.clicked.connect(lambda checked=False, food=key: self.model.use_item(food)); button.setToolTip(item["name"])
             foods.addWidget(button); self.feeding_buttons[key] = button
         foods.addStretch(); self.feeding_scroll.setWidget(content); row.addWidget(self.feeding_scroll, 1)
@@ -289,36 +323,44 @@ class DashboardWindow(QMainWindow):
         for section, text, art in (("home", "小屋主页", "home"), ("bag", "背包与投喂", "bag"),
                                   ("shop", "商城", "shop"), ("dress", "换装与小窝装修", "dress"),
                                   ("achievements", "成就与设置", "achievements")):
-            button = IconTile(text, art, self.atlas); button.setMinimumHeight(146); button.setMaximumHeight(146)
+            button = NavigationButton(text, art, self.atlas)
             button.setCheckable(True); button.clicked.connect(lambda checked=False, key=section: self.show_section(key))
             row.addWidget(button, 1); self.nav_buttons[section] = button
         self.nav_buttons["home"].setChecked(True); layout.addLayout(row)
 
+    def _fit_home(self):
+        if not hasattr(self, "drawer"): return
+        viewport = self.home_scroll.viewport()
+        # Word-wrapped book pages report a large height-for-width. Fit the scene
+        # explicitly so opening a book cannot push the permanent dock off-screen.
+        self.home_scroll.widget().resize(max(760, viewport.width()), max(600, viewport.height()))
+        self._place_drawer()
+
     def _place_drawer(self):
-        screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
-        if screen is None: return
-        area = screen.availableGeometry()
-        width = min(580, max(500, int(area.width() * .43)))
-        width = min(width, area.width() - 16); height = min(760, area.height() - 48)
-        self.drawer.setMaximumHeight(height); self.drawer.resize(width, height)
-        x = min(self.frameGeometry().right() + 10, area.right() - width - 8)
-        y = max(area.top() + 8, min(self.frameGeometry().top() + 36, area.bottom() - height - 8))
-        self.drawer.move(max(area.left() + 8, x), y)
+        # A child in the same layout, never a second native window or an overlay.
+        available = self.home_scroll.viewport().width() - 28
+        self.drawer.setFixedWidth(max(400, min(540, int(available * .44))))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "drawer"):
+            self._fit_home()
 
     def show_section(self, section, *, animate=True):
         pages = {"bag": (0, "背包与投喂"), "shop": (1, "商城"), "achievements": (2, "成就图鉴"),
                  "dress": (3, "换装衣橱"), "settings": (4, "游戏设置"), "furniture": (5, "小窝装修")}
         if section != "home" and section not in pages: return
         self.current_section = section; self.drawer_animation.stop()
+        self.room.interact()
         if section == "home":
-            self.drawer.hide(); self.drawer.setMaximumHeight(0)
+            self.drawer.hide()
             self.home_scroll.verticalScrollBar().setValue(0); self.home_scroll.horizontalScrollBar().setValue(0)
         else:
             index, title = pages[section]; self.tabs.blockSignals(True); self.tabs.setCurrentIndex(index); self.tabs.blockSignals(False)
             self.drawer_title.setText(title); self._place_drawer(); self.drawer.show(); self.drawer.raise_()
             if animate:
                 self.drawer_animation.setStartValue(.35); self.drawer_animation.setEndValue(1.0); self.drawer_animation.start()
-            else: self.drawer.setWindowOpacity(1.0)
+            else: self.drawer_opacity.setOpacity(1.0)
         for key, button in self.nav_buttons.items():
             button.setChecked(key == section or (key == "dress" and section == "furniture") or (key == "achievements" and section == "settings"))
         self.refresh()
@@ -490,6 +532,12 @@ class DashboardWindow(QMainWindow):
         for text, signal, art in (("重置桌宠位置", self.reset_requested, "desktop"), ("调试：饥饿归零", self.hunger_zero_requested, "avatar"),
             ("恢复满饱食度", self.hunger_full_requested, "sugar"), ("结算在线收入", self.gift_requested, "coin"), ("重新加载外观与图标", self.reload_requested, "dress")):
             button = self._button(text, art); button.clicked.connect(lambda checked=False, s=signal: s.emit()); page.addWidget(button)
+        self.room_debug = QFrame(); debug = QVBoxLayout(self.room_debug); debug.setContentsMargins(0, 4, 0, 0)
+        debug.addWidget(label("房间日常预览（仅开发模式）", "sectionTitle"))
+        for key, text in (("window", "去看看窗外"), ("nap", "打盹与伸懒腰"), ("bowl", "去茶几闻一闻")):
+            button = self._button(text, "avatar")
+            button.clicked.connect(lambda checked=False, k=key: self.room.start_activity(k)); debug.addWidget(button)
+        self.room_debug.hide(); page.addWidget(self.room_debug)
         page.addStretch()
 
     def _build_furniture(self):
@@ -527,6 +575,7 @@ class DashboardWindow(QMainWindow):
         self._skin_entries = entries
         self._phase4_dev_mode = bool(dev_mode)
         self.debug_unlock_check.setVisible(self._phase4_dev_mode)
+        self.room_debug.setVisible(self._phase4_dev_mode)
         self._refresh_phase4()
 
     def _has_perk(self, perk_id: str) -> bool:
@@ -713,7 +762,7 @@ class DashboardWindow(QMainWindow):
         self.hud_hunger_bar.setValue(round(data.hunger)); self.hud_hunger_bar.setFormat(f"饱食 {data.hunger:g}/100")
         buff = self.model.buff_view(); self.hud_buff.setText(f"{buff['name']} {math.ceil(buff['remaining_seconds'])}秒" if buff else "原味汤圆")
         self.overlay_button.blockSignals(True); self.overlay_button.setChecked(data.overlay_visible)
-        self.overlay_button.setText("收起桌宠" if data.overlay_visible else "桌面宠"); self.overlay_button.blockSignals(False)
+        self.overlay_button.setToolTip("隐藏桌面宠" if data.overlay_visible else "显示桌面宠"); self.overlay_button.blockSignals(False)
         any_food = False
         for key, button in self.feeding_buttons.items():
             count = data.inventory.get(key, 0); button.setText(f"×{count}"); button.setVisible(count > 0); button.setEnabled(count > 0); any_food |= count > 0
@@ -730,9 +779,10 @@ class DashboardWindow(QMainWindow):
         if self._home_engine_owned:
             self._home_engine.set_starving(self.model.starving); self._home_engine.set_buff(self.model.buff_view()); self._home_renderer.set_accessories(self.model.effective_accessories())
         self.room.set_home_state(self.model.snapshot())
+        self.room.life.accelerated = self.model.rules.hunger_seconds < 288
         renderer = self._renderer_provider(); source = renderer.source_state(self._home_engine.state)
         if source in renderer.pixmaps:
-            self.hud_avatar.setPixmap(renderer.pixmaps[source].scaled(72, 68, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.hud_avatar.setPixmap(renderer.pixmaps[source].scaled(42, 42, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def reload_artwork(self):
         self.atlas._cache.clear(); self.atlas._stamps.clear()
@@ -749,6 +799,7 @@ class DashboardWindow(QMainWindow):
         self.drawer_animation.stop()
         if self._home_engine_owned:
             self.preview_timer.stop()
+        if self._home_renderer is not None:
             self._home_renderer.stop()
 
     def _feedback(self, text: str, _tone: str) -> None:

@@ -119,7 +119,6 @@ class PetApplication:
         self.dashboard.set_phase4_context(self.skin_manager.list_skins(), self.dev_mode)
         self._connect_dashboard()
         self.window.dialogue_shown.connect(self.dashboard.room.show_message)
-        self.model.food_consumed.connect(self.dashboard.room.show_food)
 
         self.model.state_changed.connect(self._state_changed)
         self.model.starvation_changed.connect(self.window.set_starving)
@@ -128,6 +127,8 @@ class PetApplication:
         self.model.collectible_changed.connect(self._collectible_changed)
         self.model.fed.connect(self._fed)
         self.model.gifted.connect(self.window.engine.rebound)
+        self.model.presentation_requested.connect(
+            lambda event: self.window.engine.enjoy_interaction(event.get("duration", 2.5)))
         self.model.buff_changed.connect(self.window.set_buff)
         self.model.achievement_unlocked.connect(self._achievement_unlocked)
         self.model.dizzy_requested.connect(self._dizzy)

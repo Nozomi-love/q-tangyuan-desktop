@@ -410,6 +410,7 @@ class PetModel(QObject):
     fed = Signal()
     food_consumed = Signal(str)
     gifted = Signal()
+    presentation_requested = Signal(dict)
     achievement_unlocked = Signal(dict)
     buff_changed = Signal(dict)
     dizzy_requested = Signal()
@@ -596,10 +597,16 @@ class PetModel(QObject):
     def _consume(self, item_id: str, item: dict, previous: bool) -> None:
         if item["category"] == "gift":
             self.data.stats["total_presents"] += 1
+            before_exp = self._lifetime_exp()
             levels = self._add_exp(item["exp"])
+            actual_exp = self._lifetime_exp() - before_exp
             self._publish(previous, levels, self.dialogue(item.get("dialogue", "gift")), "interaction")
             self.gifted.emit()
+            self.presentation_requested.emit({"item_id": item_id, "category": "gift",
+                "effect": item.get("room_effect", item_id),
+                "duration": item.get("performance_seconds", 10.0), "hunger_gain": 0, "exp_gain": actual_exp})
             return
+        before_hunger = self.data.hunger
         was_full = self.data.hunger >= 100
         self.data.hunger = min(100.0, self.data.hunger + item["hunger"])
         self.data.stats["total_feeds"] += 1
@@ -616,6 +623,12 @@ class PetModel(QObject):
         self._publish(previous, message=self.dialogue(event), tone="interaction")
         self.food_consumed.emit(item_id)
         self.fed.emit()
+        self.presentation_requested.emit({"item_id": item_id, "category": "food",
+            "hunger_gain": self.data.hunger - before_hunger, "exp_gain": 0})
+
+    def _lifetime_exp(self) -> int:
+        level = self.data.affection_level
+        return 500 * (level - 1) * level // 2 + self.data.affection_exp
 
     def buff_view(self) -> dict:
         buff = self.data.active_buff
