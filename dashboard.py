@@ -131,7 +131,8 @@ class NavigationButton(IconTile):
     """A shallow illustrated dock with a readable single-line label."""
     def __init__(self, title, icon_id, atlas):
         super().__init__(title, icon_id, atlas)
-        self.setMinimumSize(100, 62); self.setMaximumHeight(62); self.setIconSize(QSize(36, 36))
+        self.setObjectName("dockNavigation")
+        self.setMinimumWidth(100); self.setFixedHeight(62); self.setIconSize(QSize(36, 36))
         self.setToolTip(self.text())
     def sizeHint(self): return QSize(144, 62)
     def minimumSizeHint(self): return QSize(100, 62)
@@ -141,10 +142,18 @@ class NavigationButton(IconTile):
         p.setBrush(QColor("#dce3c4" if self.isChecked() else "#f4e5c9"))
         p.setPen(QPen(QColor("#788457" if self.isChecked() else "#947457"), 1.5))
         p.drawRoundedRect(area, 18, 18)
-        self.icon().paint(p, 8, 12, 36, 36)
         p.setFont(QFont("Microsoft YaHei UI", 9, QFont.Weight.DemiBold)); p.setPen(QColor("#654b36"))
-        text = p.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, self.width() - 52)
-        p.drawText(QRectF(48, 5, self.width() - 54, 51), Qt.AlignmentFlag.AlignCenter, text); p.end()
+        content = area.adjusted(10, 5, -10, -5)
+        side = min(36, max(0, content.height()))
+        available = max(0, int(content.width() - side - 8))
+        text = p.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, available)
+        text_width = p.fontMetrics().horizontalAdvance(text)
+        left = content.center().x() - (side + 8 + text_width) / 2
+        icon_rect = QRectF(left, content.center().y() - side / 2, side, side)
+        self.icon().paint(p, icon_rect.toRect())
+        text_rect = QRectF(left + side + 8, content.top(), text_width, content.height())
+        p.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextSingleLine, text)
+        p.end()
 
 
 class IconChoice(QWidget):

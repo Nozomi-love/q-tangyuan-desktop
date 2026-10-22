@@ -112,7 +112,7 @@ class CompactHomeTests(unittest.TestCase):
 
     def test_all_illustrated_dock_buttons_are_shallow(self):
         for button in self.panel.nav_buttons.values():
-            self.assertLessEqual(button.height(), 64); self.assertFalse(button.icon().isNull())
+            self.assertEqual(button.height(), 62); self.assertFalse(button.icon().isNull())
 
     def test_native_focus_primitive_draws_no_dots_but_slider_keeps_keyboard(self):
         image = QImage(80, 40, QImage.Format.Format_ARGB32); image.fill(Qt.GlobalColor.transparent)

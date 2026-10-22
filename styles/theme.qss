@@ -73,3 +73,6 @@ QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { backgro
 /* A pressed sound capsule always means muted; keyboard controls remain available. */
 QPushButton#muteControl { background: #f5e4c7; border: 1px solid #b89b73; }
 QPushButton#muteControl:checked { background: #dbc6cf; border: 2px solid #aa7c8d; }
+
+/* Painted dock buttons reserve their full content height after QSS polish. */
+QPushButton#dockNavigation { min-height: 62px; max-height: 62px; padding: 0; margin: 0; border: none; background: transparent; }
