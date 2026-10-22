@@ -77,9 +77,9 @@ GUARDIAN_TITLE = "阿一古"
 LEGACY_GUARDIAN_TITLES = {"\u2728 汤圆守护神", "汤圆守护神"}
 
 
-FURNITURE_SLOTS = ("theme", "rug", "wall", "corner", "bowl")
+FURNITURE_SLOTS = ("theme", "rug", "wall", "corner", "bowl", "window", "companion")
 DEFAULT_FURNITURE = {"theme": "cheese_room", "rug": "cloud_cushion",
-                     "wall": "", "corner": "", "bowl": "wood_bowl"}
+                     "wall": "", "corner": "", "bowl": "wood_bowl", "window": "", "companion": ""}
 FURNITURE_SLOT_BY_ID = {
     "cheese_room": "theme",
     "sakura_room": "theme",
@@ -92,7 +92,8 @@ FURNITURE_SLOT_BY_ID = {
     "ficus_plant": "corner",
     "warm_lamp": "corner",
     "wood_bowl": "bowl",
-    "porcelain_bowl": "bowl"
+    "porcelain_bowl": "bowl", "sunny_chime": "window", "camp_room": "theme",
+    "sesame_friend": "companion", "royal_rug": "rug"
 }
 
 
@@ -185,7 +186,7 @@ class Catalog:
                     raise ValueError("家具名称、说明和图标不能为空")
             if type(product.get("default")) is not bool:
                 raise ValueError("家具默认拥有标记需要布尔值")
-            _integer(product.get("price"), "家具价格", 0 if product["default"] else 1)
+            _integer(product.get("price"), "家具价格", 0 if product["default"] or product.get("unlock_perk") else 1)
             if product["default"] and (product["price"] != 0 or DEFAULT_FURNITURE.get(product["slot"]) != furniture_id):
                 raise ValueError("初始家具必须与默认房间对应且免费")
         self.achievements = deepcopy(source["achievements"])
@@ -281,6 +282,8 @@ class PetData:
     claimed_achievements: list[str] = field(default_factory=list)
     active_buff: dict = field(default_factory=dict)
     selected_skin_id: str = "default"
+    skin_configs: dict = field(default_factory=dict)
+    archived_skins: list[str] = field(default_factory=list)
     custom_import_unlocked: bool = False
     accessories: dict = field(default_factory=lambda: {"head": "", "face": "", "effect": "", "offset_y": 0})
     owned_furniture: list[str] = field(default_factory=lambda: ["cheese_room", "cloud_cushion", "wood_bowl"])
@@ -324,9 +327,28 @@ class PetData:
         item = cls(**defaults)
         if not isinstance(item.selected_skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", item.selected_skin_id):
             raise ValueError("皮肤 ID 无效")
+        if not isinstance(item.skin_configs, dict) or len(item.skin_configs) > 1000:
+            raise ValueError("单皮肤配置数量无效")
+        for skin_id, config in item.skin_configs.items():
+            if not isinstance(skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", skin_id) or not isinstance(config, dict):
+                raise ValueError("单皮肤配置 ID 无效")
+            _number(config.get("scale_multiplier", 1.0), "角色大小", .6, 1.5)
+            _integer(config.get("accessory_offset_y", 0), "独立挂件高度", -30, 30)
+        for config in item.skin_configs.values():
+            config.setdefault("scale_multiplier", 1.0)
+            config.setdefault("accessory_offset_y", 0)
+        _integer(item.accessories.get("offset_y", 0), "旧挂件高度", -30, 30)
+        item.skin_configs.setdefault(item.selected_skin_id, {"scale_multiplier": 1.0,
+            "accessory_offset_y": item.accessories.get("offset_y", 0)})
+        item.accessories["offset_y"] = item.skin_configs[item.selected_skin_id].get("accessory_offset_y", 0)
+        if (not isinstance(item.archived_skins, list) or any(not isinstance(sid, str) or not re.fullmatch(r"user_[0-9a-f]{32}", sid) for sid in item.archived_skins)
+                or len(item.archived_skins) != len(set(item.archived_skins))):
+            raise ValueError("衣橱回收区无效")
+        if item.selected_skin_id in item.archived_skins:
+            raise ValueError("不能选择回收区皮肤")
         if type(item.custom_import_unlocked) is not bool:
             raise ValueError("导入权限需要布尔值")
-        for slot, choices in (("head", ("", "sprout", "crown", "bow")), ("face", ("", "sunglasses")), ("effect", ("", "steam"))):
+        for slot, choices in (("head", ("", "sprout", "crown", "bow", "orange")), ("face", ("", "sunglasses")), ("effect", ("", "steam", "fireflies", "rainbow"))):
             if item.accessories[slot] not in choices:
                 raise ValueError("挂件配置无效")
         _integer(item.accessories["offset_y"], "挂件垂直偏移", -30, 30)
@@ -441,7 +463,7 @@ class PetModel(QObject):
         self._roll_day()
         self.set_rules(self.rules)
         self.debug_unlock_all = False
-        self.trick_cooldowns = {"flip": 0.0, "clone": 0.0, "ball": 0.0, "screen_roll": 0.0}
+        self.trick_cooldowns = {"flip": 0.0, "clone": 0.0, "ball": 0.0, "screen_roll": 0.0, "disco": 0.0}
         self.trick_busy = 0.0
         self._active_trick_id = ""
         self._known_perks = set()
@@ -733,6 +755,9 @@ class PetModel(QObject):
         if furniture_id in self.data.owned_furniture:
             self.feedback.emit("这件家具已经在小窝里啦，无需重复购买。", "normal")
             return False
+        if product.get("unlock_perk"):
+            self.feedback.emit("这件家具是好感等级专属奖励。", "normal")
+            return False
         if self.data.coins < product["price"]:
             self.feedback.emit("糯米币还差一点，先攒一攒再布置吧～", "normal")
             return False
@@ -747,7 +772,7 @@ class PetModel(QObject):
         if slot not in FURNITURE_SLOTS or not isinstance(furniture_id, str):
             return False
         if not furniture_id:
-            if slot not in ("wall", "corner"):
+            if slot not in ("wall", "corner", "window", "companion"):
                 return False
         else:
             product = self.catalog.furniture.get(furniture_id)
@@ -782,8 +807,12 @@ class PetModel(QObject):
         available = {key for key in self.catalog.perks if self.has_perk(key)}
         newly = available - self._known_perks
         self._known_perks = available
-        if "title_guardian" in available and GUARDIAN_TITLE not in self.data.titles:
-            self.data.titles.append(GUARDIAN_TITLE)
+        for key in available:
+            perk = self.catalog.perks[key]
+            if perk.get("kind") == "title" and perk["title"] not in self.data.titles:
+                self.data.titles.append(perk["title"])
+            if perk.get("kind") == "furniture" and perk["item"] not in self.data.owned_furniture:
+                self.data.owned_furniture.append(perk["item"])
         if newly and announce:
             self.perks_unlocked.emit([self.catalog.perks[key]["name"] for key in self.catalog.perks if key in newly])
 
@@ -817,7 +846,7 @@ class PetModel(QObject):
         return result
 
     def equip_accessory(self, slot: str, item: str) -> bool:
-        choices = {"head": ("", "sprout", "crown", "bow"), "face": ("", "sunglasses"), "effect": ("", "steam")}
+        choices = {"head": ("", "sprout", "crown", "bow", "orange"), "face": ("", "sunglasses"), "effect": ("", "steam", "fireflies", "rainbow")}
         if slot not in choices or item not in choices[slot]:
             return False
         perk_id = ("effect_" if slot == "effect" else "accessory_") + item
@@ -836,18 +865,69 @@ class PetModel(QObject):
     def set_accessory_offset(self, offset_y: int) -> bool:
         if type(offset_y) is not int or not -30 <= offset_y <= 30:
             return False
+        self.skin_config()["accessory_offset_y"] = offset_y
         self.data.accessories["offset_y"] = offset_y
         self._publish(self.starving)
         self.appearance_changed.emit(self.effective_accessories())
         return True
+
+    def skin_config(self) -> dict:
+        return self.data.skin_configs.setdefault(self.data.selected_skin_id,
+            {"scale_multiplier": 1.0, "accessory_offset_y": 0})
+
+    def set_skin_scale(self, scale: float) -> bool:
+        try:
+            value = _number(scale, "角色大小", .6, 1.5)
+        except ValueError:
+            return False
+        self.skin_config()["scale_multiplier"] = value
+        self._publish(self.starving)
+        self.appearance_changed.emit(self.effective_accessories())
+        return True
+
+    def archive_skin(self, skin_id: str, archived: bool = True) -> bool:
+        if not isinstance(skin_id, str) or not re.fullmatch(r"user_[0-9a-f]{32}", skin_id) or type(archived) is not bool:
+            return False
+        if archived and skin_id not in self.data.archived_skins:
+            if self.data.selected_skin_id == skin_id:
+                self.select_skin("default")
+            self.data.archived_skins.append(skin_id)
+        elif not archived and skin_id in self.data.archived_skins:
+            self.data.archived_skins.remove(skin_id)
+        self._publish(self.starving)
+        return True
+
+    def next_milestone(self) -> dict:
+        row = next((m for m in self.catalog.milestones if m["level"] > self.data.affection_level), None)
+        if row is None:
+            return {"text": "满级传说已达成，今天也一起陪伴。", "remaining_exp": 0}
+        remaining = EXP_PER_LEVEL * row["level"] * (row["level"] - 1) // 2 - self._lifetime_exp()
+        return {**deepcopy(row), "remaining_exp": remaining,
+            "text": f"距离下一阶段奖励（Lv.{row['level']}：{row['label']}）还差 {remaining} 点好感"}
+
+    def replace_data(self, data: PetData) -> None:
+        previous = self.starving
+        self.data = PetData.from_dict(data.to_dict())
+        self._poke_times.clear()
+        self.trick_busy = 0.0
+        self._active_trick_id = ""
+        self.trick_cooldowns = dict.fromkeys(self.trick_cooldowns, 0.0)
+        self._known_perks.clear()
+        self._refresh_perks(announce=False)
+        self._publish(previous)
+        self.buff_changed.emit(self.buff_view())
+        self.appearance_changed.emit(self.effective_accessories())
 
     def select_skin(self, skin_id: str, *, imported: bool = False) -> bool:
         if not isinstance(skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", skin_id):
             return False
         if skin_id != "default" and not self.has_perk("custom_import"):
             return False
+        if skin_id in self.data.archived_skins:
+            return False
         changed = skin_id != self.data.selected_skin_id
         self.data.selected_skin_id = skin_id
+        self.data.accessories["offset_y"] = self.skin_config()["accessory_offset_y"]
         if skin_id != "default" and (changed or imported):
             self.data.stats["customizations"] += 1
         self._publish(self.starving, message=" 已换上新外观，挂件和小特技也能一起用哦～" if changed else "")
@@ -893,7 +973,7 @@ class PetModel(QObject):
     def record_trick(self, trick_id: str) -> bool:
         if not self.can_perform_trick(trick_id):
             return False
-        duration = {"flip": 1.1, "clone": 2.5, "ball": 5.0, "screen_roll": 12.0}[trick_id]
+        duration = {"flip": 1.1, "clone": 2.5, "ball": 5.0, "screen_roll": 12.0, "disco": 6.0}[trick_id]
         self.trick_busy = duration
         self._active_trick_id = trick_id
         self.trick_cooldowns[trick_id] = 20.0 if trick_id == "screen_roll" else max(5.0, duration)

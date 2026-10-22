@@ -227,8 +227,8 @@ class WardrobeDashboardTests(unittest.TestCase):
 
     def test_milestones_reflect_current_level_and_guardian_title(self):
         self.level(6)
-        self.assertEqual(set(self.window.milestone_widgets), set(range(1, 7)))
-        self.assertTrue(all(widget.property("unlocked") for widget in self.window.milestone_widgets.values()))
+        self.assertEqual(set(self.window.milestone_widgets), {1,2,3,4,5,6,8,10,15,20,25,30})
+        self.assertTrue(all(widget.property("unlocked") == (level <= 6) for level, widget in self.window.milestone_widgets.items()))
         self.assertIn("阿一古", self.window.milestone_widgets[6].text())
         self.assertIn("阿一古", self.model.data.titles)
 

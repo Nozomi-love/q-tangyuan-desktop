@@ -204,6 +204,8 @@ class SkinManager:
         except OSError as error:
             raise SkinImportError(f"无法访问皮肤沙箱：{error}") from error
         self._guard_root()
+        self._preview_request = False
+        self._previews = {}
 
     @staticmethod
     def _no_links(path: Path) -> None:
@@ -408,7 +410,7 @@ class SkinManager:
         normalized = deepcopy(manifest)
         names = {name: f"media_{index}{PurePosixPath(name).suffix.lower()}" for index, name in enumerate(media)}
         normalized["states"] = {state: names[name] for state, name in manifest["states"].items()}
-        skin_id = "user_" + uuid4().hex
+        skin_id = (".preview_" if self._preview_request else "user_") + uuid4().hex
         destination = self.root / skin_id
         try:
             destination.mkdir(exist_ok=False)
@@ -419,7 +421,9 @@ class SkinManager:
             self._write_new(destination / "manifest.json", payload)
         except OSError as error:
             raise SkinImportError(f"皮肤复制失败，原文件与已有皮肤均保留：{error}") from error
-        return {"id": skin_id, **normalized}
+        if self._preview_request:
+            self._previews[skin_id] = (deepcopy(manifest), deepcopy(media))
+        return {"id": skin_id, "directory": str(destination), **normalized}
 
     def _write_new(self, target: Path, payload: bytes) -> None:
         self._guard_root()
@@ -524,7 +528,52 @@ class SkinManager:
                 raise SkinImportError("沙箱素材类型或文件大小无效")
             if validate:
                 self._validate_media(self._read_file(target), PurePosixPath(filename).suffix.lower())
-        return {"id": skin_id, **manifest}
+        return {"id": skin_id, "directory": str(directory), **manifest}
+
+    def prepare_preview(self, source: Path, *, pack=False, remove_white=False) -> dict:
+        self._preview_request = True
+        try:
+            return self.import_pack(source) if pack else self.import_image(source, remove_white)
+        finally:
+            self._preview_request = False
+
+    def commit_preview(self, preview_id: str) -> dict:
+        if preview_id not in self._previews:
+            raise SkinImportError("预览已失效，请重新选择素材")
+        manifest, media = self._previews[preview_id]
+        result = self._commit(manifest, media)
+        self._previews.pop(preview_id)
+        return result
+
+    def cancel_preview(self, preview_id: str) -> None:
+        self._previews.pop(preview_id, None)
+
+    def rename(self, skin_id: str, name: str) -> dict:
+        metadata = self._metadata(skin_id, validate=True)
+        metadata["name"] = name
+        manifest = self._manifest(json.dumps(metadata, ensure_ascii=False).encode("utf-8"))
+        target = self.root / skin_id / "manifest.json"
+        before = self._read_file(target, self.MAX_MANIFEST_BYTES)
+        stamp_time = datetime.now(timezone(timedelta(hours=8)))
+        while True:
+            stamp = stamp_time.strftime("%Y%m%d-%H%M%S-%f")[:-3]
+            backup = target.with_name(target.name + ".bak." + stamp)
+            try:
+                self._write_new(backup, before)
+                break
+            except FileExistsError:
+                stamp_time += timedelta(milliseconds=1)
+        payload = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        temporary = target.with_name("rename_" + uuid4().hex + ".tmp")
+        self._write_new(temporary, payload)
+        self._guard_root()
+        self._no_links(target)
+        if target.read_bytes() != before:
+            raise SkinImportError("名称被其他进程修改，本次未覆盖")
+        os.replace(temporary, target)
+        if target.read_bytes() != payload:
+            raise SkinImportError("名称写后回读失败")
+        return self._metadata(skin_id)
 
     def list_skins(self) -> list[dict]:
         result = [{"id": "default", "name": "白汤圆", "author": "内置默认皮肤", "states": {}}]

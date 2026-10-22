@@ -238,7 +238,7 @@ class SoundTests(unittest.TestCase):
                 samples = struct.unpack("<" + "h" * wav.getnframes(), wav.readframes(wav.getnframes()))
                 self.assertGreater(max(samples), 1000); self.assertLessEqual(max(map(abs, samples)), 24575)
                 self.assertEqual(samples[0], 0); self.assertLess(abs(samples[-1]), 20)
-        self.assertEqual(len(set(values)), 4)
+        self.assertEqual(len(set(values)), 5)
 
     def test_unknown_sound_is_rejected(self):
         with self.assertRaises(ValueError): synthesize_sound("../private")
@@ -246,7 +246,7 @@ class SoundTests(unittest.TestCase):
     def test_asset_generator_never_overwrites_existing_audio(self):
         folder = ART / "preserved"; folder.mkdir(); target = folder / "poke.wav"; target.write_bytes(b"artist original")
         files = ensure_sound_files(folder); self.assertEqual(target.read_bytes(), b"artist original")
-        self.assertEqual(len(files), 4)
+        self.assertEqual(len(files), 5)
 
     def test_missing_readonly_location_degrades_without_gameplay_failure(self):
         file = ART / "not-a-folder"; file.write_bytes(b"kept")
@@ -255,7 +255,7 @@ class SoundTests(unittest.TestCase):
 
     def test_muting_stops_every_sound_and_prevents_replay(self):
         audio = ProceduralAudio(ROOT / "assets/sounds", True)
-        self.assertEqual(len(audio.effects), 4); self.assertFalse(audio.play("poke"))
+        self.assertEqual(len(audio.effects), 5); self.assertFalse(audio.play("poke"))
         audio.set_muted(False)
         with patch.object(audio.effects["poke"], "play") as play:
             self.assertTrue(audio.play("poke")); self.assertEqual(play.call_count, 1)

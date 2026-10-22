@@ -10,7 +10,7 @@ from models import Catalog, PetData, PetModel
 class PerkTests(unittest.TestCase):
     def test_milestones_cover_one_to_six_and_cap_stays_thirty(self):
         pet = PetModel()
-        self.assertEqual([m['level'] for m in pet.perk_status()], list(range(1,7)))
+        self.assertEqual([m['level'] for m in pet.perk_status()], [1,2,3,4,5,6,8,10,15,20,25,30])
         self.assertEqual(pet.MAX_LEVEL, 30)
         self.assertFalse(pet.has_perk('custom_import'))
         self.assertFalse(pet.has_perk('not-a-perk'))

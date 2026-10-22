@@ -29,7 +29,7 @@ APP.setQuitOnLastWindowClosed(False)
 APP.setStyleSheet((ROOT / "styles/theme.qss").read_text(encoding="utf-8"))
 ARTIFACTS = ROOT / "tests/artifacts" / datetime.now().strftime("home-scene-%Y%m%d-%H%M%S-%f")
 ARTIFACTS.mkdir(parents=True, exist_ok=False)
-DEFAULTS = {"theme": "cheese_room", "rug": "cloud_cushion", "wall": "", "corner": "", "bowl": "wood_bowl"}
+DEFAULTS = {"theme": "cheese_room", "rug": "cloud_cushion", "wall": "", "corner": "", "bowl": "wood_bowl", "window":"", "companion":""}
 
 
 def rich(**kwargs):
@@ -45,7 +45,7 @@ class HomeFurnitureModelTests(unittest.TestCase):
                     "rice_clock": ("wall", 70), "ficus_plant": ("corner", 60),
                     "warm_lamp": ("corner", 90), "cheese_room": ("theme", 0),
                     "sakura_room": ("theme", 100), "matcha_room": ("theme", 100)}
-        self.assertEqual(set(furniture), set(expected))
+        self.assertEqual(set(furniture), set(expected) | {"sunny_chime","camp_room","sesame_friend","royal_rug"})
         for key, (slot, cost) in expected.items():
             with self.subTest(key=key):
                 self.assertEqual(furniture[key]["slot"], slot)
@@ -120,8 +120,8 @@ class HomeFurnitureModelTests(unittest.TestCase):
         for slot, key in chosen.items():
             self.assertTrue(model.buy_furniture(key))
             self.assertTrue(model.equip_furniture(slot, key))
-        self.assertEqual(model.data.equipped_furniture, chosen)
-        self.assertEqual(PetData.from_dict(model.snapshot()).equipped_furniture, chosen)
+        self.assertEqual(model.data.equipped_furniture, {**chosen,"window":"","companion":""})
+        self.assertEqual(PetData.from_dict(model.snapshot()).equipped_furniture, {**chosen,"window":"","companion":""})
 
     def test_name_is_free_trimmed_saved_and_announced(self):
         model = rich()

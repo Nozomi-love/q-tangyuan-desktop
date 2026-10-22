@@ -339,6 +339,72 @@
       "level": 6,
       "kind": "title",
       "title": "阿一古"
+    },
+    "window_chime": {
+      "name": "晴天风铃",
+      "level": 8,
+      "kind": "furniture",
+      "slot": "window",
+      "item": "sunny_chime"
+    },
+    "accessory_orange": {
+      "name": "大吉小橘子",
+      "level": 10,
+      "kind": "accessory",
+      "slot": "head",
+      "item": "orange"
+    },
+    "trick_disco": {
+      "name": "迪斯科蹦迪",
+      "level": 10,
+      "kind": "trick"
+    },
+    "room_camp": {
+      "name": "星夜露营屋",
+      "level": 15,
+      "kind": "furniture",
+      "slot": "theme",
+      "item": "camp_room"
+    },
+    "effect_fireflies": {
+      "name": "流光萤火虫",
+      "level": 15,
+      "kind": "accessory",
+      "slot": "effect",
+      "item": "fireflies"
+    },
+    "companion_sesame": {
+      "name": "芝麻小团子",
+      "level": 20,
+      "kind": "furniture",
+      "slot": "companion",
+      "item": "sesame_friend"
+    },
+    "rug_royal": {
+      "name": "皇家天鹅绒垫",
+      "level": 25,
+      "kind": "furniture",
+      "slot": "rug",
+      "item": "royal_rug"
+    },
+    "title_master": {
+      "name": "糯米大宗师",
+      "level": 25,
+      "kind": "title",
+      "title": "糯米大宗师"
+    },
+    "effect_rainbow": {
+      "name": "七彩祥云光环",
+      "level": 30,
+      "kind": "accessory",
+      "slot": "effect",
+      "item": "rainbow"
+    },
+    "title_immortal": {
+      "name": "汤圆守护仙",
+      "level": 30,
+      "kind": "title",
+      "title": "汤圆守护仙"
     }
   },
   "milestones": [
@@ -385,6 +451,52 @@
       "perks": [
         "accessory_bow",
         "title_guardian"
+      ]
+    },
+    {
+      "level": 8,
+      "label": "听风时光",
+      "perks": [
+        "window_chime"
+      ]
+    },
+    {
+      "level": 10,
+      "label": "十级大礼",
+      "perks": [
+        "accessory_orange",
+        "trick_disco"
+      ]
+    },
+    {
+      "level": 15,
+      "label": "仲夏萤火",
+      "perks": [
+        "room_camp",
+        "effect_fireflies"
+      ]
+    },
+    {
+      "level": 20,
+      "label": "二十相伴",
+      "perks": [
+        "companion_sesame"
+      ]
+    },
+    {
+      "level": 25,
+      "label": "宗师气度",
+      "perks": [
+        "rug_royal",
+        "title_master"
+      ]
+    },
+    {
+      "level": 30,
+      "label": "满级传说",
+      "perks": [
+        "effect_rainbow",
+        "title_immortal"
       ]
     }
   ],
@@ -481,6 +593,9 @@
     ],
     "gift_music_box": [
       "听见你说~"
+    ],
+    "trick_disco": [
+      "一起跳舞，快乐加倍！"
     ]
   },
   "furniture": {
@@ -603,6 +718,46 @@
       "emoji": "porcelain_bowl",
       "default": false,
       "icon": "porcelain_bowl"
+    },
+    "sunny_chime": {
+      "id": "sunny_chime",
+      "name": "晴天风铃",
+      "slot": "window",
+      "price": 0,
+      "default": false,
+      "emoji": "sunny_chime",
+      "description": "好感等级奖励",
+      "unlock_perk": "window_chime"
+    },
+    "camp_room": {
+      "id": "camp_room",
+      "name": "星夜露营屋",
+      "slot": "theme",
+      "price": 0,
+      "default": false,
+      "emoji": "camp_room",
+      "description": "好感等级奖励",
+      "unlock_perk": "room_camp"
+    },
+    "sesame_friend": {
+      "id": "sesame_friend",
+      "name": "芝麻小团子",
+      "slot": "companion",
+      "price": 0,
+      "default": false,
+      "emoji": "sesame_friend",
+      "description": "好感等级奖励",
+      "unlock_perk": "companion_sesame"
+    },
+    "royal_rug": {
+      "id": "royal_rug",
+      "name": "皇家天鹅绒垫",
+      "slot": "rug",
+      "price": 0,
+      "default": false,
+      "emoji": "royal_rug",
+      "description": "好感等级奖励",
+      "unlock_perk": "rug_royal"
     }
   }
 }

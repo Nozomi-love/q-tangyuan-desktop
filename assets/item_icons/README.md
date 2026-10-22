@@ -42,7 +42,7 @@
 | avatar.png | 宠物头像兜底 |
 | home.png | 小屋主页 |
 | bag.png | 背包与投喂 |
-| shop.png | 插画商城 |
+| shop.png | 商城 |
 | dress.png | 换装与小窝装修 |
 | achievements.png | 成就与设置 |
 | settings.png | 游戏设置 |
@@ -73,3 +73,19 @@
 | level_4.png | Lv.4等级奖励 |
 | level_5.png | Lv.5等级奖励 |
 | level_6.png | Lv.6等级奖励 |
+
+## V2.0新增长期奖励插画
+
+| 文件 | 对应内容 |
+| --- | --- |
+| sunny_chime.png | 晴天风铃 |
+| orange.png | 大吉小橘子 |
+| disco.png | 迪斯科蹦迪 |
+| camp_room.png | 星夜露营屋 |
+| fireflies.png | 流光萤火虫 |
+| sesame_friend.png | 芝麻小团子 |
+| royal_rug.png | 皇家天鹅绒垫 |
+| rainbow.png | 七彩祥云光环 |
+| level_8.png / level_10.png / level_15.png / level_20.png / level_25.png / level_30.png | 对应等级里程碑徽章 |
+
+当前共81张透明PNG，原67张图片保持原字节；自定义皮肤卡片用实际idle素材生成缩略图，不再套用avatar.png。

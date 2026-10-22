@@ -48,6 +48,8 @@ class ControllerTests(unittest.TestCase):
         c=self.controller
         source=self.png();original=source.read_bytes()
         c.dashboard.import_image_requested.emit(str(source),False)
+        self.assertEqual(c.model.data.selected_skin_id,"default")
+        c.dashboard.preview_confirmed.emit()
         skin_id=c.model.data.selected_skin_id
         self.assertTrue(skin_id.startswith('user_'))
         self.assertEqual(c.dashboard.skin_combo.currentData(),skin_id)
@@ -64,6 +66,7 @@ class ControllerTests(unittest.TestCase):
     def test_failed_skin_selection_resynchronizes_combo_immediately(self):
         c=self.controller
         c._import_image(str(self.png()),False)
+        c.dashboard.preview_confirmed.emit()
         selected=c.model.data.selected_skin_id
         missing='user_'+'f'*32
         c.dashboard.set_phase4_context(c.skin_manager.list_skins()+[{'id':missing,'name':'missing','author':''}],False)

@@ -216,6 +216,8 @@ class IllustratedRoomCanvas(RoomCanvas):
     sound_requested = Signal(str)
     mood_requested = Signal(float)
 
+    THEMES = dict(RoomCanvas.THEMES, camp_room=("#bbb9d0", "#ada4bd", "#877664", "#d0b9a4", "#a18b7a"))
+
     FLIGHT_SECONDS = .78
     CHEW_SECONDS = .9
 
@@ -242,6 +244,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         self._food_gain = 0.0
         self._next_food_origin = None
         self.environment_time = 0.0
+        self._chime_rang_at = -100.0
         self.poke_requested.connect(self.interact)
         self.pet_requested.connect(self.interact)
 
@@ -493,6 +496,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         painter.restore()
         self._paint_bowl(painter, width, height)
         self._paint_gift(painter, width, height)
+        self._paint_companion(painter)
         contact = self._pet_transform().map(self._render_foot())
         self._shadow(painter, QPointF(contact.x(), self._base_foot().y() + 3), 88, 15)
         painter.save(); painter.setTransform(self._pet_transform(), combine=True)
@@ -541,14 +545,72 @@ class IllustratedRoomCanvas(RoomCanvas):
         p.fillRect(QRectF(0, floor - 14, width, 14), QColor(wood))
         p.fillRect(QRectF(0, floor - 19, width, 6), QColor(trim).lighter(113))
         p.setPen(QPen(QColor("#94704f"), 1.5)); p.drawLine(QPointF(0, floor), QPointF(width, floor))
+        if self._slot("theme") == "camp_room":
+            p.setPen(Qt.PenStyle.NoPen)
+            for i in range(26):
+                x=23+(i*83) % max(40,int(width-50)); y=142+(i*47)%max(35,int(floor-160))
+                color=QColor("#fff0be");color.setAlphaF(.3+.2*math.sin(self.environment_time*.7+i))
+                p.setBrush(color);p.drawEllipse(QPointF(x,y),1.6,1.6)
+            p.setPen(QPen(QColor("#79523b"),2.2));p.setBrush(QColor("#d6ba90"))
+            tent_x=width*.18
+            p.drawPolygon(QPolygonF([QPointF(tent_x-56,height-53),QPointF(tent_x,height-142),QPointF(tent_x+56,height-53)]))
+            p.setBrush(QColor("#67617d"))
+            p.drawPolygon(QPolygonF([QPointF(tent_x-21,height-53),QPointF(tent_x,height-110),QPointF(tent_x+22,height-53)]))
         # The upper 110 units belong to the floating HUD, not a second title.
         window = self.window_rect(width, height)
         self._paint_window(p, window, wood)
         self._curtains(p, window)
+        self._paint_chime(p, window)
         if not self._slot("wall"):
             self._little_landscape(p, QRectF(width * .22 - 56, 161, 112, 91))
         self._shadow(p, QPointF(width - 91, height - 73), 37, 8)
         self._houseplant(p, width - 91, height - 78)
+    def chime_rect(self):
+        scale, width, height = self._geometry()
+        window = self.window_rect(width, height)
+        return QRectF((window.right() + 7) * scale, window.top() * scale,
+                      48 * scale, 105 * scale)
+
+    def mouseReleaseEvent(self, event):
+        if self._slot("window") == "sunny_chime" and self.chime_rect().contains(event.position()):
+            self._chime_rang_at = self.environment_time
+            self.sound_requested.emit("chime")
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _paint_chime(self, p, window):
+        if self._slot("window") != "sunny_chime":
+            return
+        elapsed = self.environment_time - self._chime_rang_at
+        angle = math.sin(self.environment_time * 1.6) * 2 + 22 * math.sin(elapsed * 9) * math.exp(-elapsed * 1.4)
+        p.save(); p.translate(window.right() + 30, window.top() + 5); p.rotate(angle)
+        p.setPen(QPen(QColor("#79523b"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(QPointF(0, 0), QPointF(0, 22)); p.setBrush(QColor("#cce1df"))
+        bell = QPainterPath(QPointF(-16, 46)); bell.quadTo(-14, 15, 0, 18); bell.quadTo(14, 15, 16, 46); bell.closeSubpath()
+        p.drawPath(bell); p.drawLine(QPointF(0, 43), QPointF(0, 77))
+        p.setBrush(QColor("#efd6b3")); p.drawRoundedRect(QRectF(-7, 67, 14, 27), 3, 3)
+        p.setPen(QPen(QColor("#fff7e1"), 2)); p.drawArc(QRectF(-9, 26, 16, 18), 40*16, 100*16)
+        p.restore()
+
+    def _paint_companion(self, p):
+        if self._slot("companion") != "sesame_friend":
+            return
+        foot = self._base_foot() + QPointF(128, 4)
+        self._shadow(p, foot + QPointF(0, 5), 24, 6)
+        pose = self.engine.pose
+        jump = max(0, -self.engine.visual_offset.y()) * .24
+        if not self.engine.grounded:
+            jump += abs(math.sin(self.engine.elapsed * 6)) * 9
+        p.save(); p.translate(foot.x(), foot.y()-jump)
+        p.scale(pose.scale_x / max(.6, self.engine.skin_scale), pose.scale_y / max(.6, self.engine.skin_scale))
+        p.setPen(QPen(QColor("#79523b"), 2.5)); p.setBrush(QColor("#655b58"))
+        p.drawEllipse(QRectF(-25, -43, 50, 43))
+        p.setPen(QPen(QColor("#fff0d7"), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(QPointF(-9, -24), QPointF(-9, -21)); p.drawLine(QPointF(9, -24), QPointF(9, -21))
+        smile=QPainterPath(QPointF(-4,-15)); smile.quadTo(0,-10,4,-15); p.drawPath(smile)
+        p.restore()
+
     def window_rect(self, width, height):
         scale = self._geometry()[0]
         top = max(139, 112 / scale + 12)

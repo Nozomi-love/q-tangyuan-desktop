@@ -21,7 +21,7 @@ from illustrated_assets import plain_text
 
 
 
-SOUND_NAMES = ("poke", "eat", "coin", "music_box")
+SOUND_NAMES = ("poke", "eat", "coin", "music_box", "chime")
 
 
 def synthesize_sound(name: str) -> bytes:
@@ -31,6 +31,7 @@ def synthesize_sound(name: str) -> bytes:
     rate = 22050
     notes = {
         "poke": [(0, .19, 650)],
+        "chime": [(0, .65, 1568), (.13, .75, 2093), (.3, .8, 2637)],
         "eat": [(0, .15, 784), (.16, .21, 1046.5)],
         "coin": [(0, .18, 1318.5), (.105, .32, 1760)],
         "music_box": [(i * .29, .75, hz) for i, hz in enumerate(
@@ -483,7 +484,7 @@ class PetWindow(QWidget):
         self._sync_window()
 
     def perform_trick(self, trick: str) -> bool:
-        started = (self.engine.perform_trick(trick, roll_padding=self.renderer.screen_roll_padding())
+        started = (self.engine.perform_trick(trick, roll_padding=self.renderer.screen_roll_padding(self.engine.skin_scale))
                    if trick == "screen_roll" else self.engine.perform_trick(trick))
         if not started:
             return False
@@ -555,7 +556,15 @@ class PetWindow(QWidget):
         # one transparent window across the desktop. Saved x/y stay at home.
         anchor_y = (self.CANVAS_HEIGHT / 2 + self.engine.BODY_HEIGHT / 2 * self.engine.pose.scale_y
                     if active == "screen_roll" else self.ANCHOR_Y)
-        self.move(math.floor(self.engine.x + offset.x() - self.ANCHOR_X),
+        # Adapt the transparent surface to 1.5x skins, Buffs and rotating crowns.
+        # The logical foot/physics position never changes when the canvas grows.
+        bounds=self.renderer.scene_bounds(self.engine,QPointF()).translated(-offset.x(),-offset.y())
+        anchor_x=max(self.ANCHOR_X,math.ceil(-bounds.left()+8))
+        anchor_y=max(anchor_y,math.ceil(-bounds.top()+8))
+        width=max(self.CANVAS_WIDTH,math.ceil(anchor_x+bounds.right()+8))
+        height=max(self.CANVAS_HEIGHT,math.ceil(anchor_y+bounds.bottom()+8))
+        if self.width()!=width or self.height()!=height:self.setFixedSize(width,height)
+        self.move(math.floor(self.engine.x + offset.x() - anchor_x),
                   math.floor(self.engine.y + offset.y() - anchor_y))
         self._position_bubble()
         self.update()

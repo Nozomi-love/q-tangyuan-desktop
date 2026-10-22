@@ -21,3 +21,6 @@ assets/skins/user_*/
 
 # Local Windows portable builds (never include saves, personal skins or binaries in Git)
 releases/
+
+# Validated import previews are private local media.
+assets/skins/.preview_*/

@@ -76,3 +76,7 @@ QPushButton#muteControl:checked { background: #dbc6cf; border: 2px solid #aa7c8d
 
 /* Painted dock buttons reserve their full content height after QSS polish. */
 QPushButton#dockNavigation { min-height: 62px; max-height: 62px; padding: 0; margin: 0; border: none; background: transparent; }
+
+/* Release wardrobe preview and the next shared growth goal. */
+QFrame#skinPreviewCard { background: #f3e7cc; border: 1px solid #bc9e78; border-radius: 12px; padding: 4px; }
+QLabel#nextMilestone { color: #6e7e4d; background: #e5e9cf; border: 1px solid #b5c096; border-radius: 9px; padding: 9px; font-weight: 600; }

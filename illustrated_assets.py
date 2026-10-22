@@ -29,6 +29,8 @@ ICON_IDS = (
     "first_poke", "first_drop", "first_feed", "first_pet", "flavors_three", "gifts_three",
     "level_three", "rapid_pokes", "shake", "rescue", "soul_infusion", "warm_home",
     "level_1", "level_2", "level_3", "level_4", "level_5", "level_6",
+    "sunny_chime", "orange", "disco", "camp_room", "fireflies", "sesame_friend", "royal_rug", "rainbow",
+    "level_8", "level_10", "level_15", "level_20", "level_25", "level_30",
 )
 
 
@@ -161,7 +163,33 @@ def paint_icon(painter: QPainter, key: str) -> None:
     painter.setPen(Qt.PenStyle.NoPen)
     b.ellipse(14, 65, 52, 8, "#18794f35")
     b.pen()
-    if key == "water":
+    if key == "orange":
+        b.ellipse(18, 26, 45, 38, "#ffd28a", "#e7a04c"); b.leaf(42, 28, 75, size=.5); b.shine(28, 35)
+    elif key == "sunny_chime":
+        b.line(40, 9, 40, 25); b.poly([(21, 47), (27, 27), (40, 21), (53, 27), (59, 47)], "#d0e5df")
+        b.line(40, 43, 40, 67); b.rect(34, 57, 13, 18, "#f1c99e", 2); b.shine(29, 32)
+    elif key == "disco":
+        b.line(40, 6, 40, 22); b.ellipse(19, 22, 43, 41, "#e5d7ab", "#c4bddc")
+        for row in range(3):
+            for col in range(3): b.rect(26+col*10, 28+row*10, 7, 7, ("#edb6ca", "#b4d1cc", "#ebce8b")[(row+col)%3], 1)
+        b.star(12, 57, 7); b.star(69, 29, 5)
+    elif key == "sesame_friend":
+        b.ellipse(18, 21, 44, 43, "#8c7e72", "#514d50"); b.pen("#fff0d7", 2.5); b.line(30, 38, 30, 41); b.line(50, 38, 50, 41)
+        b.line(36, 49, 40, 52, 44, 49); b.shine(25, 27, 4, 6)
+    elif key == "camp_room":
+        b.rect(8, 12, 64, 57, "#575d7e", 8); b.poly([(18, 63), (40, 28), (64, 63)], "#dcc49e")
+        b.poly([(31, 63), (40, 44), (49, 63)], "#8e7d77"); b.star(20, 24, 4); b.ellipse(54, 20, 9, 9, "#fff0bd")
+    elif key == "royal_rug":
+        b.ellipse(8, 30, 64, 30, "#a96e87", "#805166"); b.pen("#e3c584", 3); painter.setBrush(Qt.BrushStyle.NoBrush); painter.drawEllipse(QRectF(13, 34, 54, 21)); b.star(40, 44, 8)
+    elif key in ("fireflies", "rainbow"):
+        b.dumpling(40, 44, .85)
+        if key == "fireflies":
+            for x,y in ((14,24),(63,20),(17,56),(68,53)):
+                b.ellipse(x-4,y-4,8,8,"#e8d78d"); b.ellipse(x-1,y-1,2,2,"#fff4b0")
+        else:
+            for i,c in enumerate(("#e8acb7","#eec28f","#b8cf9f","#a8c8dc","#c1b1d9")):
+                b.pen(c,3); painter.setBrush(Qt.BrushStyle.NoBrush); painter.drawArc(QRectF(8+i*4,14+i*4,64-i*8,57-i*8), 20*16,140*16)
+    elif key == "water":
         cup = QPainterPath(QPointF(20, 17))
         cup.lineTo(25, 64); cup.quadTo(41, 72, 56, 64); cup.lineTo(61, 17); cup.closeSubpath()
         b.fill("#f7ffff", "#cce6eb"); painter.drawPath(cup)
@@ -403,7 +431,14 @@ def paint_icon(painter: QPainter, key: str) -> None:
                      "rescue": "sesame", "soul_infusion": "bow", "title": "crown"}
         b.poly([(24, 51), (18, 72), (38, 65), (55, 72), (57, 49)], "#d4a3a4")
         b.ellipse(10, 8, 61, 57, "#f2dbab", "#c9a772"); b.ellipse(17, 14, 47, 44, "#fff2d4")
-        if re.fullmatch(r"level_[1-6]", key):
+        if re.fullmatch(r"level_(8|10|15|20|25|30)", key):
+            level=int(key.split("_")[1])
+            palette={8:"#b7d3c7",10:"#e5b5b9",15:"#bdc3e1",20:"#c4b6a5",25:"#d8b47c",30:"#d1b4d9"}
+            b.star(40,35,19,palette[level]);b.pen("#79523b",1.5)
+            from PySide6.QtGui import QFont
+            painter.setFont(QFont("Segoe UI",10,QFont.Weight.Bold))
+            painter.drawText(QRectF(15,21,50,29),Qt.AlignmentFlag.AlignCenter,str(level))
+        elif re.fullmatch(r"level_[1-6]", key):
             b.star(40, 36, 17, "#f2cf84")
             count = int(key[-1])
             b.pen("#ab8360", 2)

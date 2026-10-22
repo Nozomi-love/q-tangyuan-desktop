@@ -32,6 +32,7 @@ from models import GameRules, PetData, PetModel
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from pet_window import PetWindow, ProceduralAudio
 from save_manager import SaveDataError, SaveManager, SkinManager, SkinImportError
+from release_support import APP_VERSION, BackupManager, SingleInstance, player_paths
 
 PROJECT_ROOT = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
                 else Path(__file__).resolve().parent)
@@ -109,6 +110,7 @@ class PetApplication:
             restored = self.skin_manager.resolve(data.selected_skin_id)
             if restored.name != data.selected_skin_id or not self.window.set_skin(restored):
                 self._skin_restore_warning = "原自定义皮肤暂时无法读取，先用白汤圆陪伴你；原选择和素材保留。"
+        self.window.engine.skin_scale=self.model.skin_config()["scale_multiplier"]
         self.window.set_accessories(self.model.effective_accessories())
         self.icon = create_tray_icon(self.window.renderer)
         app.setWindowIcon(self.icon)
@@ -119,6 +121,8 @@ class PetApplication:
         self.dashboard.setWindowIcon(self.icon)
         self.dashboard.set_phase4_context(self.skin_manager.list_skins(), self.dev_mode)
         self._connect_dashboard()
+        self._preview_id=None
+        self.dashboard.data_directory_label.setText("数据目录："+str(save_path.parent) + "\n本地皮肤："+str(self.skin_manager.root) if save_path else "本次仅内存体验，不写入玩家进度。")
         self.window.dialogue_shown.connect(self.dashboard.room.show_message)
         self.dashboard.room.sound_requested.connect(self.audio.play)
         self.model.gains_received.connect(self._gains_received)
@@ -235,6 +239,7 @@ class PetApplication:
             self.trick_actions[trick_id] = action
         self.menu.addSeparator()
         self.debug_menu = self.menu.addMenu(" 调试与外观")
+        self.debug_menu.menuAction().setVisible(self.dev_mode)
         self.hunger_zero_action = self.debug_menu.addAction("[调试] 饥饿值归零")
         self.hunger_full_action = self.debug_menu.addAction("[调试] 饥饿值恢复满值")
         self.flat_action = self.debug_menu.addAction("手动测试饿扁（独立于真实饥饿）")
@@ -284,6 +289,14 @@ class PetApplication:
         self.dashboard.reload_requested.connect(self._reload_skins)
         self.dashboard.accessory_requested.connect(self.model.equip_accessory)
         self.dashboard.offset_requested.connect(self.model.set_accessory_offset)
+        self.dashboard.scale_requested.connect(self.model.set_skin_scale)
+        self.dashboard.preview_confirmed.connect(self._confirm_preview)
+        self.dashboard.preview_cancelled.connect(self._cancel_preview)
+        self.dashboard.skin_rename_requested.connect(self._rename_skin)
+        self.dashboard.skin_archive_requested.connect(self._archive_skin)
+        self.dashboard.backup_requested.connect(self._export_backup)
+        self.dashboard.restore_requested.connect(self._restore_backup)
+        self.dashboard.dev_level_requested.connect(self._dev_level)
         self.dashboard.trick_requested.connect(self._perform_trick)
         self.dashboard.skin_requested.connect(self._select_skin)
         self.dashboard.import_image_requested.connect(self._import_image)
@@ -333,6 +346,11 @@ class PetApplication:
 
     def _state_changed(self, _state: dict) -> None:
         self._dirty = True
+        scale=self.model.skin_config()["scale_multiplier"]
+        if scale != self.window.engine.skin_scale:
+            self.window.engine.cancel_trick()
+            self.window.engine.skin_scale=scale
+        self.window.set_accessories(self.model.effective_accessories())
         self.audio.set_muted(self.model.data.muted)
         self.mute_action.blockSignals(True); self.mute_action.setChecked(self.model.data.muted); self.mute_action.blockSignals(False)
         enabled = self.model.data.overlay_visible
@@ -371,6 +389,7 @@ class PetApplication:
 
     def _upgraded(self, level: int) -> None:
         self.window.engine.celebrate()
+        if level == 30: self.window.engine.fireworks_until=self.window.engine.elapsed+5
         self.window.show_message(f" 好感度升至 Lv.{level}！奖励 30 糯米币", "level")
 
     def _fed(self) -> None:
@@ -439,7 +458,7 @@ class PetApplication:
             self.model.feedback.emit("衣橱将在 Lv.3 开启，也可花 50 币提前解锁。", "normal")
             self._refresh_wardrobe()
             return False
-        directory = self.skin_manager.resolve(skin_id)
+        directory = PROJECT_ROOT / "assets/skins/default" if skin_id=="default" else self.skin_manager.resolve(skin_id)
         if directory.name != skin_id or not self.window.set_skin(directory):
             self.model.feedback.emit("皮肤素材缺失或无效，当前外观已保留。", "hungry")
             self._refresh_wardrobe()
@@ -451,10 +470,10 @@ class PetApplication:
         return True
 
     def _import_image(self, source: str, remove_white: bool) -> None:
-        self._import_skin(source, remove_white=remove_white)
+        self._prepare_preview(source, remove_white=remove_white)
 
     def _import_pack(self, source: str) -> None:
-        self._import_skin(source, pack=True)
+        self._prepare_preview(source, pack=True)
 
     def _import_skin(self, source: str, *, pack: bool = False, remove_white: bool = False) -> None:
         if not self.model.has_perk("custom_import"):
@@ -468,6 +487,87 @@ class PetApplication:
         except (SkinImportError, OSError, ValueError) as error:
             logging.warning("皮肤导入被拒绝：%s", error)
             self.model.feedback.emit("导入未完成：" + str(error), "hungry")
+
+    def _prepare_preview(self, source, *, pack=False, remove_white=False):
+        if not self.model.has_perk("custom_import"): return
+        try:
+            entry=self.skin_manager.prepare_preview(Path(source),pack=pack,remove_white=remove_white)
+            self._cancel_preview()
+            self._preview_id=entry["id"]
+            self.dashboard.show_skin_preview(entry)
+        except (SkinImportError,OSError,ValueError) as error:
+            self.model.feedback.emit("预览未完成："+str(error),"hungry")
+
+    def _confirm_preview(self):
+        if not self._preview_id or not self.model.has_perk("custom_import"): return
+        try:
+            entry=self.skin_manager.commit_preview(self._preview_id)
+            self._preview_id=None
+            self.dashboard.clear_skin_preview()
+            self._select_skin(entry["id"],imported=True)
+        except (SkinImportError,OSError,ValueError) as error:
+            self.model.feedback.emit("导入未完成："+str(error),"hungry")
+
+    def _cancel_preview(self):
+        if getattr(self,"_preview_id",None): self.skin_manager.cancel_preview(self._preview_id)
+        self._preview_id=None
+        self.dashboard.clear_skin_preview()
+
+    def _rename_skin(self, skin_id, name):
+        try:
+            self.skin_manager.rename(skin_id,name)
+            self._refresh_wardrobe()
+        except (SkinImportError,OSError,ValueError) as error:
+            self.model.feedback.emit("重命名未完成："+str(error),"hungry")
+
+    def _archive_skin(self, skin_id, archived):
+        if skin_id==self.model.data.selected_skin_id and archived:
+            if not self._select_skin("default"): return
+        if self.model.archive_skin(skin_id,archived): self._refresh_wardrobe()
+
+    def _export_backup(self, destination):
+        try:
+            if not self.save_manager or self._save_blocked: raise SaveDataError("当前没有可写入的存档")
+            self._save()
+            if self._dirty: raise SaveDataError("最新进度尚未保存，请先处理存档写入问题")
+            result=BackupManager(self.save_manager,self.skin_manager).export(Path(destination))
+            self.dashboard.backup_status.setText("备份完成："+str(result))
+        except (SaveDataError,SkinImportError,OSError,ValueError) as error:
+            self.dashboard.backup_status.setText("备份未完成："+str(error))
+
+    def _restore_backup(self, source):
+        try:
+            if not self.save_manager or self._save_blocked: raise SaveDataError("当前无法安全恢复存档")
+            self._save()
+            if self._dirty: raise SaveDataError("当前进度尚未安全保存，恢复已停止")
+            data,position,rollback=BackupManager(self.save_manager,self.skin_manager).restore(Path(source))
+            self._cancel_preview()
+            self.window.engine.cancel_trick()
+            self.window.engine.fireworks_until=0
+            self.flat_action.setChecked(False)
+            self.window.restore_position(position)
+            self.model.replace_data(data)
+            self.window.set_starving(self.model.starving)
+            self._select_skin(data.selected_skin_id)
+            self.dashboard.room.interact(cancel_gift=True)
+            self.dashboard.refresh(); self._save()
+            self.dashboard.backup_status.setText("恢复完成；恢复前备份："+str(rollback))
+        except (SaveDataError,SkinImportError,OSError,ValueError) as error:
+            self.dashboard.backup_status.setText("恢复未完成，原进度与素材保留："+str(error))
+
+    def _dev_level(self, level):
+        if not self.dev_mode or type(level) is not int or not 1<=level<=30: return
+        if level < self.model.data.affection_level: return
+        previous=self.model.starving
+        amount=500*level*(level-1)//2-self.model._lifetime_exp()
+        levels=self.model._add_exp(max(0,amount))
+        self.model._publish(previous,[levels[-1]] if levels else [])
+
+    def wake(self):
+        self.model.set_overlay_visible(True)
+        self.dashboard.summon()
+        self.window.set_overlay_visible(True)
+        self.window.raise_()
 
     def _export_template(self, destination: str) -> None:
         target = Path(destination) / datetime.now().strftime("汤圆皮肤模板-%Y%m%d-%H%M%S-%f")
@@ -505,7 +605,8 @@ class PetApplication:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Q弹汤圆 · Phase 4")
+    parser = argparse.ArgumentParser(description=APP_VERSION)
+    parser.add_argument("--version", action="version", version=APP_VERSION)
     parser.add_argument("--smoke-test", action="store_true",
                         help="启动真实窗口与托盘，2 秒后输出诊断并自动退出")
     parser.add_argument("--dev-mode", action="store_true", help="开启养成计时加速：饥饿 2 秒、拾币 10 秒")
@@ -530,6 +631,7 @@ def main() -> int:
     app = QApplication([sys.argv[0]])
     app.setApplicationName("Q弹汤圆")
     app.setOrganizationName("Q弹汤圆")
+    app.setApplicationVersion("2.0.0")
     app.setQuitOnLastWindowClosed(False)
 
     style_path = PROJECT_ROOT / "styles" / "theme.qss"
@@ -548,12 +650,43 @@ def main() -> int:
     elif args.resume_demo is not None:
         save_path = args.resume_demo
         print(f"继续演示存档：{save_path}", flush=True)
-    controller = PetApplication(app, save_path=None if args.smoke_test else save_path, accelerated=args.dev_mode, dev_mode=args.dev_mode)
+    skins_root=None
+    legacy=None
+    if getattr(sys,"frozen",False) and not (args.demo or args.resume_demo or args.smoke_test):
+        stable_save,skins_root=player_paths(PROJECT_ROOT,frozen=True)
+        legacy=save_path if save_path.is_file() and not stable_save.exists() else None
+        save_path=stable_save
+    instance=None
+    if not args.smoke_test:
+        instance=SingleInstance(save_path,app)
+        try:
+            if not instance.acquire(): return 0
+        except RuntimeError as error:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(None,"Q弹汤圆",str(error)); return 1
+    if legacy:
+        try:
+            old=SaveManager(legacy); old.load_all()
+            imported=SkinManager(PROJECT_ROOT/"assets/skins")
+            target=save_path.parent/"backups"/("首次升级迁移-"+datetime.now().strftime("%Y%m%d-%H%M%S-%f")+".zip")
+            BackupManager(old,imported).export(target)
+            BackupManager(SaveManager(save_path),SkinManager(skins_root)).restore(target)
+        except (SaveDataError,SkinImportError,OSError,ValueError) as error:
+            logging.error("旧版数据迁移未完成，原件保留：%s",error)
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(None,"数据迁移未完成",str(error)); return 1
+    controller = PetApplication(app, save_path=None if args.smoke_test else save_path, accelerated=args.dev_mode, dev_mode=args.dev_mode,skins_root=skins_root)
+    if instance:
+        instance.awakened.connect(controller.wake)
+        app.aboutToQuit.connect(instance.close)
     if args.smoke_test:
         def finish_smoke() -> None:
             window = controller.window
             area = window.engine.area
             diagnostics = {
+                "version": APP_VERSION,
+                "debug_menu_visible": controller.debug_menu.menuAction().isVisible(),
+                "data_directory": str(save_path.parent),
                 "platform": QGuiApplication.platformName(),
                 "frozen": bool(getattr(sys, "frozen", False)),
                 "resource_root": str(PROJECT_ROOT),

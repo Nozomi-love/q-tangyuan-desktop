@@ -46,7 +46,7 @@ def resource_files(root: Path) -> list[str]:
     selected = ["assets/icons/tangyuan.ico", "config/catalog.json", "styles/theme.qss", expression_file]
     selected += ["assets/skins/default/" + name for name in dict.fromkeys(expressions["files"].values())]
     selected += ["assets/item_icons/" + icon + ".png" for icon in icons]
-    selected += ["assets/sounds/" + name + ".wav" for name in ("poke", "eat", "coin", "music_box")]
+    selected += ["assets/sounds/" + name + ".wav" for name in ("poke", "eat", "coin", "music_box", "chime")]
     for relative in selected:
         checked_source(root, relative)
     return sorted(set(selected))
@@ -103,7 +103,7 @@ def main() -> int:
     env["TEMP"] = env["TMP"] = str(session / "temp")
     (session / "temp").mkdir()
     command = [sys.executable, "-m", "PyInstaller", "--onedir", "--windowed", "--noupx",
-               "--contents-directory", ".", "--name", "Q弹汤圆", "--icon", str(root / "assets/icons/tangyuan.ico"),
+               "--contents-directory", ".", "--version-file", str(root / "tools/windows_version.txt"), "--name", "Q弹汤圆", "--icon", str(root / "assets/icons/tangyuan.ico"),
                "--distpath", str(output), "--workpath", str(session / "work"), "--specpath", str(session),
                "--copy-metadata", "PySide6", "--copy-metadata", "shiboken6"]
     for directory in ("assets", "config", "styles"):
@@ -117,8 +117,9 @@ def main() -> int:
                     "2. 双击同文件夹里的 Q弹汤圆.exe，无需安装Python或其他开发环境。\n"
                     "3. 不要只复制EXE，也不要在压缩包里直接运行；其他文件是运行依赖。\n"
                     "4. 关闭小窝只是收起；退出请右键系统托盘选择退出程序。\n"
-                    "5. 进度存放在同目录data/save_data.json；皮肤在assets/skins/user_*/。\n"
-                    "   换电脑时退出软件后复制整个文件夹，即可一起带走进度与皮肤。\n\n"
+                    "5. 进度与皮肤存放在系统本地应用数据目录，小窝设置中可查看完整路径。\n"
+                    "   更新可解压至新文件夹，进度自动接续；换电脑请用设置中的备份/恢复。\n"
+                    "6. 再次双击会唤醒现有小窝与桌宠，不会重复启动；正式版默认隐藏调试。\n\n"
                     "自定义皮肤：换装与小窝装修 → 皮肤衣橱 → 导入本地PNG/GIF。\n"
                     "推荐透明背景、主体居中、最长边256～512像素；PNG单图或循环GIF均可。\n"
                     "单文件不超过20MB；GIF最多200帧、累计6400万源像素。\n"

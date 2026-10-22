@@ -106,6 +106,8 @@ class PetEngine:
         self.ball_x = self.ball_y = 0.0
         self.ball_vx = self.ball_vy = 0.0
         self.buff: dict = {}
+        self.skin_scale = 1.0
+        self.fireworks_until = 0.0
         self.dizzy_until = 0.0
         self._next_spicy_at = 0.0
         self._run_direction = -1.0
@@ -142,9 +144,9 @@ class PetEngine:
         # Breathing and jelly motion conserve projected area. Hunger is a
         # separate deformation: flatten without excessive 2.5x widening.
         return Pose(
-            (1.14 if self.flat else 1.0) / dynamic_height * self.buff.get("scale", 1.0),
-            dynamic_height * (0.4 if self.flat else 1.0) * self.buff.get("scale", 1.0),
-            self.angle,
+            (1.14 if self.flat else 1.0) / dynamic_height * self.buff.get("scale", 1.0) * self.skin_scale,
+            dynamic_height * (0.4 if self.flat else 1.0) * self.buff.get("scale", 1.0) * self.skin_scale,
+            self.angle + (12 * math.sin((self.elapsed - self._trick_started) * math.tau * 3) if self._trick == "disco" else 0),
         )
 
     def bounds_offsets(self) -> tuple[float, float, float, float]:
@@ -184,6 +186,8 @@ class PetEngine:
             return self._roll_offset()
         if self._trick == "flip":
             return QPointF(0, -self._trick_jump_height * math.sin(math.pi * self.trick_progress))
+        if self._trick == "disco":
+            return QPointF(0, -8 * abs(math.sin((self.elapsed - self._trick_started) * math.tau * 3)))
         if self._trick == "ball":
             hop = abs(math.sin((self.elapsed - self._trick_started) * math.pi * 2.4))
             return QPointF(0, -min(12.0, self._trick_jump_height) * hop)
@@ -256,7 +260,7 @@ class PetEngine:
         return True
 
     def perform_trick(self, trick: str, *, roll_padding: float = 140.0) -> bool:
-        durations = {"flip": 1.1, "clone": 2.5, "ball": 5.0, "screen_roll": 12.0}
+        durations = {"flip": 1.1, "clone": 2.5, "ball": 5.0, "screen_roll": 12.0, "disco": 6.0}
         if (trick not in durations or self._trick or self.held or self.dragging
                 or self.flat or not (self.grounded or self.pinned)):
             return False
@@ -638,9 +642,9 @@ class SkinRenderer(QObject):
     def set_accessories(self, accessories: dict) -> None:
         values = accessories if isinstance(accessories, dict) else {}
         self.accessories = {
-            "head": values.get("head") if values.get("head") in {"sprout", "crown", "bow"} else "",
+            "head": values.get("head") if values.get("head") in {"sprout", "crown", "bow", "orange"} else "",
             "face": "sunglasses" if values.get("face") == "sunglasses" else "",
-            "effect": "steam" if values.get("effect") == "steam" else "",
+            "effect": values.get("effect") if values.get("effect") in {"steam", "fireflies", "rainbow"} else "",
             "offset_y": int(clamp(values.get("offset_y", 0), -30, 30))
                 if isinstance(values.get("offset_y", 0), (int, float))
                 and math.isfinite(values.get("offset_y", 0)) else 0,
@@ -990,7 +994,7 @@ class SkinRenderer(QObject):
             transform.translate(0, PetEngine.BODY_HEIGHT / 2)
         return transform
 
-    def screen_roll_padding(self) -> float:
+    def screen_roll_padding(self, scale_multiplier: float = 1.0) -> float:
         """A rotation envelope for every expression, current ornaments and 1.2x Buff."""
         radius = 0.0
         center_y = -PetEngine.BODY_HEIGHT / 2
@@ -1000,7 +1004,7 @@ class SkinRenderer(QObject):
                 for y in (rect.top(), rect.bottom()):
                     radius = max(radius, math.hypot(x, y - center_y))
         # 1.033 breathing with inverse width, maximum 1.2 Buff, plus antialiasing.
-        return max(120.0, radius * 1.06 * 1.2 + 8.0)
+        return max(120.0, radius * 1.06 * 1.2 * scale_multiplier + 8.0)
 
     def hit_test(self, engine: PetEngine, foot: QPointF, point: QPointF) -> bool:
         inverse, invertible = self.body_transform(engine, foot).inverted()
@@ -1056,6 +1060,8 @@ class SkinRenderer(QObject):
                                           body.width() + 10, 30))
         if self.accessories["effect"]:
             result = result.united(QRectF(body.center().x() - 63, top - 72, 126, 75))
+        if self.accessories["effect"] in {"fireflies", "rainbow"}:
+            result = result.united(body.adjusted(-38, -35, 38, 20))
         return result
 
     def _clone_offsets(self, engine: PetEngine) -> list[tuple[float, float, float]]:
@@ -1076,6 +1082,8 @@ class SkinRenderer(QObject):
         result = self.body_transform(engine, foot).mapRect(local)
         for dx, dy, _opacity in self._clone_offsets(engine):
             result = result.united(self.body_transform(engine, foot + QPointF(dx, dy)).mapRect(local))
+        if engine.active_trick == "disco" or engine.elapsed < engine.fireworks_until:
+            result = result.united(QRectF(foot.x() - 195, foot.y() - 390, 390, 405))
         if engine.active_trick == "ball":
             result = result.united(QRectF(foot.x() + engine.ball_x - 14,
                                           foot.y() + engine.ball_y - 14, 28, 28))
@@ -1091,7 +1099,11 @@ class SkinRenderer(QObject):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         for dx, dy, opacity in self._clone_offsets(engine):
             self._paint_instance(painter, engine, foot + QPointF(dx, dy), opacity)
+        if engine.active_trick == "disco":
+            self._paint_disco(painter, engine, foot)
         self._paint_instance(painter, engine, foot, 1.0)
+        if engine.elapsed < engine.fireworks_until:
+            self._paint_fireworks(painter, engine, foot)
         if engine.active_trick == "ball":
             self._paint_ball(painter, foot + QPointF(engine.ball_x, engine.ball_y))
         if engine.buff.get("item_id") == "strawberry":
@@ -1146,7 +1158,29 @@ class SkinRenderer(QObject):
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(QColor(245, 204, 116, int(150 * math.sin(math.pi * phase))))
                 painter.drawEllipse(QPointF(x + 9, y - 5), 1.8, 1.8)
-        if head == "sprout":
+        effect = self.accessories["effect"]
+        if effect == "fireflies":
+            painter.setPen(Qt.PenStyle.NoPen)
+            for i in range(12):
+                phase = engine.elapsed * .65 + i * math.tau / 12
+                x = math.cos(phase) * (rect.width() / 2 + 21)
+                y = rect.height() * .55 + math.sin(phase * 1.3) * rect.height() * .6
+                glow = QColor("#f7dc83"); glow.setAlphaF(.35 + .25 * math.sin(phase * 3))
+                painter.setBrush(glow); painter.drawEllipse(QPointF(x, y), 6, 6)
+                painter.setBrush(QColor("#fff5b8")); painter.drawEllipse(QPointF(x, y), 2, 2)
+        elif effect == "rainbow":
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            for i, color in enumerate(("#ecb0b6", "#efbd91", "#eedc97", "#b8d29f", "#a0cbd5", "#b1b7df", "#d4b2de")):
+                painter.setPen(QPen(QColor(color), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                painter.drawEllipse(QRectF(-rect.width()/2 - 20 - i*2, rect.height() - 18 - i,
+                    rect.width() + 40 + i*4, 24 + i*2))
+        if head == "orange":
+            painter.setPen(QPen(QColor("#79523b"), 2.0))
+            painter.setBrush(QColor("#efa54d")); painter.drawEllipse(QRectF(-21, -32, 42, 33))
+            painter.setBrush(QColor("#a6bd78")); painter.drawEllipse(QRectF(1, -37, 19, 8))
+            painter.setBrush(QColor("#fff0b5")); painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(QRectF(-13, -24, 6, 4))
+        elif head == "sprout":
             painter.setPen(QPen(QColor("#5f9965"), 3.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             stem = QPainterPath(QPointF(0, 2))
             stem.cubicTo(-5, -8, 4, -15, 1, -25)
@@ -1201,6 +1235,44 @@ class SkinRenderer(QObject):
             painter.drawLine(QPointF(-width * 0.37, -5), QPointF(-width * 0.23, 1))
             painter.drawLine(QPointF(width * 0.16, -5), QPointF(width * 0.30, 1))
             painter.restore()
+
+    @staticmethod
+    def _paint_disco(painter, engine, foot):
+        painter.save()
+        painter.translate(foot)
+        phase = (engine.elapsed - engine._trick_started)
+        painter.setPen(Qt.PenStyle.NoPen)
+        colors = ("#edb6ca", "#b4c9e3", "#ead28d", "#a6d1c1")
+        for i in range(10):
+            angle = phase * 1.1 + i * math.tau / 10
+            color = QColor(colors[i % 4]); color.setAlpha(55)
+            painter.setBrush(color)
+            painter.drawEllipse(QPointF(math.sin(angle) * 150, -75 + math.cos(angle) * 65), 22, 10)
+        drop = min(1, phase / .6, (6 - phase) / .5)
+        y = -285 - (1 - max(0, drop)) * 35
+        painter.setPen(QPen(QColor("#79523b"), 1.5))
+        painter.drawLine(QPointF(0, y - 28), QPointF(0, y - 1))
+        painter.setBrush(QColor("#e1d8b7")); painter.drawEllipse(QPointF(0, y), 25, 25)
+        painter.save(); painter.translate(0, y); painter.rotate(phase * 65)
+        for row in range(-2, 3):
+            for column in range(-2, 3):
+                if row*row + column*column <= 5:
+                    painter.setBrush(QColor(colors[(row+column) % 4]))
+                    painter.drawRoundedRect(QRectF(column*8-3, row*8-3, 6, 6), 1, 1)
+        painter.restore(); painter.restore()
+
+    @staticmethod
+    def _paint_fireworks(painter, engine, foot):
+        painter.save(); painter.setPen(Qt.PenStyle.NoPen)
+        age = 5 - (engine.fireworks_until - engine.elapsed)
+        for burst in range(3):
+            t = (age - burst * .7) % 2.3
+            center = foot + QPointF((burst-1)*85, -230 - (burst%2)*35)
+            for i in range(14):
+                a = i * math.tau / 14
+                c = QColor(("#e8acbd", "#efd18a", "#a5cbb6", "#b7bce1")[i%4]); c.setAlphaF(max(0, 1-t/2.3))
+                painter.setBrush(c); painter.drawEllipse(center+QPointF(math.cos(a)*t*42, math.sin(a)*t*42+t*t*9), 3, 3)
+        painter.restore()
 
     @staticmethod
     def _paint_ball(painter: QPainter, center: QPointF) -> None:
@@ -1681,6 +1753,13 @@ class RoomCanvas(QWidget):
             painter.setPen(QPen(QColor("#d7e6bf"), 1.7))
             for x in [-102, -66, -25, 25, 66, 102]:
                 painter.drawLine(QPointF(0, 2), QPointF(x, -19 if x % 2 else 19))
+        elif rug == "royal_rug":
+            painter.setBrush(QColor("#8b5266")); painter.drawEllipse(QRectF(-140, -37, 280, 77))
+            painter.setPen(QPen(QColor("#e4c583"), 4)); painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(QRectF(-130, -30, 260, 63))
+            painter.setPen(QPen(QColor("#d6ac77"), 1.5))
+            for x in range(-108, 109, 18):
+                painter.drawLine(QPointF(x, 30), QPointF(x+3, 37))
         elif rug == "cat_paw_rug":
             painter.setPen(QPen(QColor("#70513b"), 2.5))
             painter.setBrush(QColor("#fae2e1"))
