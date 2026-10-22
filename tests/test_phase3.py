@@ -46,16 +46,16 @@ class CommerceTests(unittest.TestCase):
         pet = wealthy()
         self.assertEqual(len(pet.catalog.items), 11)
         rules = GameRules.from_catalog(ROOT / "config/catalog.json")
-        self.assertEqual((rules.sugar_cost, rules.sugar_hunger, rules.sugar_exp), (10, 15, 0))
-        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [10, 10, 45, 25, 25, 25, 45, 20, 70, 180, 180])
+        self.assertEqual((rules.sugar_cost, rules.sugar_hunger, rules.sugar_exp), (30, 15, 0))
+        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [30, 30, 135, 75, 75, 75, 135, 60, 210, 540, 540])
 
     def test_purchase_stores_without_feeding_and_use_does_not_recharge(self):
         pet = wealthy()
         self.assertTrue(pet.buy_item("water"))
-        self.assertEqual((pet.data.coins, pet.data.hunger, pet.data.affection_exp), (990, 80, 0))
+        self.assertEqual((pet.data.coins, pet.data.hunger, pet.data.affection_exp), (970, 80, 0))
         self.assertEqual(pet.data.inventory, {"water": 1})
         self.assertTrue(pet.use_item("water"))
-        self.assertEqual((pet.data.coins, pet.data.hunger, pet.data.affection_exp), (990, 95, 0))
+        self.assertEqual((pet.data.coins, pet.data.hunger, pet.data.affection_exp), (970, 95, 0))
         self.assertEqual(pet.data.inventory["water"], 0)
         self.assertFalse(pet.use_item("water"))
         self.assertEqual(pet.data.stats["total_feeds"], 1)
@@ -88,7 +88,7 @@ class CommerceTests(unittest.TestCase):
         self.assertEqual(pet.data.inventory["sugar"], 3)
         pet.use_item("sugar")
         self.assertEqual(pet.data.inventory["sugar"], 2)
-        self.assertEqual(pet.data.coins, 970)
+        self.assertEqual(pet.data.coins, 910)
 
     def test_basic_food_keeps_current_flavor(self):
         pet = wealthy()
@@ -589,7 +589,7 @@ class DashboardInputTests(unittest.TestCase):
         buy, feed, _ = self.dashboard.shop_buttons["sesame"]
         QTest.mouseClick(buy, Qt.MouseButton.LeftButton)
         self.assertEqual(self.model.data.inventory["sesame"], 1)
-        self.assertIn("975", self.dashboard.balance.text())
+        self.assertIn("925", self.dashboard.balance.text())
         self.dashboard.show_section("bag", animate=False)
         QTest.mouseClick(self.dashboard.inventory_widgets["sesame"][2], Qt.MouseButton.LeftButton)
         self.assertEqual(self.model.data.inventory["sesame"], 0)

@@ -16,7 +16,7 @@
     "water": {
       "name": "温开水",
       "icon": "water",
-      "cost": 10,
+      "cost": 30,
       "hunger": 15,
       "exp": 0,
       "category": "food",
@@ -25,7 +25,7 @@
     "sugar": {
       "name": "白砂糖",
       "icon": "sugar",
-      "cost": 10,
+      "cost": 30,
       "hunger": 15,
       "exp": 0,
       "category": "food",
@@ -34,7 +34,7 @@
     "osmanthus": {
       "name": "桂花酒酿",
       "icon": "osmanthus",
-      "cost": 45,
+      "cost": 135,
       "hunger": 65,
       "exp": 0,
       "category": "food",
@@ -43,7 +43,7 @@
     "sesame": {
       "name": "黑芝麻糊",
       "icon": "sesame",
-      "cost": 25,
+      "cost": 75,
       "hunger": 35,
       "exp": 0,
       "buff": {
@@ -58,7 +58,7 @@
     "strawberry": {
       "name": "草莓果酱",
       "icon": "strawberry",
-      "cost": 25,
+      "cost": 75,
       "hunger": 35,
       "exp": 0,
       "buff": {
@@ -73,7 +73,7 @@
     "matcha": {
       "name": "宇治抹茶粉",
       "icon": "matcha",
-      "cost": 25,
+      "cost": 75,
       "hunger": 35,
       "exp": 0,
       "buff": {
@@ -88,7 +88,7 @@
     "chili": {
       "name": "变态辣油",
       "icon": "chili",
-      "cost": 45,
+      "cost": 135,
       "hunger": 65,
       "exp": 0,
       "buff": {
@@ -108,7 +108,7 @@
       "tier": 1,
       "hunger": 0,
       "exp": 20,
-      "cost": 20,
+      "cost": 60,
       "room_effect": "paper_star",
       "performance_seconds": 7
     },
@@ -119,7 +119,7 @@
       "tier": 2,
       "hunger": 0,
       "exp": 80,
-      "cost": 70,
+      "cost": 210,
       "room_effect": "flower_bouquet",
       "performance_seconds": 7
     },
@@ -130,9 +130,10 @@
       "tier": 3,
       "hunger": 0,
       "exp": 240,
-      "cost": 180,
+      "cost": 540,
       "room_effect": "music_box",
-      "performance_seconds": 7
+      "performance_seconds": 7,
+      "dialogue": "gift_music_box"
     },
     "spinning_top": {
       "name": "陀螺",
@@ -141,7 +142,7 @@
       "tier": 3,
       "hunger": 0,
       "exp": 240,
-      "cost": 180,
+      "cost": 540,
       "description": "TES「陀螺」梗彩蛋：送一份会转起来的心意。",
       "dialogue": "gift_top",
       "room_effect": "spinning_top",
@@ -391,41 +392,41 @@
     "1": {
       "name": "基础食物",
       "hunger": 15,
-      "cost": 10
+      "cost": 30
     },
     "2": {
       "name": "精制食物",
       "hunger": 35,
-      "cost": 25
+      "cost": 75
     },
     "3": {
       "name": "丰盛食物",
       "hunger": 65,
-      "cost": 45
+      "cost": 135
     }
   },
   "gift_tiers": {
     "1": {
       "name": "小小心意",
       "exp": 20,
-      "cost": 20
+      "cost": 60
     },
     "2": {
       "name": "温暖心意",
       "exp": 80,
-      "cost": 70
+      "cost": 210
     },
     "3": {
       "name": "珍藏心意",
       "exp": 240,
-      "cost": 180
+      "cost": 540
     }
   },
   "trick_products": {
     "screen_roll": {
       "name": "绕屏滚一圈",
       "icon": "screen_roll",
-      "cost": 120,
+      "cost": 360,
       "description": "永久解锁；沿当前屏幕四边滚动约12秒，回到原位。冷却20秒，途中点击可提前结束，固定状态保留。"
     }
   },
@@ -477,6 +478,9 @@
     ],
     "trick_screen_roll": [
       "绕屏走位，转一圈就回来。"
+    ],
+    "gift_music_box": [
+      "听见你说~"
     ]
   },
   "furniture": {
@@ -494,7 +498,7 @@
       "id": "sakura_room",
       "name": "樱花甜梦屋",
       "slot": "theme",
-      "price": 100,
+      "price": 300,
       "description": "浅樱粉的墙面与柔和木地板，做一场甜甜的梦。",
       "emoji": "sakura_room",
       "default": false,
@@ -504,7 +508,7 @@
       "id": "matcha_room",
       "name": "宇治茶室屋",
       "slot": "theme",
-      "price": 100,
+      "price": 300,
       "description": "清新的抹茶墙面与榻榻米色调，静静陪伴。",
       "emoji": "matcha_room",
       "default": false,
@@ -524,7 +528,7 @@
       "id": "lotus_cushion",
       "name": "清新荷叶垫",
       "slot": "rug",
-      "price": 40,
+      "price": 120,
       "description": "一片清凉荷叶，托住软乎乎的汤圆。",
       "emoji": "lotus_cushion",
       "default": false,
@@ -534,7 +538,7 @@
       "id": "cat_paw_rug",
       "name": "豪华猫爪地毯",
       "slot": "rug",
-      "price": 80,
+      "price": 240,
       "description": "粉嘟嘟的猫爪毛绒地毯，踩上去特别软。",
       "emoji": "cat_paw_rug",
       "default": false,
@@ -544,7 +548,7 @@
       "id": "sunflower_painting",
       "name": "向日葵挂画",
       "slot": "wall",
-      "price": 60,
+      "price": 180,
       "description": "把晴天的小太阳挂在墙上。",
       "emoji": "sunflower_painting",
       "default": false,
@@ -554,7 +558,7 @@
       "id": "rice_clock",
       "name": "糯米挂钟",
       "slot": "wall",
-      "price": 70,
+      "price": 210,
       "description": "圆圆的汤圆钟面，记录一起相伴的时光。",
       "emoji": "rice_clock",
       "default": false,
@@ -564,7 +568,7 @@
       "id": "ficus_plant",
       "name": "琴叶榕盆栽",
       "slot": "corner",
-      "price": 60,
+      "price": 180,
       "description": "角落里的一抹绿意，让房间更有生气。",
       "emoji": "ficus_plant",
       "default": false,
@@ -574,7 +578,7 @@
       "id": "warm_lamp",
       "name": "暖心落地灯",
       "slot": "corner",
-      "price": 90,
+      "price": 270,
       "description": "点击房间里的灯可开关暖光，陪伴晚归的小汤圆。",
       "emoji": "warm_lamp",
       "default": false,
@@ -594,7 +598,7 @@
       "id": "porcelain_bowl",
       "name": "青花瓷汤碗",
       "slot": "bowl",
-      "price": 50,
+      "price": 150,
       "description": "绘着蓝色花纹的瓷碗，吃饭也要有仪式感。",
       "emoji": "porcelain_bowl",
       "default": false,

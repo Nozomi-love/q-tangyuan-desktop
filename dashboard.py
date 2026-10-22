@@ -655,7 +655,8 @@ class DashboardWindow(QMainWindow):
         debug.addWidget(label("礼物演出预览（不扣币、不加经验）", "sectionTitle"))
         for key, text in (("spinning_top", "试玩陀螺"), ("music_box", "试听八音盒"), ("paper_star", "看看折纸星星"), ("flower_bouquet", "闻闻花束")):
             button = self._button(text, key); self.preview_gift_buttons[key] = button
-            button.clicked.connect(lambda checked=False, k=key: self.room.present_item({"item_id": k, "category": "gift", "duration": 7}))
+            button.clicked.connect(lambda checked=False, k=key: self.room.present_item({"item_id": k, "category": "gift", "duration": 7,
+                "dialogue": self.model.dialogue(self.model.item(k).get("dialogue", "gift"))}))
             debug.addWidget(button)
         self.room_debug.hide(); page.addWidget(self.room_debug)
         page.addStretch()

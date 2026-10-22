@@ -178,6 +178,13 @@ class GiftPerformance:
         return self.start_x + (target - self.start_x) * t
 
     @property
+    def spin_angle(self):
+        if self.item_id != "spinning_top": return 0.0
+        progress = clamp((self.age - .6) / max(.1, self.duration - 1.1), 0, 1)
+        # Eight full turns; zero starting/ending speed and an upright finish.
+        return 2880 * (progress - math.sin(math.tau * progress) / math.tau)
+
+    @property
     def pose(self):
         t = self.age
         if self.item_id == "music_box":
@@ -192,8 +199,11 @@ class GiftPerformance:
 
 class RoomPetView:
     """Read-only pose adapter for the shared skin and ornament pipeline."""
-    def __init__(self, engine, local_pose=(1, 1, 0, 0)):
+    def __init__(self, engine, local_pose=(1, 1, 0, 0), spin_angle=0):
         self.engine, self.local_pose = engine, local_pose
+        self.spin_angle = spin_angle
+    @property
+    def visual_angle(self): return self.engine.visual_angle + self.spin_angle
     def __getattr__(self, name): return getattr(self.engine, name)
     @property
     def pose(self):
@@ -269,7 +279,8 @@ class IllustratedRoomCanvas(RoomCanvas):
         return pose
 
     def _view(self):
-        return RoomPetView(self.engine, self._local_pose())
+        spin = self.performance.spin_angle if self.performance and not self._busy() else 0
+        return RoomPetView(self.engine, self._local_pose(), spin)
 
     def _repaint_if_visible(self):
         now = monotonic(); dt = clamp(now - getattr(self, "_last_scene_tick", now), 0, .1)
@@ -306,14 +317,14 @@ class IllustratedRoomCanvas(RoomCanvas):
                 self.performance = None
                 self.life.state = "return"; self.life.target = .48; self.life.phase_time = 0
         if not self.performance and self._gift_queue and not busy:
-            item_id, duration = self._gift_queue.pop(0)
-            self._begin_gift(item_id, duration)
+            self._begin_gift(*self._gift_queue.pop(0))
         self._advance_food(dt)
         self._floating = [f for f in self._floating if monotonic() - f[1] < 1.2]
 
-    def _begin_gift(self, item_id, duration):
+    def _begin_gift(self, item_id, duration, dialogue=""):
         self.performance = GiftPerformance(item_id, duration, start_x=self.life.x)
         self._last_toy = item_id
+        if dialogue: self.show_message(dialogue, "interaction")
         self.mood_requested.emit(duration)
         if item_id == "music_box": self.sound_requested.emit("music_box")
 
@@ -350,9 +361,10 @@ class IllustratedRoomCanvas(RoomCanvas):
             item_id = event.get("effect", event["item_id"])
             if item_id in {"spinning_top", "music_box", "paper_star", "flower_bouquet"}:
                 duration = clamp(float(event.get("duration", 7)), 6, 8)
-                if not self.performance and not self._busy(): self._begin_gift(item_id, duration)
+                dialogue = event.get("dialogue", "")
+                if not self.performance and not self._busy(): self._begin_gift(item_id, duration, dialogue)
                 else:
-                    self._gift_queue.append((item_id, duration)); self._gift_queue = self._gift_queue[-8:]
+                    self._gift_queue.append((item_id, duration, dialogue)); self._gift_queue = self._gift_queue[-8:]
         self.update()
 
     def _render_foot(self):
@@ -372,7 +384,17 @@ class IllustratedRoomCanvas(RoomCanvas):
         foot = self._base_foot()
         scale, width, height = self._geometry()
         top = max(125.0, 148.0 / scale)
-        bounds = self.renderer_provider().scene_bounds(self._view(), self._render_foot())
+        renderer = self.renderer_provider(); view = self._view()
+        bounds = renderer.scene_bounds(view, self._render_foot())
+        if self.performance and self.performance.item_id == "spinning_top" and not self._busy():
+            # A complete turning envelope prevents angle-dependent zoom pumping.
+            local = renderer.visible_rect(view.state).united(renderer.accessory_bounds(view.state))
+            center_local = QPointF(0, -self.engine.BODY_HEIGHT / 2)
+            radius = max(math.hypot(x, y - center_local.y()) for x in (local.left(), local.right())
+                         for y in (local.top(), local.bottom()))
+            radius = radius * max(view.pose.scale_x, view.pose.scale_y) + 4
+            center = renderer.body_transform(view, self._render_foot()).map(center_local)
+            bounds = QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2)
         # The HUD occupies widget pixels while the room uses logical scene
         # units. Fit the full accessory/trick envelope beneath it on small views.
         zoom = min(self._pet_zoom * min(1.9, max(1.0, 900 / max(1, self.width()))), max(20.0, width - 50) / max(1.0, bounds.width()),

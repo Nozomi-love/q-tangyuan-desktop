@@ -39,6 +39,9 @@ DEFAULT_DIALOGUES = {
         "礼物收到啦，陪我坐一会儿。",
         "心意收下，今天也一起玩吧。"
     ],
+    "gift_music_box": [
+        "听见你说~"
+    ],
     "gift_top": [
         "陀螺收到，突然就想转起来了！"
     ],
@@ -118,7 +121,7 @@ class GameRules:
     gift_seconds: float = 90.0
     hungry_notice_seconds: float = 45.0
     gift_lifetime: float = 30.0
-    sugar_cost: int = 10
+    sugar_cost: int = 30
     sugar_hunger: float = 15.0
     sugar_exp: int = 0
     pet_cooldown: float = 10.0
@@ -619,11 +622,13 @@ class PetModel(QObject):
             before_exp = self._lifetime_exp()
             levels = self._add_exp(item["exp"])
             actual_exp = self._lifetime_exp() - before_exp
-            self._publish(previous, levels, self.dialogue(item.get("dialogue", "gift")), "interaction")
+            message = self.dialogue(item.get("dialogue", "gift"))
+            self._publish(previous, levels, message, "interaction")
             self.gifted.emit()
             self.presentation_requested.emit({"item_id": item_id, "category": "gift",
                 "effect": item.get("room_effect", item_id),
-                "duration": item.get("performance_seconds", 10.0), "hunger_gain": 0, "exp_gain": actual_exp})
+                "duration": item.get("performance_seconds", 10.0), "hunger_gain": 0, "exp_gain": actual_exp,
+                "dialogue": message})
             return
         before_hunger = self.data.hunger
         was_full = self.data.hunger >= 100

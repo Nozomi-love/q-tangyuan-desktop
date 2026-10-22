@@ -28,7 +28,7 @@ ARTIFACTS.mkdir(parents=True,exist_ok=False)
 
 class RollModelTests(unittest.TestCase):
     def test_purchase_is_permanent_and_charged_exactly_once(self):
-        model=PetModel(PetData(coins=200))
+        model=PetModel(PetData(coins=440))
         before=model.snapshot()
         self.assertFalse(model.has_trick('screen_roll'))
         self.assertTrue(model.buy_trick('screen_roll'))
@@ -41,7 +41,7 @@ class RollModelTests(unittest.TestCase):
             self.assertEqual(model.snapshot()[key],before[key])
     def test_unknown_and_unaffordable_purchases_are_noops(self):
         for key in ('screen_roll','missing'):
-            model=PetModel(PetData(coins=119));before=model.snapshot()
+            model=PetModel(PetData(coins=359));before=model.snapshot()
             self.assertFalse(model.buy_trick(key));self.assertEqual(model.snapshot(),before)
     def test_debug_level_override_does_not_purchase_shop_tricks(self):
         model=PetModel();model.set_debug_unlock(True,authorized=True)
@@ -49,7 +49,7 @@ class RollModelTests(unittest.TestCase):
         self.assertFalse(model.has_trick('screen_roll'))
         self.assertFalse(model.record_trick('screen_roll'))
     def test_twelve_second_show_twenty_second_cooldown_no_exp(self):
-        model=PetModel(PetData(coins=120));model.buy_trick('screen_roll')
+        model=PetModel(PetData(coins=360));model.buy_trick('screen_roll')
         self.assertTrue(model.record_trick('screen_roll'))
         self.assertEqual(model.trick_busy,12)
         self.assertEqual(model.trick_cooldowns['screen_roll'],20)
@@ -69,7 +69,7 @@ class RollModelTests(unittest.TestCase):
         self.assertFalse(model.can_perform_trick('screen_roll'))
     def test_old_save_defaults_empty_and_purchase_round_trips(self):
         folder=ARTIFACTS/'save';folder.mkdir();file=folder/'save.json'
-        file.write_text(json.dumps({'schema_version':5,'coins':200,'future':{'keep':1},'window':{'pinned':True,'x_ratio':.55,'y_ratio':.5}}),encoding='utf-8')
+        file.write_text(json.dumps({'schema_version':5,'coins':440,'future':{'keep':1},'window':{'pinned':True,'x_ratio':.55,'y_ratio':.5}}),encoding='utf-8')
         save=SaveManager(file);data,position=save.load_all()
         self.assertEqual(data.purchased_tricks,[])
         model=PetModel(data);model.buy_trick('screen_roll');save.update_game(model.snapshot(),position)
@@ -228,7 +228,7 @@ class RollWindowAndDashboardTests(unittest.TestCase):
             self.assertTrue(area.contains(self.window.renderer.scene_bounds(engine,QPointF(engine.x,engine.y))))
             self.assertTrue(QRectF(self.window.rect()).contains(self.window.renderer.scene_bounds(engine,self.window.local_foot())))
     def test_shop_filter_purchase_and_buttons_update_live(self):
-        model=PetModel(PetData(coins=120));panel=DashboardWindow(model)
+        model=PetModel(PetData(coins=360));panel=DashboardWindow(model)
         try:
             panel.show();panel.show_section("shop", animate=False);panel.shop_tabs.setCurrentIndex(0)
             self.assertFalse(panel.shop_groups['trick'].isHidden())
@@ -244,7 +244,7 @@ class RollWindowAndDashboardTests(unittest.TestCase):
         finally:panel.close();panel.deleteLater();APP.sendPostedEvents(None,QEvent.Type.DeferredDelete)
     def test_controller_menu_purchase_run_cancel_and_reset(self):
         folder=ARTIFACTS/'controller';folder.mkdir();file=folder/'save.json'
-        save=SaveManager(file);save.update_game(PetData(coins=120).to_dict(),{'pinned':True,'screen':APP.primaryScreen().name(),'x_ratio':.55,'y_ratio':.5})
+        save=SaveManager(file);save.update_game(PetData(coins=360).to_dict(),{'pinned':True,'screen':APP.primaryScreen().name(),'x_ratio':.55,'y_ratio':.5})
         controller=PetApplication(APP,save_path=file,skins_root=folder/'skins')
         try:
             controller.window.timer.stop();model=controller.model;pet=controller.window

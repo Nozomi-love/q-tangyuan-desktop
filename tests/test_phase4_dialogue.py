@@ -70,7 +70,7 @@ class IncomeAndDialogueTests(unittest.TestCase):
     def test_full_hunger_food_quote_does_not_grant_exp(self):
         model=self.model(hunger=100);messages=self.feedback(model);model.buy_item('sugar',True)
         self.assertEqual(messages[-1],('别吃，别吃，饿吗，饿死了吗。','interaction'))
-        self.assertEqual((model.data.hunger,model.data.affection_exp,model.data.coins),(100,0,990))
+        self.assertEqual((model.data.hunger,model.data.affection_exp,model.data.coins),(100,0,970))
     def test_food_reaching_full_is_not_an_already_full_feed(self):
         model=self.model(hunger=95);messages=self.feedback(model);model.buy_item('sugar',True)
         self.assertEqual(model.data.hunger,100);self.assertNotEqual(messages[-1][0],'别吃，别吃，饿吗，饿死了吗。')
@@ -88,16 +88,16 @@ class IncomeAndDialogueTests(unittest.TestCase):
             with self.subTest(lines=lines),self.assertRaises(ValueError):Catalog(bad)
     def test_spinning_top_is_third_tier_gift_with_no_hunger_or_buff(self):
         model=self.model(hunger=0);messages=self.feedback(model);item=model.item('spinning_top')
-        self.assertEqual((item['tier'],item['cost'],item['exp'],item['hunger']),(3,180,240,0))
+        self.assertEqual((item['tier'],item['cost'],item['exp'],item['hunger']),(3,540,240,0))
         self.assertTrue(model.buy_item('spinning_top',True));self.assertTrue(model.starving)
-        self.assertEqual((model.data.coins,model.data.affection_exp),(820,240))
+        self.assertEqual((model.data.coins,model.data.affection_exp),(460,240))
         self.assertEqual(model.data.stats['total_presents'],1);self.assertEqual(model.data.stats['total_feeds'],0)
         self.assertEqual(messages[-1][0],'陀螺收到，突然就想转起来了！')
     def test_spinning_top_inventory_save_and_give_charges_once(self):
         file=ARTIFACTS/'top.json';model=self.model();model.buy_item('spinning_top')
         save=SaveManager(file);save.update_game(model.snapshot());restored=PetModel(SaveManager(file).load_game_state())
         self.assertEqual(restored.data.inventory['spinning_top'],1);restored.use_item('spinning_top')
-        self.assertEqual((restored.data.coins,restored.data.affection_exp),(820,240))
+        self.assertEqual((restored.data.coins,restored.data.affection_exp),(460,240))
 
 class ShopAndBubbleTests(unittest.TestCase):
     def setUp(self):

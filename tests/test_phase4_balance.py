@@ -104,7 +104,7 @@ class BalanceModelTests(unittest.TestCase):
         levels=[];pet.upgraded.connect(levels.append)
         pet.buy_item('paper_star',True)
         self.assertEqual((pet.data.affection_level,pet.data.affection_exp),(2,10))
-        self.assertEqual(pet.data.coins,10000-20+30)
+        self.assertEqual(pet.data.coins,10000-pet.item('paper_star')['cost']+30)
         self.assertEqual(levels,[2])
     def test_unaffordable_gift_changes_nothing(self):
         pet=PetModel(PetData(coins=19))

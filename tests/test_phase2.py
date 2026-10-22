@@ -130,7 +130,7 @@ class GrowthTests(unittest.TestCase):
         self.model.starvation_changed.connect(states.append)
         self.model.set_hunger(0)
         self.assertTrue(self.model.feed_sugar())
-        self.assertEqual((self.model.data.coins, self.model.data.hunger, self.model.data.affection_exp), (90, 15, 0))
+        self.assertEqual((self.model.data.coins, self.model.data.hunger, self.model.data.affection_exp), (70, 15, 0))
         self.assertEqual(self.model.data.stats["total_feeds"], 1)
         self.assertEqual(states, [True, False])
         self.model.set_hunger(99)
@@ -138,7 +138,7 @@ class GrowthTests(unittest.TestCase):
         self.assertEqual(self.model.data.hunger, 100)
 
     def test_insufficient_coins_changes_no_stats_or_values(self):
-        self.model.data.coins = 9
+        self.model.data.coins = 29
         before = self.model.snapshot()
         self.assertFalse(self.model.feed_sugar())
         self.assertEqual(before, self.model.snapshot())
@@ -176,7 +176,7 @@ class GrowthTests(unittest.TestCase):
         for _ in range(6):
             self.assertTrue(pet.buy_item("music_box", True))
         self.assertEqual(levels, [2, 3])
-        self.assertEqual((pet.data.affection_level, pet.data.affection_exp, pet.data.coins), (3, 439, 8980))
+        self.assertEqual((pet.data.affection_level, pet.data.affection_exp, pet.data.coins), (3, 439, 10000 - 6 * pet.item("music_box")["cost"] + 60))
         self.assertEqual(pet.data.stats["total_presents"], 6)
         self.assertEqual(pet.data.stats["total_feeds"], 0)
 
@@ -375,7 +375,7 @@ class UIIntegrationTests(unittest.TestCase):
         self.assertFalse(self.window.engine.flat)
         self.assertEqual(self.window.engine.state, PetState.HAPPY)
         self.assertIn("15/100", self.controller.hunger_info.text())
-        self.assertIn("90", self.controller.coins_info.text())
+        self.assertIn("70", self.controller.coins_info.text())
         self.assertLess(self.window.engine.spring, 0)
 
     def test_manual_flat_cannot_mask_or_clear_true_starvation(self):

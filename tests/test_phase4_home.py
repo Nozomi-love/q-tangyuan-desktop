@@ -49,7 +49,7 @@ class HomeFurnitureModelTests(unittest.TestCase):
         for key, (slot, cost) in expected.items():
             with self.subTest(key=key):
                 self.assertEqual(furniture[key]["slot"], slot)
-                self.assertEqual(furniture[key]["price"], cost)
+                self.assertEqual(furniture[key]["price"], cost * 3)
 
     def test_defaults_are_owned_equipped_without_expense_or_achievement(self):
         model = PetModel()
@@ -64,12 +64,12 @@ class HomeFurnitureModelTests(unittest.TestCase):
     def test_purchase_enters_owned_list_without_auto_redecoration(self):
         model = rich()
         self.assertTrue(model.buy_furniture("lotus_cushion"))
-        self.assertEqual(model.data.coins, 9960)
+        self.assertEqual(model.data.coins, 9880)
         self.assertIn("lotus_cushion", model.data.owned_furniture)
         self.assertEqual(model.data.equipped_furniture["rug"], "cloud_cushion")
         self.assertTrue(model.equip_furniture("rug", "lotus_cushion"))
         self.assertEqual(model.data.equipped_furniture["rug"], "lotus_cushion")
-        self.assertEqual(model.data.coins, 9960)
+        self.assertEqual(model.data.coins, 9880)
 
     def test_repeated_purchase_never_charges_twice(self):
         model = rich()
