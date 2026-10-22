@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import traceback
+from time import perf_counter
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,7 +69,7 @@ def main():
                 room.advance_scene(3.1)
                 assert engine.elapsed == clock
                 assert room.performance.item_id == key
-                if key == "spinning_top": assert room.performance.bumped and room.performance.speed > 1000
+                if key == "spinning_top": assert room.performance.pet_x == room.performance.start_x and room._view().visual_angle == 0 and room._view().yaw_scale != 1
                 capture(str(index).zfill(2) + "-" + key)
             room.performance = None; model.set_hunger(94); model.buy_item("water", True)
             assert room._food_id == "water"
@@ -78,7 +79,7 @@ def main():
             assert pinned == (engine.x, engine.y, engine.pinned)
             result["pinned_desktop_and_single_physics_clock_preserved"] = True
             gif = folder / "friend.gif"; gif.write_bytes(make_gif())
-            c._import_image(str(gif), False); model.equip_accessory("head", "crown"); model.buy_item("sesame", True)
+            c._import_image(str(gif), False); c._confirm_preview(); model.equip_accessory("head", "crown"); model.buy_item("sesame", True)
             model.buy_item("music_box", True); assert c.window.renderer.movies
             room.advance_scene(1); capture("13-gif-crown-music-buff")
             room.performance = None; engine.perform_trick("flip"); engine.advance(.3)
@@ -91,12 +92,15 @@ def main():
             for state in ("idle", "happy"): (pack / (state + ".gif")).write_bytes(make_gif())
             (pack / "manifest.json").write_text(json.dumps({"schema_version": 1, "name": "双状态GIF验收",
                 "author": "local-test", "states": {"idle": "idle.gif", "happy": "happy.gif"}}), encoding="utf-8")
-            c._import_pack(str(pack))
+            c._import_pack(str(pack)); c._confirm_preview()
             assert len(set(c.window.renderer.movies.values())) == 2
             model.set_overlay_visible(True); model.buy_item("music_box", True)
             seen = []
             movie = c.window.renderer.movies[PetState.HAPPY]
             movie.frameChanged.connect(seen.append)
+            # Resume real-time playback after deterministic manual engine steps.
+            c.window._last_frame = perf_counter()
+            c.window._next_frame = c.window._last_frame + c.window.FRAME_PERIOD
             c.window._schedule_frame(); room._animation_timer.start()
             QTest.qWait(600)
             assert len(set(seen)) >= 2 and c.window.renderer._active_movie is movie, seen

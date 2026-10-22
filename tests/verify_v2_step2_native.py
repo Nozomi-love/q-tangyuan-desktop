@@ -47,7 +47,7 @@ def child(mode, folder):
                 app.processEvents(); QTest.qWait(30)
                 statuses = {key: effect.status().name for key, effect in c.audio.effects.items()}
                 if statuses and all(value == "Ready" for value in statuses.values()): break
-            assert len(statuses) == 4 and all(value == "Ready" for value in statuses.values()), statuses
+            assert len(statuses) == 5 and all(value == "Ready" for value in statuses.values()), statuses
             result["real_qsoundeffect_decoders"] = statuses
             result["real_playback_started"] = {}
             for name, effect in c.audio.effects.items():
@@ -66,7 +66,7 @@ def child(mode, folder):
             for i, key in enumerate(("spinning_top", "music_box", "paper_star", "flower_bouquet")):
                 r.performance = None; m.buy_item(key, True); r.advance_scene(3.1)
                 assert r.performance.item_id == key
-                if key == "spinning_top": assert r.performance.bumped and r.performance.speed > 1000
+                if key == "spinning_top": assert r.performance.pet_x == r.performance.start_x and r._view().visual_angle == 0 and r._view().yaw_scale != 1
                 if key == "music_box":
                     QTest.qWait(50); assert c.audio.effects[key].isPlaying()
                 capture("05-" + key)
@@ -83,7 +83,7 @@ def child(mode, folder):
             p.mute_button.click(); assert c.audio.muted and m.data.muted and c.mute_action.isChecked()
             assert all(not effect.isPlaying() for effect in c.audio.effects.values())
             result["mute_stops_and_synchronizes_all_audio"] = True
-            gif = folder / "friend.gif"; gif.write_bytes(make_gif()); c._import_image(str(gif), False)
+            gif = folder / "friend.gif"; gif.write_bytes(make_gif()); c._import_image(str(gif), False); c._confirm_preview()
             m.equip_accessory("head", "crown"); assert m.buy_furniture("lotus_cushion"); assert m.equip_furniture("rug", "lotus_cushion")
             fields = ("muted", "selected_skin_id", "accessories", "owned_furniture", "equipped_furniture", "coins", "affection_exp")
             (folder / "expected.json").write_text(json.dumps({key: getattr(m.data, key) for key in fields}), encoding="utf8")

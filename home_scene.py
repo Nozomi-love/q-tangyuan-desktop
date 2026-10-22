@@ -146,10 +146,7 @@ class GiftPerformance:
     age: float = 0.0
     angle: float = 0.0
     speed: float = 620.0
-    bumped: bool = False
     top_x: float = .735
-    top_velocity: float = 0.0
-    bump_age: float = -1.0
     start_x: float = .48
 
     def advance(self, dt):
@@ -157,14 +154,6 @@ class GiftPerformance:
         while remaining > 1e-9:
             step = min(.02, remaining); remaining -= step; self.age += step
             if self.item_id == "spinning_top":
-                # Its contact point meets the pet's right side, then rebounds.
-                if not self.bumped and self.age >= 2.6 and self.top_x - self.pet_x < .13:
-                    self.speed = 1240.0; self.top_velocity = .15
-                    self.bumped = True; self.bump_age = self.age
-                self.top_velocity *= math.exp(-1.5 * step)
-                self.top_x += self.top_velocity * step
-                if self.top_x >= .84:
-                    self.top_x = .84; self.top_velocity = -abs(self.top_velocity) * .65
                 self.angle = (self.angle + self.speed * step) % 360
                 self.speed = max(240, self.speed * math.exp(-.045 * step))
 
@@ -173,7 +162,8 @@ class GiftPerformance:
 
     @property
     def pet_x(self):
-        target = .61 if self.item_id in {"spinning_top", "flower_bouquet"} else .48
+        if self.item_id == "spinning_top": return self.start_x
+        target = .61 if self.item_id == "flower_bouquet" else .48
         t = min(1, self.age / 2.5); t = t * t * (3 - 2 * t)
         return self.start_x + (target - self.start_x) * t
 
@@ -185,25 +175,31 @@ class GiftPerformance:
         return 2880 * (progress - math.sin(math.tau * progress) / math.tau)
 
     @property
+    def yaw_scale(self):
+        if self.item_id != "spinning_top": return 1.0
+        cosine = math.cos(math.radians(self.spin_angle))
+        # A side-on silhouette stays thin and invertible for pointer hit testing.
+        return math.copysign(max(.065, abs(cosine)), cosine)
+
+    @property
     def pose(self):
         t = self.age
         if self.item_id == "music_box":
             wave = .035 * math.sin(t * 7)
             return 1 + wave, 1 - wave, math.sin(t * 7) * 10, -abs(math.sin(t * 3.5)) * 6
         if self.item_id == "spinning_top":
-            bump = math.exp(-((t - 2.6) / .28) ** 2)
-            return 1 + .08 * bump, 1 - .08 * bump, -10 * bump, -abs(math.sin(t * 4)) * 3
+            return 1.0, 1.0, 0.0, 0.0
         if self.item_id == "paper_star": return 1.0, 1.0, math.sin(t * 3) * 6, -abs(math.sin(t * 3)) * 9
         return 1.03, .97, math.sin(t * 2) * 4, -2.0
 
 
 class RoomPetView:
     """Read-only pose adapter for the shared skin and ornament pipeline."""
-    def __init__(self, engine, local_pose=(1, 1, 0, 0), spin_angle=0):
+    def __init__(self, engine, local_pose=(1, 1, 0, 0), yaw_scale=1.0):
         self.engine, self.local_pose = engine, local_pose
-        self.spin_angle = spin_angle
+        self.yaw_scale = yaw_scale
     @property
-    def visual_angle(self): return self.engine.visual_angle + self.spin_angle
+    def visual_angle(self): return self.engine.visual_angle
     def __getattr__(self, name): return getattr(self.engine, name)
     @property
     def pose(self):
@@ -237,6 +233,8 @@ class IllustratedRoomCanvas(RoomCanvas):
         self._last_external = (-1.0, -1.0, -1.0)
         self._chew_started = -100.0
         self._last_toy = ""
+        self._room_trick = ""
+        self._room_trick_origin = self.life.x
         self._food_age = 100.0
         self._food_queue = []
         self._food_arrived = False
@@ -281,9 +279,34 @@ class IllustratedRoomCanvas(RoomCanvas):
             return pose[0] / (1 + wave), pose[1] * (1 + wave), pose[2], pose[3]
         return pose
 
+    def begin_trick(self, trick_id):
+        if self._room_trick == trick_id: return
+        self._room_trick_origin = self.performance.pet_x if self.performance else self.life.x
+        self._room_trick = trick_id
+        self.life.interact()
+
+    def finish_trick(self, trick_id):
+        if trick_id != self._room_trick: return
+        if not self.performance: self.life.x = self._room_trick_origin
+        self._room_trick = ""
+        self.life.interact()
+
+    def _sync_room_trick(self):
+        current = self.engine.active_trick
+        if current != self._room_trick:
+            if self._room_trick: self.finish_trick(self._room_trick)
+            if current: self.begin_trick(current)
+
+    def _trick_home_foot(self):
+        self._sync_room_trick()
+        foot = self._base_foot()
+        foot.setX(self._geometry()[1] * self._room_trick_origin)
+        return foot
+
     def _view(self):
-        spin = self.performance.spin_angle if self.performance and not self._busy() else 0
-        return RoomPetView(self.engine, self._local_pose(), spin)
+        self._sync_room_trick()
+        yaw = self.performance.yaw_scale if self.performance and not self._busy() else 1.0
+        return RoomPetView(self.engine, self._local_pose(), yaw)
 
     def _repaint_if_visible(self):
         now = monotonic(); dt = clamp(now - getattr(self, "_last_scene_tick", now), 0, .1)
@@ -298,6 +321,7 @@ class IllustratedRoomCanvas(RoomCanvas):
 
     def advance_scene(self, dt, hour=None):
         """One visible-scene tick, exposed for deterministic animation tests."""
+        self._sync_room_trick()
         self.environment_time += clamp(float(dt), 0, 60)
         busy = self._busy()
         self.life.toy_available = bool(self._last_toy or any(self._home.get("inventory", {}).get(k, 0)
@@ -310,15 +334,15 @@ class IllustratedRoomCanvas(RoomCanvas):
         for text in messages:
             self.show_message(text, "ambient", 2.7)
         if self.performance and not busy:
-            bumped = self.performance.bumped
             self.performance.advance(dt)
-            if not bumped and self.performance.bumped:
-                self.show_message("碰一下，再转快一点！", "interaction", 2.3)
-                self.mood_requested.emit(2.0)
             if not self.performance.active:
-                self.life.x = self.performance.pet_x
+                finished = self.performance
+                self.life.x = finished.pet_x
                 self.performance = None
-                self.life.state = "return"; self.life.target = .48; self.life.phase_time = 0
+                if finished.item_id == "spinning_top":
+                    self.life.interact()
+                else:
+                    self.life.state = "return"; self.life.target = .48; self.life.phase_time = 0
         if not self.performance and self._gift_queue and not busy:
             self._begin_gift(*self._gift_queue.pop(0))
         self._advance_food(dt)
@@ -326,7 +350,7 @@ class IllustratedRoomCanvas(RoomCanvas):
 
     def _begin_gift(self, item_id, duration, dialogue=""):
         self.performance = GiftPerformance(item_id, duration, start_x=self.life.x)
-        self._last_toy = item_id
+        self._last_toy = "" if item_id == "spinning_top" else item_id
         if dialogue: self.show_message(dialogue, "interaction")
         self.mood_requested.emit(duration)
         if item_id == "music_box": self.sound_requested.emit("music_box")
@@ -371,7 +395,12 @@ class IllustratedRoomCanvas(RoomCanvas):
         self.update()
 
     def _render_foot(self):
+        self._sync_room_trick()
+        if self.engine.active_trick == "screen_roll":
+            return self._trick_home_foot() + self._local_roll_offset() - self.engine.visual_offset
         foot = super()._render_foot()
+        if self.engine.active_trick:
+            foot.setX(self._trick_home_foot().x())
         if not self._busy():
             _scale, width, _height = self._geometry()
             ratio = self.performance.pet_x if self.performance else self.life.x
@@ -390,14 +419,11 @@ class IllustratedRoomCanvas(RoomCanvas):
         renderer = self.renderer_provider(); view = self._view()
         bounds = renderer.scene_bounds(view, self._render_foot())
         if self.performance and self.performance.item_id == "spinning_top" and not self._busy():
-            # A complete turning envelope prevents angle-dependent zoom pumping.
-            local = renderer.visible_rect(view.state).united(renderer.accessory_bounds(view.state))
-            center_local = QPointF(0, -self.engine.BODY_HEIGHT / 2)
-            radius = max(math.hypot(x, y - center_local.y()) for x in (local.left(), local.right())
-                         for y in (local.top(), local.bottom()))
-            radius = radius * max(view.pose.scale_x, view.pose.scale_y) + 4
-            center = renderer.body_transform(view, self._render_foot()).map(center_local)
-            bounds = QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2)
+            # Fit both faces at full width so a thin side view never zooms in.
+            front = RoomPetView(self.engine, self._local_pose())
+            back = RoomPetView(self.engine, self._local_pose(), -1.0)
+            bounds = renderer.scene_bounds(front, self._render_foot()).united(
+                renderer.scene_bounds(back, self._render_foot()))
         # The HUD occupies widget pixels while the room uses logical scene
         # units. Fit the full accessory/trick envelope beneath it on small views.
         zoom = min(self._pet_zoom * min(1.9, max(1.0, 900 / max(1, self.width()))), max(20.0, width - 50) / max(1.0, bounds.width()),
@@ -826,7 +852,7 @@ class IllustratedRoomCanvas(RoomCanvas):
     def _paint_gift(self, p, width, height):
         perf = self.performance
         item = perf.item_id if perf else self._last_toy
-        if not item: return
+        if not item or (not perf and item == "spinning_top"): return
         t = perf.age if perf else self.life.elapsed
         x, y = width * .735, height - 86
         if not perf:
@@ -835,7 +861,7 @@ class IllustratedRoomCanvas(RoomCanvas):
         opacity = min(1, max(.0, (perf.duration - t) / .7), t / .35)
         p.save(); p.setOpacity(opacity)
         if item == "spinning_top":
-            x = width * perf.top_x + math.sin(t * 2.1) * 9
+            x = width * perf.top_x
             self._shadow(p, QPointF(x, y + 12), 42, 8)
             p.translate(x, y); p.rotate(math.sin(t * 7) * 4)
             p.setPen(ink(2.8)); p.setBrush(QColor("#c8945d"))

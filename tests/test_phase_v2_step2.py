@@ -70,17 +70,19 @@ class LifeTests(unittest.TestCase):
         for _ in range(2500): lines += life.advance(.1, hour=3)
         self.assertGreater(len(lines), 0); self.assertLessEqual(len(lines), 5)
 
-    def test_top_bump_only_once_and_rebounds_with_local_drift(self):
-        top = GiftPerformance("spinning_top"); top.advance(2.5)
-        self.assertFalse(top.bumped); old = top.top_x
-        top.advance(.2); self.assertTrue(top.bumped); self.assertGreater(top.top_x, old)
-        self.assertGreater(top.speed, 1000); stamp = top.bump_age
-        top.advance(2); self.assertEqual(top.bump_age, stamp); self.assertLessEqual(top.top_x, .84)
+    def test_top_yaw_has_no_jump_or_local_drift(self):
+        top = GiftPerformance("spinning_top", start_x=.61); old = top.top_x
+        angles = []
+        for _ in range(120):
+            top.advance(.05); angles.append(top.yaw_scale)
+            self.assertEqual(top.pet_x, .61); self.assertEqual(top.top_x, old)
+            self.assertEqual(top.pose, (1, 1, 0, 0))
+        self.assertLess(min(angles), -.9); self.assertGreater(max(angles), .9)
 
     def test_gift_approach_starts_at_current_room_position(self):
         top = GiftPerformance("spinning_top", start_x=.56)
         self.assertEqual(top.pet_x, .56); top.advance(2.7)
-        self.assertAlmostEqual(top.pet_x, .61); self.assertTrue(top.bumped)
+        self.assertAlmostEqual(top.pet_x, .56); self.assertEqual(top.pose, (1, 1, 0, 0))
 
 
 class GainTests(unittest.TestCase):
@@ -178,12 +180,14 @@ class SceneTests(unittest.TestCase):
         for _ in range(15): self.r.show_gains({"exp": 2})
         self.assertEqual([t for t, _ in self.r._floating], ["+30 好感"])
 
-    def test_music_box_sound_and_top_bump_dialogue_are_one_shot(self):
+    def test_music_box_sound_is_once_and_top_keeps_its_stationary_dialogue(self):
         self.m.buy_item("music_box", True); self.r.advance_scene(2)
         self.assertEqual(self.sounds.count("music_box"), 1)
         self.r.performance = None; self.m.buy_item("spinning_top", True)
-        self.r.advance_scene(2.7); self.assertIn("再转快", self.r._message)
-        self.assertTrue(self.r.performance.bumped)
+        caption=self.r._message;position=self.r.performance.pet_x
+        self.r.advance_scene(2.7); self.assertEqual(self.r._message,caption)
+        self.assertEqual(self.r.performance.pet_x,position)
+        self.assertNotIn("碰一下",self.r._message)
 
     def test_own_nap_mood_does_not_cancel_the_nap_next_frame(self):
         self.r.start_activity("nap"); self.r._repaint_if_visible()

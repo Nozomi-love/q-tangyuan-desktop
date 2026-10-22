@@ -91,7 +91,7 @@ class GiftSceneTests(unittest.TestCase):
     def test_actual_room_rotation_changes_body_transform_but_keeps_desktop_and_center(self):
         room=self.p.room;renderer=room.renderer_provider();self.m.buy_item('spinning_top',True)
         room.advance_scene(3.4);before=(self.e.x,self.e.y,self.e.elapsed,self.e.visual_angle,self.e.pinned)
-        view=room._view();self.assertGreater(view.visual_angle,360)
+        view=room._view();self.assertEqual(view.visual_angle,self.e.visual_angle);self.assertNotEqual(view.yaw_scale,1)
         center=QPointF(0,-self.e.BODY_HEIGHT/2);foot=room._render_foot()
         a=renderer.body_transform(view,foot).map(center)
         b=renderer.body_transform(RoomPetView(self.e,view.local_pose),foot).map(center)

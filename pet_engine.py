@@ -987,7 +987,7 @@ class SkinRenderer(QObject):
         offset = engine.visual_offset
         transform.translate(foot.x() + offset.x(), foot.y() + offset.y())
         transform.rotate(pose.angle)
-        transform.scale(pose.scale_x, pose.scale_y)
+        transform.scale(pose.scale_x * getattr(engine, "yaw_scale", 1.0), pose.scale_y)
         if engine.visual_angle:
             transform.translate(0, -PetEngine.BODY_HEIGHT / 2)
             transform.rotate(engine.visual_angle)
@@ -1433,13 +1433,16 @@ class RoomCanvas(QWidget):
         _scale, width, height = self._geometry()
         return QPointF(width * 0.5, height - 78.0)
 
+    def _trick_home_foot(self) -> QPointF:
+        return self._base_foot()
+
     def _local_roll_offset(self) -> QPointF:
         """Mirror a screen tour inside the room, without changing desktop physics."""
         _scale, width, height = self._geometry()
         padding = max(130.0, self.renderer_provider().screen_roll_padding())
         rect = QRectF(padding, padding, max(20.0, width - 2 * padding),
                       max(20.0, height - 2 * padding))
-        foot = self._base_foot()
+        foot = self._trick_home_foot()
         center = foot - QPointF(0, PetEngine.BODY_HEIGHT / 2 * self.engine.pose.scale_y)
         edge = QPointF(clamp(center.x(), rect.left(), rect.right()), rect.bottom())
         progress = self.engine.trick_progress

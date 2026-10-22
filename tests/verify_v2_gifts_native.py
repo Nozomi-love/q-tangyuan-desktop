@@ -30,7 +30,7 @@ def main():
         desktop=(e.x,e.y,e.pinned,e.elapsed);paid=m.data.coins
         p.shop_buttons['spinning_top'][1].click()
         assert m.data.coins==paid-540 and m.data.stats['total_presents']==1
-        r.advance_scene(3.3);assert r._view().visual_angle>360 and e.visual_angle==0
+        r.advance_scene(3.3);assert r._view().yaw_scale!=1 and r._view().visual_angle==0 and e.visual_angle==0
         QTest.qWait(250);p.grab().save(str(folder/'01-png-spinning.png'))
         assert desktop==(e.x,e.y,e.pinned,e.elapsed)
         r.performance=None;m.set_overlay_visible(True);paid=m.data.coins;p.shop_buttons['music_box'][1].click()
@@ -39,7 +39,7 @@ def main():
         assert r._message=='听见你说~' and c.window.bubble._text=='听见你说~'
         QTest.qWait(250);p.grab().save(str(folder/'02-music-caption.png'))
         result['price_and_exact_music_caption']=True
-        gif=folder/'friend.gif';gif.write_bytes(make_gif());c._import_image(str(gif),False)
+        gif=folder/'friend.gif';gif.write_bytes(make_gif());c._import_image(str(gif),False);c._confirm_preview()
         m.equip_accessory('head','crown');m.buy_item('sesame',True);r._food_age=100
         r.performance=None;m.buy_item('spinning_top',True)
         p.resize(820,650);p.show_section('shop',animate=False);app.processEvents()

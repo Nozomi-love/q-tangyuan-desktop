@@ -144,6 +144,7 @@ class PetApplication:
         self.model.appearance_changed.connect(self.window.set_accessories)
         self.model.perks_unlocked.connect(self._perks_unlocked)
         self.window.trick_finished.connect(self.model.finish_trick)
+        self.window.trick_finished.connect(self.dashboard.room.finish_trick)
         self.window.clicked.connect(self.model.poke)
         self.window.dashboard_requested.connect(self.dashboard.summon)
         self.window.drag_started.connect(lambda: self.window.show_message(self.model.dialogue("drag"), "interaction"))
@@ -447,6 +448,7 @@ class PetApplication:
         if not self.window.perform_trick(trick_id):
             self.model.feedback.emit("先让汤圆站稳、吃饱，再来表演吧～", "normal")
             return False
+        self.dashboard.room.begin_trick(trick_id)
         return self.model.record_trick(trick_id)
 
     def _refresh_wardrobe(self) -> None:

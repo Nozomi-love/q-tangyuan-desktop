@@ -128,11 +128,13 @@ class GiftModelTests(unittest.TestCase):
         self.model.data.affection_level = 30; self.model.data.affection_exp = 0
         self.model.buy_item("music_box", True); self.assertEqual(self.events[-1]["exp_gain"], 0)
 
-    def test_top_accelerates_after_pet_bump_then_slows(self):
-        top = GiftPerformance("spinning_top"); top.advance(2.5); speed = top.speed; angle = top.angle
-        self.assertFalse(top.bumped); top.advance(.2)
-        self.assertTrue(top.bumped); self.assertGreater(top.speed, speed); self.assertNotEqual(top.angle, angle)
-        speed = top.speed; top.advance(1); self.assertLess(top.speed, speed)
+    def test_top_spins_while_pet_stays_at_its_start_position(self):
+        top = GiftPerformance("spinning_top", start_x=.56)
+        angle = top.angle
+        top.advance(2.7)
+        self.assertNotEqual(top.angle, angle)
+        self.assertEqual(top.pet_x, .56)
+        self.assertEqual(top.pose, (1, 1, 0, 0))
 
     def test_gifts_have_distinct_motion_and_finite_duration(self):
         poses = []
