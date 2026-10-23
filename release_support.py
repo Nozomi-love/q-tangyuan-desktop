@@ -13,11 +13,11 @@ import zipfile
 
 from PySide6.QtCore import QObject, Signal, QStandardPaths
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from models import PetData
+from models import PetData, TEAM_SKIN_IDS
 from save_manager import SaveDataError, SaveManager, SkinManager, SkinImportError, _reject_constant, _UNSEEN
 
-VERSION = "1.0.0"
-APP_VERSION = "Q弹汤圆 v1.0 正式版"
+VERSION = "2.0.0"
+APP_VERSION = "Q弹汤圆 v2.0 正式版"
 
 def player_paths(resource_root: Path, *, frozen: bool, isolated: bool = False):
     """Resolve paths without touching disk; frozen updates share a stable profile."""
@@ -142,12 +142,14 @@ class BackupManager:
         files = {"save_data.json": before}
         for entry in self.skins.list_skins()[1:]:
             sid = entry["id"]
+            if sid in TEAM_SKIN_IDS:
+                continue
             self.skins._metadata(sid, validate=True)
             folder = self.skins.root / sid
             for filename in ("manifest.json", *dict.fromkeys(entry["states"].values())):
                 files[f"skins/{sid}/{filename}"] = self.skins._read_file(folder / filename)
         selected = raw.get("selected_skin_id", "default")
-        if selected != "default" and f"skins/{selected}/manifest.json" not in files:
+        if selected != "default" and selected not in TEAM_SKIN_IDS and f"skins/{selected}/manifest.json" not in files:
             raise SaveDataError("当前皮肤缺失，请先切回默认外观再备份")
         if len(files) + 1 > self.MAX_ENTRIES or sum(map(len,files.values())) > self.MAX_TOTAL:
             raise SaveDataError("备份素材过多，超过256MB或2048文件限制")
@@ -214,7 +216,7 @@ class BackupManager:
                     SkinManager._validate_media(files[prefix+name],PurePosixPath(name).suffix.lower())
             if expected!=set(files): raise SaveDataError("备份包含未引用的额外文件")
             selected=raw.get("selected_skin_id","default")
-            if selected!="default" and selected not in ids:
+            if selected!="default" and selected not in TEAM_SKIN_IDS and selected not in ids:
                 raise SaveDataError("备份缺少当前皮肤")
             return files,raw
         except (OSError,ValueError,KeyError,TypeError,zipfile.BadZipFile,RuntimeError) as error:

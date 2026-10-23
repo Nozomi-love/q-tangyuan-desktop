@@ -248,27 +248,19 @@ class ReleaseUiTests(unittest.TestCase):
         self.assertTrue(all(w.isHidden() for w in c.dashboard.release_debug_widgets))
         c.dashboard.set_phase4_context(c.skin_manager.list_skins(),True)
         self.assertTrue(all(not w.isHidden() for w in c.dashboard.release_debug_widgets))
-    def test_preview_and_actual_thumbnail_are_not_default_avatar(self):
-        c=self.controller;c.model.unlock_custom_import()
-        file=self.work/"custom.png";image=QImage(32,40,QImage.Format.Format_ARGB32);image.fill(QColor("#254a73"));image.save(str(file))
-        old=c.model.data.selected_skin_id;c._prepare_preview(str(file))
-        self.assertEqual(c.model.data.selected_skin_id,old);self.assertFalse(c.dashboard.import_preview.isHidden())
-        self.assertEqual(len(c.skin_manager.list_skins()),1)
-        c._confirm_preview();sid=c.model.data.selected_skin_id;self.assertNotEqual(sid,"default")
-        card=c.dashboard.skin_combo.buttons[c.dashboard.skin_combo.findData(sid)]
+    def test_builtin_thumbnail_comes_from_actual_idle_asset(self):
+        c=self.controller;c.model.data.affection_level=2;c.model._publish(c.model.starving)
+        self.assertTrue(c._select_skin('team_s16_al'))
+        card=c.dashboard.skin_combo.buttons[c.dashboard.skin_combo.findData('team_s16_al')]
         thumb=card.icon().pixmap(72,72).toImage()
-        pixel=thumb.pixelColor(thumb.width()//2,thumb.height()//2)
-        self.assertLess(pixel.red(),80);self.assertGreater(pixel.blue(),80)
-        self.assertTrue(c.dashboard.import_preview.isHidden())
-        c._reload_skins()
-        card=c.dashboard.skin_combo.buttons[c.dashboard.skin_combo.findData(sid)]
-        thumb=card.icon().pixmap(72,72).toImage()
-        self.assertGreater(thumb.pixelColor(thumb.width()//2,thumb.height()//2).blue(),80)
-    def test_preview_scroll_is_owned_and_cancelled_on_stop(self):
-        c=self.controller;c.model.unlock_custom_import()
-        file=self.work/"preview.png";image=QImage(32,32,QImage.Format.Format_ARGB32);image.fill(QColor("#895b61"));image.save(str(file))
-        c._prepare_preview(str(file));self.assertTrue(c.dashboard.preview_scroll_timer.isActive())
-        c.dashboard.stop();self.assertFalse(c.dashboard.preview_scroll_timer.isActive())
+        from PySide6.QtGui import QIcon
+        expected=QIcon(c.window.renderer.pixmaps[PetState.IDLE]).pixmap(72,72).toImage()
+        self.assertEqual(thumb,expected);self.assertFalse(hasattr(c.dashboard,'import_preview'))
+
+    def test_removed_preview_has_no_timers_or_controls_to_leak(self):
+        c=self.controller
+        self.assertFalse(hasattr(c.dashboard,'preview_scroll_timer'))
+        self.assertFalse(hasattr(c.dashboard,'preview_canvas'));c.dashboard.stop()
 
     def test_changing_skin_size_interrupts_old_trick_envelope(self):
         c=self.controller;c.dev_mode=True;c._dev_level(10)

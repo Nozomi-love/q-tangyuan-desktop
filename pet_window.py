@@ -444,7 +444,7 @@ class PetWindow(QWidget):
         }
 
     def restore_position(self, state: dict) -> None:
-        if not state.get("pinned", False):
+        if "x_ratio" not in state or "y_ratio" not in state:
             return
         screens = QGuiApplication.screens()
         screen = next((s for s in screens if s.name() == state.get("screen")),
@@ -453,11 +453,11 @@ class PetWindow(QWidget):
             return
         self._adopt_screen(screen)
         area = self.engine.area
-        self.engine.set_pinned(True)
+        self.engine.set_pinned(bool(state.get("pinned", False)))
         self.engine.place(area.left + state["x_ratio"] * area.width,
                           area.top + state["y_ratio"] * area.height)
         self._sync_window()
-        self.pinned_changed.emit(True)
+        self.pinned_changed.emit(self.engine.pinned)
 
     def set_skin(self, directory: Path) -> bool:
         candidate = SkinRenderer(directory)

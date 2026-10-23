@@ -44,36 +44,24 @@ class ControllerTests(unittest.TestCase):
             painter=QPainter(image);painter.setBrush(QColor('#e8a6bc'));painter.drawEllipse(5,5,70,70);painter.end()
         self.assertTrue(image.save(str(file),'PNG'))
         return file
-    def test_import_success_updates_wardrobe_renderer_model_and_save(self):
-        c=self.controller
-        source=self.png();original=source.read_bytes()
-        c.dashboard.import_image_requested.emit(str(source),False)
-        self.assertEqual(c.model.data.selected_skin_id,"default")
-        c.dashboard.preview_confirmed.emit()
-        skin_id=c.model.data.selected_skin_id
-        self.assertTrue(skin_id.startswith('user_'))
+    def test_builtin_selection_updates_wardrobe_renderer_model_and_save(self):
+        c=self.controller;skin_id='team_s16_blg';self.assertTrue(c._select_skin(skin_id))
         self.assertEqual(c.dashboard.skin_combo.currentData(),skin_id)
         self.assertEqual(c.window.renderer.skin_directory.name,skin_id)
-        self.assertIn('soul_infusion',c.model.data.unlocked_achievements)
-        c._save()
-        self.assertEqual(json.loads(self.file.read_text(encoding='utf-8'))['selected_skin_id'],skin_id)
-        self.assertEqual(source.read_bytes(),original)
-    def test_rejected_transparent_import_keeps_entire_model_and_wardrobe(self):
-        c=self.controller;before=c.model.snapshot()
-        c._import_image(str(self.png(transparent=True)),False)
-        self.assertEqual(c.model.snapshot(),before)
-        self.assertEqual([s['id'] for s in c.skin_manager.list_skins()],['default'])
-    def test_failed_skin_selection_resynchronizes_combo_immediately(self):
+        c._save();self.assertEqual(json.loads(self.file.read_text(encoding='utf8'))['selected_skin_id'],skin_id)
+
+    def test_import_controller_entrypoints_removed(self):
         c=self.controller
-        c._import_image(str(self.png()),False)
-        c.dashboard.preview_confirmed.emit()
-        selected=c.model.data.selected_skin_id
-        missing='user_'+'f'*32
-        c.dashboard.set_phase4_context(c.skin_manager.list_skins()+[{'id':missing,'name':'missing','author':''}],False)
-        c.dashboard.skin_combo.setCurrentIndex(c.dashboard.skin_combo.findData(missing))
-        self.assertEqual(c.model.data.selected_skin_id,selected)
-        self.assertEqual(c.dashboard.skin_combo.currentData(),selected)
-        self.assertEqual(c.window.renderer.skin_directory.name,selected)
+        for name in ('_import_image','_import_pack','_prepare_preview','_confirm_preview','_export_template','_rename_skin','_archive_skin'):
+            self.assertFalse(hasattr(c,name),name)
+
+    def test_unsupported_personal_selection_keeps_entire_model(self):
+        c=self.controller;before=c.model.snapshot();directory=c.window.renderer.skin_directory
+        self.assertFalse(c._select_skin('user_'+'f'*32))
+        self.assertEqual(c.model.snapshot(),before)
+        self.assertEqual(c.dashboard.skin_combo.currentData(),'default')
+        self.assertEqual(c.window.renderer.skin_directory,directory)
+
     def test_acceleration_toggle_cannot_authorize_full_perks_debug(self):
         c=self.controller
         c.dev_action.setChecked(True)
@@ -101,8 +89,8 @@ class ControllerTests(unittest.TestCase):
         c=self.controller
         self.assertEqual(c.model.data.selected_skin_id,missing)
         c.dashboard.summon()
-        self.assertIn('原自定义皮肤',c.dashboard.room._message)
-        self.assertEqual(c.dashboard.skin_combo.currentData(),missing)
+        self.assertIn('旧外观',c.dashboard.room._message)
+        self.assertIsNone(c.dashboard.skin_combo.currentData())
     def test_empty_accessory_slot_does_not_resurrect_on_save(self):
         c=self.controller
         c.model.equip_accessory('head','crown');c.model.set_accessory_offset(17);c._save()

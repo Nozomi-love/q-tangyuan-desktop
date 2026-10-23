@@ -70,7 +70,7 @@ class CompactHomeTests(unittest.TestCase):
         p = self.panel; p.show_section("shop"); p.drawer_animation.setCurrentTime(50)
         p.show_section("home"); p.drawer_animation.setCurrentTime(60)
         p.show_section("dress"); p.drawer_animation.setCurrentTime(220); APP.processEvents()
-        self.assertEqual(p.current_section, "dress"); self.assertTrue(p.drawer.isVisible())
+        self.assertEqual(p.current_section, "bag"); self.assertTrue(p.drawer.isVisible())
         self.assertEqual(p.drawer.width(), p._drawer_target)
 
     def test_shop_reflows_three_columns_wide_two_columns_narrow(self):

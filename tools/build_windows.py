@@ -47,6 +47,12 @@ def resource_files(root: Path) -> list[str]:
     selected += ["assets/skins/default/" + name for name in dict.fromkeys(expressions["files"].values())]
     selected += ["assets/item_icons/" + icon + ".png" for icon in icons]
     selected += ["assets/sounds/" + name + ".wav" for name in ("poke", "eat", "coin", "music_box", "chime")]
+    catalog = json.loads(checked_source(root, "config/catalog.json").read_text(encoding="utf-8"))
+    for skin_id in catalog.get("team_skins", {}):
+        prefix = "assets/skins/teams_s16/" + skin_id + "/"
+        manifest = json.loads(checked_source(root, prefix + "manifest.json").read_text(encoding="utf-8"))
+        selected.append(prefix + "manifest.json")
+        selected += [prefix + filename for filename in dict.fromkeys(manifest["states"].values())]
     for relative in selected:
         checked_source(root, relative)
     return sorted(set(selected))
@@ -120,11 +126,11 @@ def main() -> int:
                     "5. 进度与皮肤存放在系统本地应用数据目录，小窝设置中可查看完整路径。\n"
                     "   更新可解压至新文件夹，进度自动接续；换电脑请用设置中的备份/恢复。\n"
                     "6. 再次双击会唤醒现有小窝与桌宠，不会重复启动；正式版默认隐藏调试。\n\n"
-                    "自定义皮肤：换装与小窝装修 → 皮肤衣橱 → 导入本地PNG/GIF。\n"
-                    "推荐透明背景、主体居中、最长边256～512像素；PNG单图或循环GIF均可。\n"
-                    "单文件不超过20MB；GIF最多200帧、累计6400万源像素。\n"
-                    "多状态皮肤用导出模板，替换idle/happy/dizzy/flat图片后导入文件夹或ZIP。\n"
-                    "达到Lv.3或50糯米币提前解锁导入。素材仅保存在本机，不会上传。\n")
+                    "2.0背包：投喂与赠礼、换装（皮肤/挂件/称号）、装修、特技统一管理。\n"
+                    "皮肤：默认白汤圆与8款队标皮肤，升级免费解锁或商城900币提前购买。\n"
+                    "吉他和麦克风需换上飞行桃团后赠送，礼物演出结束自动清场。\n"
+                    "成就与等级奖励在同一入口，设置独立；自动在线收入不播放提示音。\n"
+                    "本版已移除自定义皮肤导入入口；旧档和旧个人素材保留兼容。\n")
     write_new(folder / "开始使用.txt", instructions.encode("utf-8-sig"))
     for name in ("LGPL-3.0-only.txt", "GPL-3.0-only.txt"):
         write_new(folder / "licenses" / name, checked_source(root, "tools/licenses/" + name).read_bytes())

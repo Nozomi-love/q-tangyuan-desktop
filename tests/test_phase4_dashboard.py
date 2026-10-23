@@ -34,17 +34,14 @@ class WardrobeDashboardTests(unittest.TestCase):
         self.model._publish(self.model.starving)
         self.window.refresh()
 
-    def test_five_tabs_and_wardrobe_disclaimer(self):
-        self.assertEqual(self.window.tabs.count(), 6)
+    def test_inventory_groups_and_retired_import_controls_absent(self):
+        self.assertEqual(self.window.tabs.count(),4)
         self.assertTrue(self.window.tabs.tabBar().isHidden())
-        self.assertEqual(self.window.tabs.tabText(3), "装扮")
-        self.assertEqual(self.window.skin_disclaimer.text(), "免责声明：本软件为纯本地渲染工具，自定义导入的图片/GIF仅保存在您的电脑本地，不会上传至任何服务器。请确保所导入素材仅供个人学习欣赏或已取得合法授权。")
-        self.assertEqual(self.window.skin_disclaimer.textFormat(), Qt.TextFormat.PlainText)
-        self.assertTrue(self.window.skin_disclaimer.wordWrap())
+        self.assertEqual([self.window.bag_tabs.tabText(i) for i in range(4)],['投喂与赠礼','换装','装修','特技'])
+        self.assertFalse(hasattr(self.window,'skin_disclaimer'))
+        self.assertFalse(hasattr(self.window,'import_buttons'))
 
     def test_level_one_import_and_accessories_are_gated(self):
-        self.assertTrue(all(not button.isEnabled() for button in self.window.import_buttons.values()))
-        self.assertTrue(self.window.import_unlock_button.isEnabled())
         self.assertFalse(self.window.face_check.isEnabled())
         self.assertFalse(self.window.effect_check.isEnabled())
         self.assertFalse(self.window.head_combo.model().item(1).isEnabled())
@@ -56,30 +53,20 @@ class WardrobeDashboardTests(unittest.TestCase):
         self.assertFalse(self.window.head_combo.model().item(2).isEnabled())
         self.assertTrue(self.window.trick_buttons["flip"].isEnabled())
         self.assertFalse(self.window.trick_buttons["clone"].isEnabled())
-        self.assertFalse(self.window.import_buttons["image"].isEnabled())
 
     def test_level_three_unlocks_crown_and_import_free(self):
         self.level(3)
         self.assertTrue(self.window.head_combo.model().item(2).isEnabled())
-        self.assertTrue(self.window.import_buttons["image"].isEnabled())
-        self.assertTrue(self.window.import_unlock_button.isHidden())
         self.assertEqual(self.model.data.coins, 100)
 
-    def test_early_unlock_button_spends_once_and_refreshes(self):
-        self.window.import_unlock_requested.connect(self.model.unlock_custom_import)
-        self.window.import_unlock_button.click()
-        self.window.refresh()
-        self.assertEqual(self.model.data.coins, 50)
-        self.assertTrue(self.window.import_unlock_button.isHidden())
-        self.assertTrue(all(button.isEnabled() for button in self.window.import_buttons.values()))
-        self.model.unlock_custom_import()
-        self.assertEqual(self.model.data.coins, 50)
+    def test_no_early_import_purchase_entry(self):
+        self.assertFalse(hasattr(self.window,'import_unlock_button'))
+        self.assertFalse(hasattr(self.window,'import_unlock_requested'))
+        self.window.refresh();self.assertEqual(self.model.data.coins,100)
 
-    def test_insufficient_coins_disables_early_unlock(self):
-        self.model.data.coins = 49
-        self.window.refresh()
-        self.assertFalse(self.window.import_unlock_button.isEnabled())
-        self.assertFalse(self.window.import_buttons["zip"].isEnabled())
+    def test_low_balance_does_not_add_retired_unlock_entry(self):
+        self.model.data.coins=49;self.window.refresh()
+        self.assertFalse(hasattr(self.window,'import_unlock_button'))
 
     def test_accessory_selection_uses_model_signal_contract(self):
         self.level(6)
@@ -117,66 +104,31 @@ class WardrobeDashboardTests(unittest.TestCase):
         self.assertEqual(signals, [])
         self.assertEqual(self.window.offset_slider.value(), 20)
 
-    def test_skins_metadata_is_plain_text_and_selection_emits_id(self):
-        self.level(3)
-        skin_id = "user_" + "a" * 32
-        name = '<img src="https://example.invalid/a.png">'
-        self.window.set_phase4_context([{"id": skin_id, "name": name, "author": "<b>local</b>"}])
-        chosen = []
-        self.window.skin_requested.connect(chosen.append)
+    def test_builtin_metadata_is_plain_text_and_selection_emits_id(self):
+        self.level(3);skin_id='team_s16_blg';name='<b>战队皮肤</b>'
+        self.window.set_phase4_context([{'id':skin_id,'name':name,'author':'local'}])
+        chosen=[];self.window.skin_requested.connect(chosen.append)
         self.window.skin_combo.setCurrentIndex(1)
-        self.assertEqual(chosen, [skin_id])
-        self.assertEqual(self.window.skin_combo.currentText(), name)
-        self.model.select_skin(skin_id)
-        self.window.refresh()
-        self.assertIn("<b>local</b>", self.window.skin_details.text())
-        self.assertEqual(self.window.skin_details.textFormat(), Qt.TextFormat.PlainText)
+        self.assertEqual(chosen,[skin_id]);self.assertEqual(self.window.skin_combo.currentText(),name)
 
-    def test_wardrobe_deduplicates_default_and_keeps_current_missing_skin_visible(self):
-        skin_id = "user_" + "b" * 32
-        self.model.data.selected_skin_id = skin_id
-        self.window.set_phase4_context([{"id": "default", "name": "duplicate"}, {}, {"id": 7}])
-        self.assertEqual(self.window.skin_combo.count(), 2)
-        self.assertEqual(self.window.skin_combo.currentData(), skin_id)
-        self.assertIn("暂不可用", self.window.skin_combo.currentText())
-        self.assertTrue(self.window.skin_combo.isEnabled())
+    def test_wardrobe_filters_personal_ids_without_changing_saved_choice(self):
+        skin_id='user_'+'b'*32;self.model.data.selected_skin_id=skin_id
+        self.window.set_phase4_context([{'id':'default','name':'duplicate'},{'id':skin_id,'name':'local'}, {}, {'id':7}])
+        self.assertEqual(self.window.skin_combo.count(),1)
+        self.assertEqual(self.model.data.selected_skin_id,skin_id)
+        self.assertIsNone(self.window.skin_combo.currentData())
 
-    def test_image_picker_reports_filename_and_white_background_option(self):
-        self.level(3)
-        outputs = []
-        self.window.import_image_requested.connect(lambda *args: outputs.append(args))
-        with patch("dashboard.QFileDialog.getOpenFileName", return_value=("D:/pictures/friend.gif", "")):
-            self.window.import_buttons["image"].click()
-        self.window.white_background_check.setChecked(False)
-        with patch("dashboard.QFileDialog.getOpenFileName", return_value=("D:/pictures/pet.png", "")):
-            self.window.import_buttons["image"].click()
-        self.assertEqual(outputs, [("D:/pictures/friend.gif", True), ("D:/pictures/pet.png", False)])
+    def test_image_picker_and_white_background_controls_removed(self):
+        self.assertFalse(hasattr(self.window,'_pick_image'))
+        self.assertFalse(hasattr(self.window,'white_background_check'))
 
-    def test_pack_pickers_and_template_export_send_paths_only(self):
-        self.level(3)
-        packs, exports = [], []
-        self.window.import_pack_requested.connect(packs.append)
-        self.window.export_template_requested.connect(exports.append)
-        with patch("dashboard.QFileDialog.getExistingDirectory", return_value="D:/packs/local"):
-            self.window.import_buttons["folder"].click()
-        with patch("dashboard.QFileDialog.getOpenFileName", return_value=("D:/packs/safe.zip", "")):
-            self.window.import_buttons["zip"].click()
-        with patch("dashboard.QFileDialog.getExistingDirectory", return_value="D:/exports/template"):
-            self.window.export_template_button.click()
-        self.assertEqual(packs, ["D:/packs/local", "D:/packs/safe.zip"])
-        self.assertEqual(exports, ["D:/exports/template"])
+    def test_pack_pickers_and_template_export_removed(self):
+        for name in ('_pick_folder','_pick_zip','_export_template','export_template_button'):
+            self.assertFalse(hasattr(self.window,name),name)
 
-    def test_cancelled_file_pickers_emit_nothing(self):
-        outputs = []
-        self.window.import_image_requested.connect(lambda *args: outputs.append(args))
-        self.window.import_pack_requested.connect(outputs.append)
-        self.window.export_template_requested.connect(outputs.append)
-        with patch("dashboard.QFileDialog.getOpenFileName", return_value=("", "")), patch("dashboard.QFileDialog.getExistingDirectory", return_value=""):
-            self.window._pick_image()
-            self.window._pick_folder()
-            self.window._pick_zip()
-            self.window._export_template()
-        self.assertEqual(outputs, [])
+    def test_import_preview_and_recycle_controls_removed(self):
+        for name in ('import_preview','preview_canvas','recycled_skins','rename_skin_button','delete_skin_button'):
+            self.assertFalse(hasattr(self.window,name),name)
 
     def test_debug_override_is_only_visible_with_dev_context(self):
         outputs = []

@@ -37,7 +37,7 @@ def rich(**kwargs):
 
 
 class HomeFurnitureModelTests(unittest.TestCase):
-    def test_catalog_has_twelve_priced_painter_furniture_in_five_slots(self):
+    def test_catalog_keeps_old_furniture_and_adds_air_conditioner(self):
         furniture = Catalog.load().furniture
         expected = {"cloud_cushion": ("rug", 0), "lotus_cushion": ("rug", 40),
                     "cat_paw_rug": ("rug", 80), "wood_bowl": ("bowl", 0),
@@ -45,7 +45,8 @@ class HomeFurnitureModelTests(unittest.TestCase):
                     "rice_clock": ("wall", 70), "ficus_plant": ("corner", 60),
                     "warm_lamp": ("corner", 90), "cheese_room": ("theme", 0),
                     "sakura_room": ("theme", 100), "matcha_room": ("theme", 100)}
-        self.assertEqual(set(furniture), set(expected) | {"sunny_chime","camp_room","sesame_friend","royal_rug"})
+        self.assertEqual(set(furniture), set(expected) | {"sunny_chime","camp_room","sesame_friend","royal_rug","air_conditioner"})
+        self.assertEqual((furniture["air_conditioner"]["slot"],furniture["air_conditioner"]["price"]),("wall",360))
         for key, (slot, cost) in expected.items():
             with self.subTest(key=key):
                 self.assertEqual(furniture[key]["slot"], slot)
@@ -372,7 +373,7 @@ class HomeControllerTests(unittest.TestCase):
         self.assertFalse(self.pet.isVisible())
         self.assertFalse(self.model.data.overlay_visible)
         self.assertTrue(self.panel.tabs.tabBar().isHidden())
-        self.assertEqual(set(self.panel.nav_buttons), {"home", "bag", "shop", "dress", "achievements"})
+        self.assertEqual(set(self.panel.nav_buttons), {"home", "bag", "shop", "achievements", "settings"})
 
     def test_tray_double_click_summons_dashboard_without_resetting_position(self):
         self.pet.set_pinned(True)
@@ -452,7 +453,7 @@ class HomeControllerTests(unittest.TestCase):
         self.assertFalse(self.pet.isVisible())
 
     def test_all_five_navigation_drawers_keep_room_visible(self):
-        for section in ("bag", "shop", "dress", "achievements", "home"):
+        for section in ("bag", "shop", "settings", "achievements", "home"):
             with self.subTest(section=section):
                 self.panel.nav_buttons[section].click()
                 QTest.qWait(20)
@@ -483,7 +484,7 @@ class HomeControllerTests(unittest.TestCase):
 
     def test_shop_keeps_food_gifts_and_permanent_trick_beside_furniture(self):
         self.panel.show_section("shop")
-        self.assertEqual(self.panel.market_tabs.count(), 3)
+        self.assertEqual(self.panel.market_tabs.count(), 4)
         self.assertEqual([self.panel.shop_tabs.tabText(i) for i in range(2)], ["食物", "礼物"])
         self.assertEqual(set(self.panel.shop_buttons), set(self.model.catalog.items))
         self.assertIn("screen_roll", self.panel.shop_trick_buttons)

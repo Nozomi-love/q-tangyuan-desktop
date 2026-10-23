@@ -80,3 +80,8 @@ QPushButton#dockNavigation { min-height: 62px; max-height: 62px; padding: 0; mar
 /* Release wardrobe preview and the next shared growth goal. */
 QFrame#skinPreviewCard { background: #f3e7cc; border: 1px solid #bc9e78; border-radius: 12px; padding: 4px; }
 QLabel#nextMilestone { color: #6e7e4d; background: #e5e9cf; border: 1px solid #b5c096; border-radius: 9px; padding: 9px; font-weight: 600; }
+
+/* Inventory categories and the dressing subcategories keep a distinct hierarchy. */
+QTabWidget#bagTabs > QTabBar::tab, QTabWidget#progressTabs > QTabBar::tab { padding: 8px 5px; }
+QTabWidget#dressTabs > QTabBar::tab { background: #f1e5ce; border-color: #d4bc99; padding: 6px 5px; }
+QTabWidget#dressTabs > QTabBar::tab:selected { background: #e1e7cb; color: #5d6d45; border-color: #9ca87e; }

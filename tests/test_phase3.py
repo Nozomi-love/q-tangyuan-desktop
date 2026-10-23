@@ -42,12 +42,12 @@ def simulate(engine: PetEngine, seconds: float):
 
 
 class CommerceTests(unittest.TestCase):
-    def test_seven_foods_four_gifts_and_sugar_rules_share_config(self):
+    def test_foods_gifts_and_sugar_rules_share_config(self):
         pet = wealthy()
-        self.assertEqual(len(pet.catalog.items), 11)
+        self.assertEqual(len(pet.catalog.items), 15)
         rules = GameRules.from_catalog(ROOT / "config/catalog.json")
         self.assertEqual((rules.sugar_cost, rules.sugar_hunger, rules.sugar_exp), (30, 15, 0))
-        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [30, 30, 135, 75, 75, 75, 135, 60, 210, 540, 540])
+        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [30, 30, 135, 75, 75, 75, 135, 60, 210, 540, 540, 30, 135, 210, 540])
 
     def test_purchase_stores_without_feeding_and_use_does_not_recharge(self):
         pet = wealthy()
@@ -66,6 +66,9 @@ class CommerceTests(unittest.TestCase):
                 pet = wealthy()
                 pet.set_hunger(0)
                 item = pet.item(key)
+                if item.get("required_skin"):
+                    pet.data.owned_team_skins.append(item["required_skin"])
+                    self.assertTrue(pet.select_skin(item["required_skin"]))
                 self.assertTrue(pet.buy_item(key, True))
                 self.assertEqual(pet.data.coins, 1000 - item["cost"])
                 self.assertEqual(pet.data.hunger, item["hunger"])
@@ -466,7 +469,7 @@ class DashboardInputTests(unittest.TestCase):
             APP.sendEvent(self.window, event)
 
     def test_dashboard_has_five_tabs_menu_summons_and_close_only_hides(self):
-        self.assertEqual(self.dashboard.tabs.count(), 6)
+        self.assertEqual(self.dashboard.tabs.count(), 4)
         self.assertFalse(self.dashboard.isVisible())
         self.controller.dashboard_action.trigger()
         self.assertTrue(self.dashboard.isVisible())
@@ -626,6 +629,9 @@ class DashboardInputTests(unittest.TestCase):
         self.assertFalse(claim.isEnabled())
         self.assertIn("糯米团长", self.model.data.titles)
         QTest.mouseClick(equip, Qt.MouseButton.LeftButton)
+        self.assertEqual(self.dashboard.current_section, "bag")
+        self.assertEqual(self.dashboard.dress_tabs.currentIndex(), 2)
+        self.dashboard.title_combo.setCurrentText("糯米团长")
         self.assertEqual(self.model.data.equipped_title, "糯米团长")
         self.assertEqual(self.dashboard.title_combo.currentText(), "糯米团长")
         self.dashboard.tier_filter.setCurrentIndex(2)

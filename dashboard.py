@@ -4,11 +4,11 @@ from __future__ import annotations
 import math
 from pathlib import Path
 from PySide6.QtCore import QEvent, QEasingCurve, QPoint, QPropertyAnimation, QPointF, QRectF, QSize, Qt, QTimer, Signal, Property
-from PySide6.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPainter, QPen, QLinearGradient, QIcon
+from PySide6.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPainter, QPen, QLinearGradient, QIcon, QPixmap
 from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog,
     QLabel, QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QSizePolicy,
     QTabBar, QTabWidget, QVBoxLayout, QWidget, QGraphicsOpacityEffect, QAbstractButton, QApplication, QProxyStyle, QStyle, QMessageBox)
-from models import PetModel
+from models import PetModel, TEAM_SKIN_IDS
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from home_scene import IllustratedRoomCanvas
 from illustrated_assets import IconAtlas, plain_text
@@ -215,45 +215,6 @@ class GameToggle(QPushButton):
         self.toggled.connect(lambda enabled: self.setProperty("selected", enabled))
 
 
-class SkinPreview(QWidget):
-    """An isolated animated media preview using the same skin/ornament pipeline."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMinimumHeight(180)
-        self.renderer = None
-        self.engine = PetEngine(WorkArea(0, 0, 600, 400))
-        self.engine.set_pinned(True)
-        self.timer = QTimer(self); self.timer.setInterval(16)
-        self.timer.timeout.connect(self._advance)
-
-    def load(self, directory, accessories, buff):
-        self.stop()
-        self.renderer = SkinRenderer(Path(directory))
-        self.renderer.set_accessories(accessories)
-        self.renderer.frame_changed.connect(self.update)
-        self.engine.set_buff(buff)
-        self.timer.start(); self.update()
-
-    def _advance(self):
-        if self.isVisible():
-            self.engine.advance(.016); self.update()
-
-    def paintEvent(self, event):
-        p=QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor("#f3e7cc"))
-        if self.renderer:
-            foot=QPointF(0, 0)
-            bounds=self.renderer.scene_bounds(self.engine, foot)
-            zoom=min((self.width()-24)/max(1,bounds.width()), (self.height()-20)/max(1,bounds.height()), 1.1)
-            p.translate(self.width()/2, self.height()-12); p.scale(zoom,zoom)
-            self.renderer.paint(p,self.engine,foot)
-        p.end()
-
-    def stop(self):
-        self.timer.stop()
-        if self.renderer: self.renderer.stop()
-
-
 class DashboardWindow(QMainWindow):
     pin_requested = Signal(bool)
     dev_requested = Signal(bool)
@@ -266,19 +227,11 @@ class DashboardWindow(QMainWindow):
     accessory_requested = Signal(str, str)
     offset_requested = Signal(int)
     scale_requested = Signal(float)
-    preview_confirmed = Signal()
-    preview_cancelled = Signal()
-    skin_rename_requested = Signal(str, str)
-    skin_archive_requested = Signal(str, bool)
     backup_requested = Signal(str)
     restore_requested = Signal(str)
     dev_level_requested = Signal(int)
     trick_requested = Signal(str)
     skin_requested = Signal(str)
-    import_image_requested = Signal(str, bool)
-    import_pack_requested = Signal(str)
-    export_template_requested = Signal(str)
-    import_unlock_requested = Signal()
     debug_unlock_requested = Signal(bool)
     rename_requested = Signal(str)
     overlay_requested = Signal(bool)
@@ -319,6 +272,7 @@ class DashboardWindow(QMainWindow):
         self.room.poke_requested.connect(self.poke_requested.emit)
         self.room.pet_requested.connect(self.pet_requested.emit)
         self.room.lamp_toggle_requested.connect(lambda: self.model.set_lamp_on(not self.model.data.lamp_on))
+        self.room.air_conditioner_toggle_requested.connect(lambda: self.model.set_air_conditioner_on(not self.model.data.air_conditioner_on))
         self._build_hud()
         if self._home_engine_owned:
             self.preview_timer = QTimer(self); self.preview_timer.setInterval(16)
@@ -340,7 +294,8 @@ class DashboardWindow(QMainWindow):
         self.tabs = QTabWidget(); self.tabs.setObjectName("bookPages"); self.tabs.setTabBar(NavigationTabBar())
         self.tabs.setDocumentMode(True); drawer_layout.addWidget(self.tabs, 1)
         self.inventory_widgets = {}; self.shop_buttons = {}; self.shop_details = {}; self.achievement_widgets = {}; self.tier_groups = {}
-        self._build_status(); self._build_shop(); self._build_achievements(); self._build_customization(); self._build_settings(); self._build_furniture()
+        self._build_status(); self._build_shop(); self._build_achievements(); self._build_customization()
+        self._build_furniture(); self._build_tricks(); self._build_rewards(); self._build_settings()
         self.tabs.tabBar().hide(); self.tabs.currentChanged.connect(self._drawer_selected)
         self.drawer_opacity = QGraphicsOpacityEffect(self.drawer); self.drawer.setGraphicsEffect(self.drawer_opacity)
         self._drawer_extent = 0.0; self._drawer_target = 400
@@ -353,7 +308,8 @@ class DashboardWindow(QMainWindow):
         model.state_changed.connect(self._model_changed); model.feedback.connect(self._feedback)
         self.model.presentation_requested.connect(self.room.present_item)
         self.model.gains_received.connect(self.room.receive_gains)
-        self.model.interaction_started.connect(lambda kind: self.room.interact())
+        self.model.interaction_started.connect(
+            lambda kind: self.room.interact(cancel_gift=kind in ("poke", "pet", "food")))
         self.room.mood_requested.connect(self._home_engine.enjoy_interaction)
         for control in self.findChildren(QAbstractButton):
             control.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -406,6 +362,7 @@ class DashboardWindow(QMainWindow):
         self.overlay_button = self._button("", "desktop"); self.overlay_button.setFixedSize(34, 30)
         self.overlay_button.setCheckable(True); self.overlay_button.toggled.connect(self.overlay_requested.emit)
         lower = QHBoxLayout(); lower.setContentsMargins(0, 0, 0, 0); lower.setSpacing(3)
+        lower.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.hud_buff = label("", "buffBadge"); self.hud_buff.setWordWrap(False)
         self.hud_buff.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.mute_button = self._button("", "music_box"); self.mute_button.setObjectName("muteControl"); self.mute_button.setFixedSize(30, 30)
@@ -459,9 +416,9 @@ class DashboardWindow(QMainWindow):
 
     def _build_navigation(self, layout):
         row = QHBoxLayout(); row.setSpacing(10); self.nav_buttons = {}
-        for section, text, art in (("home", "小屋主页", "home"), ("bag", "背包与投喂", "bag"),
-                                  ("shop", "商城", "shop"), ("dress", "换装与装修", "dress"),
-                                  ("achievements", "成就与设置", "achievements")):
+        for section, text, art in (("home", "小屋主页", "home"), ("bag", "背包", "bag"),
+                                  ("shop", "商城", "shop"), ("achievements", "成就与等级奖励", "achievements"),
+                                  ("settings", "设置", "settings")):
             button = NavigationButton(text, art, self.atlas)
             button.setCheckable(True); button.clicked.connect(lambda checked=False, key=section: self.show_section(key))
             row.addWidget(button, 1); self.nav_buttons[section] = button
@@ -495,8 +452,18 @@ class DashboardWindow(QMainWindow):
         if hasattr(self, "drawer_animation"): self._fit_home()
 
     def show_section(self, section, *, animate=True):
-        pages = {"bag": (0, "背包与投喂"), "shop": (1, "商城"), "achievements": (2, "成就图鉴"),
-                 "dress": (3, "换装衣橱"), "settings": (4, "游戏设置"), "furniture": (5, "小窝装修")}
+        # Old internal destinations still route to the unified inventory.
+        target = {"dress": (1, None), "furniture": (2, None), "tricks": (3, None),
+                  "titles": (1, 2), "levels": (None, None)}.get(section)
+        if target is not None:
+            if section == "levels":
+                section = "achievements"; self.progress_tabs.setCurrentIndex(1)
+            else:
+                self.bag_tabs.setCurrentIndex(target[0])
+                if target[1] is not None: self.dress_tabs.setCurrentIndex(target[1])
+                section = "bag"
+        pages = {"bag": (0, "背包"), "shop": (1, "商城"), "achievements": (2, "成就与等级奖励"),
+                 "settings": (3, "设置")}
         if section != "home" and section not in pages: return
         was_hidden = self.drawer.isHidden(); old_width = 0 if was_hidden else self._drawer_extent
         self.drawer_animation.stop(); self.current_section = section; self.room.interact()
@@ -512,12 +479,12 @@ class DashboardWindow(QMainWindow):
         if section == "home":
             self.home_scroll.verticalScrollBar().setValue(0); self.home_scroll.horizontalScrollBar().setValue(0)
         for key, button in self.nav_buttons.items():
-            button.setChecked(key == section or (key == "dress" and section == "furniture") or (key == "achievements" and section == "settings"))
+            button.setChecked(key == section)
         self.refresh()
 
     def _drawer_selected(self, index):
         if hasattr(self, "nav_buttons"):
-            self.show_section(("bag", "shop", "achievements", "dress", "settings", "furniture")[index], animate=False)
+            if 0 <= index < 4: self.show_section(("bag", "shop", "achievements", "settings")[index], animate=False)
 
     def _page(self, title, tabs=None):
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -541,7 +508,10 @@ class DashboardWindow(QMainWindow):
         return frame, body
 
     def _build_status(self):
-        page = self._page("状态与背包")
+        inventory = QWidget(); body = QVBoxLayout(inventory); body.setContentsMargins(0, 0, 0, 0)
+        self.bag_tabs = self._subtabs("bagTabs"); body.addWidget(self.bag_tabs, 1)
+        self.tabs.addTab(inventory, "背包")
+        page = self._page("投喂与赠礼", self.bag_tabs)
         self.pet_name = label("", "sectionTitle"); page.addWidget(self.pet_name)
         self.level_label = label(""); self.exp_bar = QProgressBar(); self.hunger_bar = QProgressBar(); self.hunger_bar.setRange(0, 100)
         self.buff_label = label("", "buffBadge"); self.stats_label = label("", "muted")
@@ -559,16 +529,13 @@ class DashboardWindow(QMainWindow):
         self.inventory_grid = grid
         grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); page.addLayout(grid)
         self.unknown_inventory = label("", "muted"); page.addWidget(self.unknown_inventory)
-        page.addWidget(label("称号铭牌", "sectionTitle"))
-        self.title_combo = IconChoice(self.atlas, "title")
-        self.title_combo.currentIndexChanged.connect(lambda i: self.model.equip_title(str(self.title_combo.itemData(i))))
-        page.addWidget(self.title_combo); page.addStretch()
+        page.addStretch()
 
     def _build_shop(self):
         shop = QWidget(); body = QVBoxLayout(shop); body.setContentsMargins(0, 0, 0, 0)
         self.market_description = label("挑一点喜欢的，带回家。", "muted"); body.addWidget(self.market_description)
         self.market_tabs = self._subtabs("marketTabs"); body.addWidget(self.market_tabs, 1)
-        self.tabs.addTab(shop, "免费商城")
+        self.tabs.addTab(shop, "商城")
         self.shop_tabs = self._subtabs("shopTabs"); self.market_tabs.addTab(self.shop_tabs, "食品与礼物")
         self.shop_groups = {}
         for category, title in (("food", "食物"), ("gift", "礼物")):
@@ -597,9 +564,44 @@ class DashboardWindow(QMainWindow):
             self.shop_trick_buttons[key] = buy, perform, status; self.shop_groups["trick"] = frame
         page.addStretch()
 
+        page = self._page("战队与装扮", self.market_tabs)
+        page.addWidget(label("等级免费解锁，也可提前购买；永久拥有。", "muted"))
+        grid = AdaptiveGrid(page.parentWidget()); grid.setSpacing(7)
+        self.team_skin_buttons = {}
+        for index, (skin_id, product) in enumerate(self.model.catalog.team_skins.items()):
+            frame, body = card()
+            artwork = QLabel(); artwork.setObjectName("itemArtwork")
+            artwork.setAlignment(Qt.AlignmentFlag.AlignCenter); artwork.setMinimumHeight(80)
+            source = Path(__file__).resolve().parent / "assets/skins/teams_s16" / skin_id / "idle.png"
+            pixmap = QPixmap(str(source))
+            if not pixmap.isNull():
+                artwork.setPixmap(pixmap.scaled(96, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            body.addWidget(artwork); body.addWidget(label(product["name"], "itemName"))
+            body.addWidget(label(f"{product['region']} · Lv.{product['level']} 免费", "itemTag"))
+            status = label("", "muted"); body.addWidget(status)
+            row = QHBoxLayout(); buy = self._button("提前获得"); equip = self._button("换上")
+            buy.clicked.connect(lambda checked=False, sid=skin_id: self.model.buy_team_skin(sid))
+            equip.clicked.connect(lambda checked=False, sid=skin_id: self.skin_requested.emit(sid))
+            row.addWidget(buy); row.addWidget(equip); body.addLayout(row)
+            grid.addWidget(frame, index // 2, index % 2)
+            self.team_skin_buttons[skin_id] = buy, equip, status
+        page.addLayout(grid)
+        self.accessory_shop_buttons = {}
+        for accessory_id, product in self.model.catalog.accessory_products.items():
+            frame, body = self._item_card(product["icon"], product["name"])
+            body.addWidget(label(product["description"], "itemTag"))
+            buy=self._button("永久收藏"); equip=self._button("展开翅膀")
+            buy.clicked.connect(lambda checked=False, key=accessory_id:self.model.buy_accessory(key))
+            equip.clicked.connect(lambda checked=False, key=accessory_id:self.accessory_requested.emit("back",key))
+            row=QHBoxLayout(); row.addWidget(buy); row.addWidget(equip); body.addLayout(row)
+            page.addWidget(frame); self.accessory_shop_buttons[accessory_id]=(buy,equip)
+        page.addStretch()
+
     def _build_achievements(self):
-        page = self._page("成就图鉴")
-        settings = self._button("游戏设置", "settings"); settings.clicked.connect(lambda: self.show_section("settings")); page.addWidget(settings)
+        progress = QWidget(); body = QVBoxLayout(progress); body.setContentsMargins(0, 0, 0, 0)
+        self.progress_tabs = self._subtabs("progressTabs"); body.addWidget(self.progress_tabs, 1)
+        self.tabs.addTab(progress, "成就与等级奖励")
+        page = self._page("成就图鉴", self.progress_tabs)
         self.achievement_summary = label("", "sectionTitle"); page.addWidget(self.achievement_summary)
         self.tier_filter = IconChoice(self.atlas, "achievements", compact=True)
         # Filters use compact illustrated buttons, keeping the gallery itself large.
@@ -621,7 +623,7 @@ class DashboardWindow(QMainWindow):
                 content.addWidget(label(reward, "itemTag")); bar = QProgressBar(); bar.setRange(0, achievement["target"]); content.addWidget(bar)
                 status = label("", "muted"); content.addWidget(status); claim = self._button(""); claim.setProperty("primary", True)
                 claim.clicked.connect(lambda checked=False, a=aid: self.model.claim_achievement(a)); content.addWidget(claim)
-                equip = self._button("佩戴称号"); equip.clicked.connect(lambda checked=False, t=achievement.get("title", ""): self.model.equip_title(t)); content.addWidget(equip)
+                equip = self._button("前往背包换装"); equip.clicked.connect(lambda checked=False: self.show_section("titles")); content.addWidget(equip)
                 grid.addWidget(frame, i // 2, i % 2); self.achievement_widgets[aid] = bar, status, claim, equip
             grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); body.addLayout(grid); page.addWidget(group)
         page.addStretch()
@@ -631,45 +633,17 @@ class DashboardWindow(QMainWindow):
 
     def _build_customization(self):
         dressing = QWidget(); body = QVBoxLayout(dressing); body.setContentsMargins(0, 0, 0, 0)
-        furniture = self._button("小窝装修", "home"); furniture.clicked.connect(lambda: self.show_section("furniture")); body.addWidget(furniture)
-        self.dress_tabs = self._subtabs("dressTabs"); body.addWidget(self.dress_tabs, 1); self.tabs.addTab(dressing, "装扮")
-        page = self._page("皮肤衣橱", self.dress_tabs)
-        self.skin_combo = IconChoice(self.atlas); self.skin_combo.setObjectName("skinChoices"); self.skin_combo.currentIndexChanged.connect(self._skin_selected)
-        page.addWidget(self.skin_combo)
-        manage=QHBoxLayout()
-        self.rename_skin_button=self._button("重命名"); self.rename_skin_button.clicked.connect(self._rename_skin)
-        self.delete_skin_button=self._button("移入回收区"); self.delete_skin_button.clicked.connect(self._archive_skin)
-        manage.addWidget(self.rename_skin_button); manage.addWidget(self.delete_skin_button); page.addLayout(manage)
-        self.recycled_skins=IconChoice(self.atlas); self.recycled_skins.currentIndexChanged.connect(
-            lambda i: self.skin_archive_requested.emit(str(self.recycled_skins.itemData(i)), False) if i>=0 else None)
-        page.addWidget(label("回收区：点击卡片还原（素材保留在本机）", "muted")); page.addWidget(self.recycled_skins)
-        page.addWidget(label("当前皮肤大小（切换皮肤分别记忆）", "sectionTitle"))
-        size_row=QHBoxLayout(); self.scale_slider=QSlider(Qt.Orientation.Horizontal); self.scale_slider.setRange(60,150)
-        self.scale_value=label("1.00x"); self.scale_slider.valueChanged.connect(lambda v:self.scale_requested.emit(v/100))
-        size_row.addWidget(self.scale_slider,1); size_row.addWidget(self.scale_value); page.addLayout(size_row)
-        self.preview_scroll_timer=QTimer(self); self.preview_scroll_timer.setSingleShot(True)
-        self.preview_scroll_timer.timeout.connect(self._scroll_skin_preview)
-        self.import_preview=QFrame(); self.import_preview.setObjectName("skinPreviewCard"); preview_layout=QVBoxLayout(self.import_preview)
-        preview_layout.addWidget(label("导入预览：保留当前染色与挂件", "sectionTitle"))
-        self.preview_canvas=SkinPreview(self.import_preview); preview_layout.addWidget(self.preview_canvas)
-        self.preview_caption=label(""); preview_layout.addWidget(self.preview_caption)
-        preview_actions=QHBoxLayout(); confirm=self._button("确认导入并穿戴"); cancel=self._button("取消预览")
-        confirm.clicked.connect(self.preview_confirmed.emit); cancel.clicked.connect(self.preview_cancelled.emit)
-        preview_actions.addWidget(confirm); preview_actions.addWidget(cancel); preview_layout.addLayout(preview_actions)
-        self.import_preview.hide(); page.addWidget(self.import_preview)
-        self.skin_details = label("", "muted"); page.addWidget(self.skin_details)
-        self.import_status = label("", "itemTag"); page.addWidget(self.import_status)
-        self.import_unlock_button = self._button("50币提前打开衣橱", "coin")
-        self.import_unlock_button.clicked.connect(self.import_unlock_requested.emit); page.addWidget(self.import_unlock_button)
-        self.white_background_check = GameToggle("纯白背景移除", "remove", self.atlas); self.white_background_check.setChecked(True); page.addWidget(self.white_background_check)
-        self.import_buttons = {}; actions = AdaptiveGrid(page.parentWidget(), 108, 3)
-        for i, (key, text, handler, art) in enumerate((("image", "导入PNG / GIF", self._pick_image, "import_image"),
-            ("folder", "导入动作文件夹", self._pick_folder, "import_folder"), ("zip", "导入ZIP动作包", self._pick_zip, "import_zip"))):
-            button = IconTile(text, art, self.atlas); button.clicked.connect(handler); actions.addWidget(button, i // 3, i % 3); self.import_buttons[key] = button
-        page.addLayout(actions); self.export_template_button = self._button("导出皮肤模板", "template"); self.export_template_button.clicked.connect(self._export_template); page.addWidget(self.export_template_button)
-        self.skin_disclaimer = label("免责声明：本软件为纯本地渲染工具，自定义导入的图片/GIF仅保存在您的电脑本地，不会上传至任何服务器。请确保所导入素材仅供个人学习欣赏或已取得合法授权。", "disclaimer")
-        page.addWidget(self.skin_disclaimer); page.addStretch()
-        page = self._page("挂件装扮", self.dress_tabs)
+        self.dress_tabs = self._subtabs("dressTabs"); body.addWidget(self.dress_tabs, 1)
+        self.bag_tabs.addTab(dressing, "换装")
+        page = self._page("皮肤", self.dress_tabs)
+        self.skin_combo = IconChoice(self.atlas); self.skin_combo.setObjectName("skinChoices")
+        self.skin_combo.currentIndexChanged.connect(self._skin_selected); page.addWidget(self.skin_combo)
+        self.skin_details = label("等级奖励和商城皮肤都收在这里。", "muted"); page.addWidget(self.skin_details)
+        page.addWidget(label("皮肤大小（分别记忆）", "sectionTitle"))
+        size_row = QHBoxLayout(); self.scale_slider = QSlider(Qt.Orientation.Horizontal); self.scale_slider.setRange(60, 150)
+        self.scale_value = label("1.00x"); self.scale_slider.valueChanged.connect(lambda v: self.scale_requested.emit(v/100))
+        size_row.addWidget(self.scale_slider, 1); size_row.addWidget(self.scale_value); page.addLayout(size_row); page.addStretch()
+        page = self._page("挂件", self.dress_tabs)
         self.head_combo = IconChoice(self.atlas); self.head_combo.setObjectName("headChoices")
         for title, key in (("不佩戴", ""), ("呆毛嫩芽", "sprout"), ("迷你金皇冠", "crown"), ("樱粉蝴蝶结", "bow"), ("大吉小橘子", "orange")):
             self.head_combo.addItem(title, key, key or "remove")
@@ -684,17 +658,32 @@ class DashboardWindow(QMainWindow):
             self.aura_choices.addItem(name,key,key or "remove")
         self.aura_choices.currentIndexChanged.connect(lambda i:self.accessory_requested.emit("effect",str(self.aura_choices.itemData(i))) if i>=0 else None)
         page.addWidget(self.aura_choices)
+        self.back_choices=IconChoice(self.atlas)
+        self.back_choices.addItem("收起背部挂件","","remove")
+        self.back_choices.addItem("凤凰翅膀","phoenix_wings","phoenix_wings")
+        self.back_choices.currentIndexChanged.connect(lambda i:self.accessory_requested.emit("back",str(self.back_choices.itemData(i))) if i>=0 else None)
+        page.addWidget(self.back_choices)
         page.addWidget(label("挂件高度（每个皮肤独立记忆）", "sectionTitle")); line = QHBoxLayout()
         self.offset_slider = QSlider(Qt.Orientation.Horizontal); self.offset_slider.setRange(-30, 30); self.offset_slider.valueChanged.connect(self._offset_changed)
         self.offset_value = label("0 px"); line.addWidget(self.offset_slider, 1); line.addWidget(self.offset_value); page.addLayout(line)
         page.addStretch()
-        page = self._page("特技与等级奖励", self.dress_tabs); grid = AdaptiveGrid(page.parentWidget(), 108, 4); self.trick_buttons = {}
+        page = self._page("称号", self.dress_tabs)
+        self.title_combo = IconChoice(self.atlas, "title")
+        self.title_combo.currentIndexChanged.connect(lambda i: self.model.equip_title(str(self.title_combo.itemData(i))))
+        page.addWidget(self.title_combo); page.addStretch()
+
+    def _build_tricks(self):
+        page = self._page("特技", self.bag_tabs); grid = AdaptiveGrid(page.parentWidget(), 108, 4); self.trick_buttons = {}
         self.trick_descriptions = {"flip": ("原地空翻", "Lv.2"), "clone": ("Q弹影分身", "Lv.4"), "ball": ("芝麻弹力球", "Lv.5"), "disco": ("迪斯科蹦迪", "Lv.10")}
         for key, item in self.model.catalog.trick_products.items(): self.trick_descriptions[key] = (plain_text(item["name"]), "商城永久学习")
         for i, (key, (name, requirement)) in enumerate(self.trick_descriptions.items()):
             button = IconTile(name, key, self.atlas); button.badge = requirement
             button.clicked.connect(lambda checked=False, k=key: self.trick_requested.emit(k)); grid.addWidget(button, i // 2, i % 2); self.trick_buttons[key] = button
         page.addLayout(grid); self.trick_status = label("", "muted"); page.addWidget(self.trick_status)
+        page.addStretch()
+
+    def _build_rewards(self):
+        page = self._page("等级奖励", self.progress_tabs)
         self.perk_summary = label("", "nextMilestone"); page.addWidget(self.perk_summary); grid = AdaptiveGrid(page.parentWidget()); self.milestone_widgets = {}
         for level in [m["level"] for m in self.model.catalog.milestones]:
             frame, body = self._item_card(f"level_{level}", f"Lv.{level}"); text = label("", "milestone"); body.addWidget(text)
@@ -744,45 +733,20 @@ class DashboardWindow(QMainWindow):
         page.addWidget(label("数据安全与关于", "sectionTitle"))
         page.addWidget(label(APP_VERSION))
         self.data_directory_label=label("当前为独立预览；不写入正式存档。", "muted"); page.addWidget(self.data_directory_label)
-        backup=self._button("一键备份存档与皮肤", "bag"); backup.clicked.connect(self._pick_backup); page.addWidget(backup)
+        backup=self._button("一键备份存档", "bag"); backup.clicked.connect(self._pick_backup); page.addWidget(backup)
         restore=self._button("从备份恢复", "import_zip"); restore.clicked.connect(self._pick_restore); page.addWidget(restore)
-        self.backup_status=label("恢复前会自动保留当前进度；恢复不会删除现有皮肤。", "muted"); page.addWidget(self.backup_status)
+        self.backup_status=label("恢复前会自动保留当前进度。", "muted"); page.addWidget(self.backup_status)
         for widget in self.release_debug_widgets: widget.hide()
         page.addStretch()
 
     def _pick_backup(self):
-        filename,_=QFileDialog.getSaveFileName(self,"备份存档与本地皮肤",f"汤圆备份-{timestamp()}.zip","汤圆备份 (*.zip)")
+        filename,_=QFileDialog.getSaveFileName(self,"备份存档",f"汤圆备份-{timestamp()}.zip","汤圆备份 (*.zip)")
         if filename: self.backup_requested.emit(filename)
 
     def _pick_restore(self):
         filename,_=QFileDialog.getOpenFileName(self,"选择汤圆备份", "", "汤圆备份 (*.zip)")
-        if filename and QMessageBox.question(self,"恢复进度","将使用备份中的进度和布置。当前进度会先自动备份，现有皮肤保留。继续恢复？")==QMessageBox.StandardButton.Yes:
+        if filename and QMessageBox.question(self,"恢复进度","将使用备份中的进度和布置。当前进度会先自动备份。继续恢复？")==QMessageBox.StandardButton.Yes:
             self.restore_requested.emit(filename)
-
-    def _rename_skin(self):
-        sid=self.model.data.selected_skin_id
-        metadata=next((e for e in self._skin_entries if e["id"]==sid),{})
-        name,ok=QInputDialog.getText(self,"重命名皮肤","皮肤名字（1～80字）",text=metadata.get("name",""))
-        if ok: self.skin_rename_requested.emit(sid,name)
-
-    def _archive_skin(self):
-        sid=self.model.data.selected_skin_id
-        if sid!="default" and QMessageBox.question(self,"移入回收区","将此皮肤从衣橱移入回收区，并切回白汤圆。原始素材保留，可点击回收区卡片还原。继续？")==QMessageBox.StandardButton.Yes:
-            self.skin_archive_requested.emit(sid,True)
-
-    def show_skin_preview(self, entry):
-        self.preview_canvas.load(entry["directory"],self.model.effective_accessories(),self.model.buff_view())
-        self.preview_caption.setText(plain_text(f"{entry['name']} · {entry['author']}；确认后才会保存至衣橱"))
-        self.import_preview.show()
-        self.show_section("dress"); self.dress_tabs.setCurrentIndex(0)
-        self.preview_scroll_timer.start(250)
-
-    def _scroll_skin_preview(self):
-        if not self.import_preview.isHidden(): self.dress_tabs.widget(0).ensureWidgetVisible(self.import_preview,8,10)
-
-    def clear_skin_preview(self):
-        self.preview_scroll_timer.stop()
-        self.preview_canvas.stop(); self.import_preview.hide()
 
     def _preview_environment(self, mode):
         self.room.daytime_override = mode
@@ -791,7 +755,7 @@ class DashboardWindow(QMainWindow):
         self.room.update()
 
     def _build_furniture(self):
-        page = self._page("家具装修"); back = self._button("随身装扮", "dress"); back.clicked.connect(lambda: self.show_section("dress")); page.addWidget(back)
+        page = self._page("装修", self.bag_tabs)
         self.furniture_buttons = {}; self.furniture_shop_buttons = {}
         for slot, title in (("theme", "房间主题"), ("rug", "坐垫与地毯"), ("wall", "墙面装饰"), ("corner", "角落摆件"), ("bowl", "茶几与食盆"), ("window", "窗边装饰"), ("companion", "小窝伴宠")):
             page.addWidget(label(title, "sectionTitle")); grid = AdaptiveGrid(page.parentWidget(), 108, 4); grid.setSpacing(7)
@@ -819,6 +783,7 @@ class DashboardWindow(QMainWindow):
         for entry in skins:
             if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or entry["id"] in known:
                 continue
+            if entry["id"] not in TEAM_SKIN_IDS: continue
             known.add(entry["id"])
             entries.append({"id": entry["id"], "name": plain_text(entry.get("name", entry["id"]))[:120],
                             "author": plain_text(entry.get("author", "本地导入"))[:120], "directory": entry.get("directory")})
@@ -845,32 +810,12 @@ class DashboardWindow(QMainWindow):
         self.offset_value.setText(f"{value:+d} px" if value else "0 px")
         self.offset_requested.emit(value)
 
-    def _pick_image(self) -> None:
-        filename, _selected = QFileDialog.getOpenFileName(self, "导入本地图片 / GIF", "", "图片 (*.png *.gif)")
-        if filename:
-            self.import_image_requested.emit(filename, self.white_background_check.isChecked())
-
-    def _pick_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "选择包含 manifest.json 的动作包文件夹")
-        if folder:
-            self.import_pack_requested.emit(folder)
-
-    def _pick_zip(self) -> None:
-        filename, _selected = QFileDialog.getOpenFileName(self, "导入 ZIP 动作包", "", "皮肤动作包 (*.zip)")
-        if filename:
-            self.import_pack_requested.emit(filename)
-
-    def _export_template(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "选择皮肤包模板导出位置")
-        if folder:
-            self.export_template_requested.emit(folder)
-
     def _refresh_phase4(self) -> None:
         data = self.model.data
         selected = data.selected_skin_id
         entries = [entry for entry in self._skin_entries if entry["id"] not in data.archived_skins]
-        if selected not in {entry["id"] for entry in entries}:
-            entries.append({"id": selected, "name": "暂不可用的已选皮肤", "author": "请重新导入或切换默认外观"})
+        if selected in TEAM_SKIN_IDS and selected not in {entry["id"] for entry in entries}:
+            entries.append({"id": selected, "name": "暂不可用的已选皮肤", "author": "请切换默认外观"})
         self.skin_combo.blockSignals(True)
         signature = [(entry["id"], entry["name"]) for entry in entries]
         current = [(self.skin_combo.itemData(i), self.skin_combo.itemText(i)) for i in range(self.skin_combo.count())]
@@ -878,7 +823,7 @@ class DashboardWindow(QMainWindow):
             self._skin_rendered_revision=getattr(self,"_skin_context_revision",0)
             self.skin_combo.clear()
             for entry in entries:
-                self.skin_combo.addItem(entry["name"], entry["id"], "avatar" if entry["id"]=="default" else "import_image")
+                self.skin_combo.addItem(entry["name"], entry["id"], "avatar")
                 if entry.get("directory"):
                     try:
                         renderer=SkinRenderer(Path(entry["directory"]))
@@ -888,17 +833,14 @@ class DashboardWindow(QMainWindow):
                         if frame is not None: self.skin_combo.buttons[-1].setIcon(QIcon(frame))
                         renderer.stop()
                     except (OSError,ValueError,RuntimeError):
-                        self.skin_combo.buttons[-1].setIcon(self.atlas.icon("import_image"))
-        self.skin_combo.setCurrentIndex(self.skin_combo.findData(selected))
+                        self.skin_combo.buttons[-1].setIcon(self.atlas.icon("avatar"))
+        index = self.skin_combo.findData(selected)
+        if index >= 0: self.skin_combo.setCurrentIndex(index)
+        else:
+            self.skin_combo._index = -1
+            for button in self.skin_combo.buttons: button.setChecked(False)
         self.skin_combo.blockSignals(False)
         metadata = next((entry for entry in entries if entry["id"] == selected), entries[0])
-        self.rename_skin_button.setEnabled(selected != "default")
-        self.delete_skin_button.setEnabled(selected != "default")
-        recycle=[entry for entry in self._skin_entries if entry["id"] in data.archived_skins]
-        if [self.recycled_skins.itemData(i) for i in range(self.recycled_skins.count())] != [e["id"] for e in recycle]:
-            self.recycled_skins.blockSignals(True); self.recycled_skins.clear()
-            for entry in recycle: self.recycled_skins.addItem("还原："+entry["name"],entry["id"],"import_image")
-            self.recycled_skins.blockSignals(False)
         self.scale_slider.blockSignals(True); scale=self.model.skin_config()["scale_multiplier"]
         self.scale_slider.setValue(round(scale*100)); self.scale_value.setText(f"{scale:.2f}x"); self.scale_slider.blockSignals(False)
         self.aura_choices.blockSignals(True)
@@ -906,15 +848,19 @@ class DashboardWindow(QMainWindow):
         for i,button in enumerate(self.aura_choices.buttons):
             key=self.aura_choices.itemData(i); button.setEnabled(not key or self._has_perk("effect_"+key))
         self.aura_choices.blockSignals(False)
-        self.skin_details.setText(plain_text(f"作者：{metadata['author']}"))
-        allowed = self._has_perk("custom_import")
-        self.import_status.setText(" 自定义导入已解锁" if allowed else " 好感 Lv.3 免费解锁，也可以提前开启")
-        self.import_unlock_button.setVisible(not allowed)
-        self.import_unlock_button.setEnabled(not allowed and data.coins >= 50)
-        for button in self.import_buttons.values():
-            button.setEnabled(allowed)
-        self.white_background_check.setEnabled(allowed)
-        self.skin_combo.setEnabled(allowed or selected != "default")
+        self.back_choices.blockSignals(True)
+        self.back_choices.setCurrentIndex(max(0,self.back_choices.findData(data.accessories.get("back",""))))
+        self.back_choices.buttons[1].setEnabled(self._has_perk("accessory_phoenix_wings"))
+        self.back_choices.buttons[1].badge="已穿戴" if data.accessories.get("back")=="phoenix_wings" else "已拥有" if self._has_perk("accessory_phoenix_wings") else "Lv.15 / 商城"
+        self.back_choices.buttons[1].update(); self.back_choices.blockSignals(False)
+        self.skin_combo.setEnabled(True)
+        for index, button in enumerate(self.skin_combo.buttons):
+            skin_id = self.skin_combo.itemData(index)
+            button.setEnabled(self.model.can_use_skin(skin_id) or skin_id == selected)
+            if skin_id in self.model.catalog.team_skins:
+                product = self.model.catalog.team_skins[skin_id]
+                button.badge = "已穿戴" if skin_id == selected else "已拥有" if self.model.has_team_skin(skin_id) else f"Lv.{product['level']}"
+                button.update()
         head = data.accessories.get("head", "")
         self.head_combo.blockSignals(True)
         for index in range(1, self.head_combo.count()):
@@ -956,10 +902,24 @@ class DashboardWindow(QMainWindow):
             buy.setEnabled(not owned and data.coins >= product["cost"])
             perform.setEnabled(self.model.can_perform_trick(key))
             remaining = math.ceil(self.model.trick_cooldowns[key])
-            status.setText("已学会 · 随时从商城、装扮特技页或右键菜单发动" if owned else f"{product['cost']} 糯米币 · 购买一次永久拥有")
+            status.setText("已学会 · 随时从商城、背包特技页或右键菜单发动" if owned else f"{product['cost']} 糯米币 · 购买一次永久拥有")
             if owned and remaining:
                 status.setText(f"休息中 · 还需 {remaining} 秒；表演中点击汤圆可提前回家")
         self.trick_status.setText("肚子饿扁啦，投喂恢复后就能表演。" if self.model.starving else "正在表演中，稍候再来一个～" if self.model.trick_busy > 0 else "当前外观可以使用所有已解锁特技；绕屏后回到原位，途中点击可结束。")
+        for skin_id, (buy, equip, status) in self.team_skin_buttons.items():
+            product = self.model.catalog.team_skins[skin_id]
+            owned = self.model.has_team_skin(skin_id)
+            buy.setText("已拥有" if owned else f"{product['cost']} 币获得")
+            buy.setEnabled(not owned and data.coins >= product["cost"])
+            equip.setEnabled(owned and data.selected_skin_id != skin_id)
+            equip.setText("已穿戴" if data.selected_skin_id == skin_id else "换上")
+            status.setText("已永久收藏" if skin_id in data.owned_team_skins else "开发试用" if owned else f"Lv.{product['level']} 免费奖励")
+        for accessory_id,(buy,equip) in self.accessory_shop_buttons.items():
+            product=self.model.catalog.accessory_products[accessory_id]
+            owned=self._has_perk("accessory_"+accessory_id)
+            buy.setText("已拥有" if owned else f"{product['cost']} 币收藏")
+            buy.setEnabled(not owned and data.coins>=product["cost"])
+            equip.setEnabled(owned); equip.setText("已穿戴" if data.accessories.get("back")==accessory_id else "展开翅膀")
         self.perk_summary.setText(self.model.next_milestone()["text"] + (" 开发模式已临时解锁全部特权。" if self.model.debug_unlock_all else ""))
         milestones = {milestone["level"]: milestone for milestone in self.model.perk_status()}
         for level, widget in self.milestone_widgets.items():
@@ -998,15 +958,16 @@ class DashboardWindow(QMainWindow):
         self.exp_bar.setFormat(f"好感 {data.affection_exp}/{required}")
         self.hunger_bar.setValue(round(data.hunger)); self.hunger_bar.setFormat(f"饱食度 {data.hunger:g}/100")
         buff = self.model.buff_view()
-        self.buff_label.setText(f"{buff['name']} · {math.ceil(buff['remaining_seconds'])}秒" if buff else "原味汤圆")
+        self.buff_label.setText(f"{buff['name']} · {math.ceil(buff['remaining_seconds'])}秒" if buff else "")
         stats = data.stats
         self.stats_label.setText(f"戳戳 {stats['total_clicks']} · 投喂 {stats['total_feeds']} · 赠礼 {stats['total_presents']} 次 · 在线入账 {stats['total_gifts']}")
         owned = False
         for key, (frame, text, button) in self.inventory_widgets.items():
             item, count = self.model.item(key), data.inventory.get(key, 0)
-            frame.setProperty("gridVisible", count > 0); frame.setVisible(count > 0); button.setEnabled(count > 0); owned |= count > 0
+            frame.setProperty("gridVisible", count > 0); frame.setVisible(count > 0); button.setEnabled(count > 0 and self.model.can_use_item(key)); owned |= count > 0
             effect = f"好感 +{item['exp']}" if item["category"] == "gift" else f"饱食度 +{item['hunger']:g}"
-            text.setText(f"{item['tier']}级 · {effect} · 剩余 {count}")
+            text.setText(f"{item['tier']}级 · {effect} · 剩余 {count}" + (" · TES专属" if item.get("required_skin") else ""))
+            button.setToolTip("请先换上TES皮肤" if item.get("required_skin") else "")
         self.inventory_grid.reflow()
         self.empty_inventory.setVisible(not owned)
         unknown = [f"{key} ×{count}" for key, count in data.inventory.items() if key not in self.model.catalog.items and count > 0]
@@ -1014,9 +975,10 @@ class DashboardWindow(QMainWindow):
         for key, (buy, use, time) in self.shop_buttons.items():
             item = self.model.item(key); effect = f"好感 +{item['exp']}" if item["category"] == "gift" else f"饱食度 +{item['hunger']:g}"
             self.shop_details[key].setText(f"{item['tier']}级 · {effect} · {item['cost']} 糯米币")
-            buy.setEnabled(data.coins >= item["cost"]); use.setEnabled(data.coins >= item["cost"])
-            time.setText((f"{item['buff']['name']} · {self.model.rules.buff_seconds:g}秒") if "buff" in item else "")
-            time.setVisible("buff" in item)
+            buy.setEnabled(data.coins >= item["cost"]); use.setEnabled(data.coins >= item["cost"] and self.model.can_use_item(key))
+            use.setToolTip("先换上TES皮肤再演出" if item.get("required_skin") else "")
+            time.setText("TES皮肤专属 · 7秒演出" if item.get("required_skin") else (f"{item['buff']['name']} · {self.model.rules.buff_seconds:g}秒") if "buff" in item else "")
+            time.setVisible("buff" in item or bool(item.get("required_skin")))
         ready = set(data.unlocked_achievements) - set(data.claimed_achievements)
         self.achievement_summary.setText(f"收集 {len(data.unlocked_achievements)}/{len(self.model.catalog.achievements)} · 可领取 {len(ready)}")
         for achievement in self.model.catalog.achievements:
@@ -1028,7 +990,7 @@ class DashboardWindow(QMainWindow):
             claim.setText("已领取" if claimed else "领取奖励" if unlocked else "未达成"); claim.setEnabled(unlocked and not claimed)
             title = achievement.get("title"); equip.setVisible(bool(title) and claimed)
             equip.setEnabled(bool(title) and title in data.titles and title != data.equipped_title)
-            equip.setText("已佩戴" if title == data.equipped_title else "佩戴称号")
+            equip.setText("已佩戴" if title == data.equipped_title else "前往背包换装")
         self._refresh_home(); self._refresh_phase4()
 
     def _refresh_home(self):
@@ -1041,7 +1003,10 @@ class DashboardWindow(QMainWindow):
         self.exp_bar.setToolTip(self.model.next_milestone()["text"])
         self.hud_exp_bar.setFormat(f"好感 {data.affection_exp}/{required}" if data.affection_level < 30 else "好感满级")
         self.hud_hunger_bar.setValue(round(data.hunger)); self.hud_hunger_bar.setFormat(f"饱食 {data.hunger:g}/100")
-        buff = self.model.buff_view(); self.hud_buff.setText(f"{buff['name']} {math.ceil(buff['remaining_seconds'])}秒" if buff else "原味汤圆")
+        buff = self.model.buff_view()
+        self.hud_buff.setText(f"{buff['name']} {math.ceil(buff['remaining_seconds'])}秒" if buff else "")
+        self.hud_buff.setToolTip(self.hud_buff.text())
+        self.hud_buff.setVisible(bool(buff))
         self.mute_button.blockSignals(True); self.mute_button.setChecked(data.muted)
         self.mute_button.setToolTip("已静音，点击开启音效" if data.muted else "音效开启，点击静音"); self.mute_button.blockSignals(False)
         self.overlay_button.blockSignals(True); self.overlay_button.setChecked(data.overlay_visible)
@@ -1084,8 +1049,6 @@ class DashboardWindow(QMainWindow):
         self.refresh(); self.room.update()
 
     def stop(self) -> None:
-        self.preview_scroll_timer.stop()
-        self.preview_canvas.stop()
         self.room.stop()
         self.drawer_animation.stop()
         if self._home_engine_owned:

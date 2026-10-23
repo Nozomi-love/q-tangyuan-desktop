@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "name": "薄荷电竞熊",
+  "author": "Q弹汤圆 · imagegen辅助设计",
+  "remove_white_background": false,
+  "states": {
+    "idle": "idle.png"
+  }
+}

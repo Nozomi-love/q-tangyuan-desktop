@@ -88,7 +88,8 @@ class PetApplication:
                  dev_mode: bool | None = None) -> None:
         self.app = app
         self.dev_mode = accelerated if dev_mode is None else dev_mode
-        self.skin_manager = SkinManager(skins_root or PROJECT_ROOT / "assets" / "skins")
+        self.skin_manager = SkinManager(skins_root or PROJECT_ROOT / "assets" / "skins",
+                                        builtin_root=PROJECT_ROOT / "assets/skins/teams_s16")
         self.save_manager = SaveManager(save_path) if save_path is not None else None
         self._restoring = True
         self._stopped = False
@@ -108,8 +109,9 @@ class PetApplication:
         self._skin_restore_warning = ""
         if data.selected_skin_id != "default":
             restored = self.skin_manager.resolve(data.selected_skin_id)
-            if restored.name != data.selected_skin_id or not self.window.set_skin(restored):
-                self._skin_restore_warning = "原自定义皮肤暂时无法读取，先用白汤圆陪伴你；原选择和素材保留。"
+            if (not self.model.can_use_skin(data.selected_skin_id)
+                    or restored.name != data.selected_skin_id or not self.window.set_skin(restored)):
+                self._skin_restore_warning = "旧外观暂时无法读取，先使用白汤圆；原文件与进度保留。"
         self.window.engine.skin_scale=self.model.skin_config()["scale_multiplier"]
         self.window.set_accessories(self.model.effective_accessories())
         self.icon = create_tray_icon(self.window.renderer)
@@ -121,13 +123,13 @@ class PetApplication:
         self.dashboard.setWindowIcon(self.icon)
         self.dashboard.set_phase4_context(self.skin_manager.list_skins(), self.dev_mode)
         self._connect_dashboard()
-        self._preview_id=None
-        self.dashboard.data_directory_label.setText("数据目录："+str(save_path.parent) + "\n本地皮肤："+str(self.skin_manager.root) if save_path else "本次仅内存体验，不写入玩家进度。")
+        self.dashboard.data_directory_label.setText("数据目录："+str(save_path.parent) if save_path else "本次仅内存体验，不写入玩家进度。")
         self.window.dialogue_shown.connect(self.dashboard.room.show_message)
         self.dashboard.room.sound_requested.connect(self.audio.play)
         self.model.gains_received.connect(self._gains_received)
+        self.model.reward_sound_requested.connect(lambda: self.audio.play("coin"))
         self.model.interaction_started.connect(self._interaction_started)
-        self.window.drag_started.connect(self.dashboard.room.interact)
+        self.window.drag_started.connect(lambda: self.dashboard.room.interact(cancel_gift=True))
 
         self.model.state_changed.connect(self._state_changed)
         self.model.starvation_changed.connect(self.window.set_starving)
@@ -291,29 +293,25 @@ class PetApplication:
         self.dashboard.accessory_requested.connect(self.model.equip_accessory)
         self.dashboard.offset_requested.connect(self.model.set_accessory_offset)
         self.dashboard.scale_requested.connect(self.model.set_skin_scale)
-        self.dashboard.preview_confirmed.connect(self._confirm_preview)
-        self.dashboard.preview_cancelled.connect(self._cancel_preview)
-        self.dashboard.skin_rename_requested.connect(self._rename_skin)
-        self.dashboard.skin_archive_requested.connect(self._archive_skin)
         self.dashboard.backup_requested.connect(self._export_backup)
         self.dashboard.restore_requested.connect(self._restore_backup)
         self.dashboard.dev_level_requested.connect(self._dev_level)
         self.dashboard.trick_requested.connect(self._perform_trick)
         self.dashboard.skin_requested.connect(self._select_skin)
-        self.dashboard.import_image_requested.connect(self._import_image)
-        self.dashboard.import_pack_requested.connect(self._import_pack)
-        self.dashboard.export_template_requested.connect(self._export_template)
-        self.dashboard.import_unlock_requested.connect(self.model.unlock_custom_import)
-        self.dashboard.debug_unlock_requested.connect(
-            lambda enabled: self.model.set_debug_unlock(enabled, authorized=self.dev_mode))
+        self.dashboard.debug_unlock_requested.connect(self._set_debug_unlock)
         for action in (self.pin_action, self.dev_action, self.flat_action):
             action.toggled.connect(self._sync_settings)
 
     def _sync_settings(self, _enabled: bool = False) -> None:
         self.dashboard.set_settings(self.window.engine.pinned, self.dev_action.isChecked(), self.flat_action.isChecked())
 
+    def _set_debug_unlock(self, enabled: bool) -> None:
+        previous_skin = self.model.data.selected_skin_id
+        if self.model.set_debug_unlock(enabled, authorized=self.dev_mode):
+            if previous_skin != self.model.data.selected_skin_id:
+                self._select_skin(self.model.data.selected_skin_id)
+
     def _achievement_unlocked(self, achievement: dict) -> None:
-        self.audio.play("coin")
         self.window.show_message(f" 解锁成就：《{achievement['name']}》！可前往主面板领奖", "achievement")
         if hasattr(self, "save_timer"):
             self.save_timer.start()
@@ -368,7 +366,6 @@ class PetApplication:
 
     def _gains_received(self, gains: dict) -> None:
         self.window.show_gains(gains)
-        if gains.get("coins", 0) > 0: self.audio.play("coin")
 
     def _interaction_started(self, kind: str) -> None:
         if kind == "poke": self.audio.play("poke")
@@ -456,8 +453,8 @@ class PetApplication:
         self.dashboard.refresh()
 
     def _select_skin(self, skin_id: str, imported: bool = False) -> bool:
-        if skin_id != "default" and not self.model.has_perk("custom_import"):
-            self.model.feedback.emit("衣橱将在 Lv.3 开启，也可花 50 币提前解锁。", "normal")
+        if skin_id not in {"default", *self.model.catalog.team_skins} or not self.model.can_use_skin(skin_id):
+            self.model.feedback.emit("请先通过等级奖励或商城获得这款皮肤。", "normal")
             self._refresh_wardrobe()
             return False
         directory = PROJECT_ROOT / "assets/skins/default" if skin_id=="default" else self.skin_manager.resolve(skin_id)
@@ -470,62 +467,6 @@ class PetApplication:
         self._reload_icon()
         self._refresh_wardrobe()
         return True
-
-    def _import_image(self, source: str, remove_white: bool) -> None:
-        self._prepare_preview(source, remove_white=remove_white)
-
-    def _import_pack(self, source: str) -> None:
-        self._prepare_preview(source, pack=True)
-
-    def _import_skin(self, source: str, *, pack: bool = False, remove_white: bool = False) -> None:
-        if not self.model.has_perk("custom_import"):
-            self.model.feedback.emit("请先解锁衣橱，再导入本地素材。", "normal")
-            return
-        try:
-            skin = (self.skin_manager.import_pack(Path(source)) if pack else
-                    self.skin_manager.import_image(Path(source), remove_white=remove_white))
-            if not self._select_skin(skin["id"], imported=True):
-                self._refresh_wardrobe()
-        except (SkinImportError, OSError, ValueError) as error:
-            logging.warning("皮肤导入被拒绝：%s", error)
-            self.model.feedback.emit("导入未完成：" + str(error), "hungry")
-
-    def _prepare_preview(self, source, *, pack=False, remove_white=False):
-        if not self.model.has_perk("custom_import"): return
-        try:
-            entry=self.skin_manager.prepare_preview(Path(source),pack=pack,remove_white=remove_white)
-            self._cancel_preview()
-            self._preview_id=entry["id"]
-            self.dashboard.show_skin_preview(entry)
-        except (SkinImportError,OSError,ValueError) as error:
-            self.model.feedback.emit("预览未完成："+str(error),"hungry")
-
-    def _confirm_preview(self):
-        if not self._preview_id or not self.model.has_perk("custom_import"): return
-        try:
-            entry=self.skin_manager.commit_preview(self._preview_id)
-            self._preview_id=None
-            self.dashboard.clear_skin_preview()
-            self._select_skin(entry["id"],imported=True)
-        except (SkinImportError,OSError,ValueError) as error:
-            self.model.feedback.emit("导入未完成："+str(error),"hungry")
-
-    def _cancel_preview(self):
-        if getattr(self,"_preview_id",None): self.skin_manager.cancel_preview(self._preview_id)
-        self._preview_id=None
-        self.dashboard.clear_skin_preview()
-
-    def _rename_skin(self, skin_id, name):
-        try:
-            self.skin_manager.rename(skin_id,name)
-            self._refresh_wardrobe()
-        except (SkinImportError,OSError,ValueError) as error:
-            self.model.feedback.emit("重命名未完成："+str(error),"hungry")
-
-    def _archive_skin(self, skin_id, archived):
-        if skin_id==self.model.data.selected_skin_id and archived:
-            if not self._select_skin("default"): return
-        if self.model.archive_skin(skin_id,archived): self._refresh_wardrobe()
 
     def _export_backup(self, destination):
         try:
@@ -543,14 +484,18 @@ class PetApplication:
             self._save()
             if self._dirty: raise SaveDataError("当前进度尚未安全保存，恢复已停止")
             data,position,rollback=BackupManager(self.save_manager,self.skin_manager).restore(Path(source))
-            self._cancel_preview()
             self.window.engine.cancel_trick()
             self.window.engine.fireworks_until=0
             self.flat_action.setChecked(False)
             self.window.restore_position(position)
             self.model.replace_data(data)
             self.window.set_starving(self.model.starving)
-            self._select_skin(data.selected_skin_id)
+            if data.selected_skin_id.startswith("user_"):
+                self.window.set_skin(self.skin_manager.resolve(data.selected_skin_id))
+                self.window.set_accessories(self.model.effective_accessories())
+                self._refresh_wardrobe()
+            else:
+                self._select_skin(data.selected_skin_id)
             self.dashboard.room.interact(cancel_gift=True)
             self.dashboard.refresh(); self._save()
             self.dashboard.backup_status.setText("恢复完成；恢复前备份："+str(rollback))
@@ -570,14 +515,6 @@ class PetApplication:
         self.dashboard.summon()
         self.window.set_overlay_visible(True)
         self.window.raise_()
-
-    def _export_template(self, destination: str) -> None:
-        target = Path(destination) / datetime.now().strftime("汤圆皮肤模板-%Y%m%d-%H%M%S-%f")
-        try:
-            result = self.skin_manager.export_template(target)
-            self.model.feedback.emit(" 皮肤包模板已生成：" + str(result), "normal")
-        except (SkinImportError, OSError, ValueError) as error:
-            self.model.feedback.emit("模板导出未完成：" + str(error), "hungry")
 
     def _reload_icon(self) -> None:
         self.icon = create_tray_icon(self.window.renderer)

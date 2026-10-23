@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 import time
 
-from models import PetData
+from models import PetData, TEAM_SKIN_IDS
 
 
 def _reject_constant(value: str):
@@ -195,8 +195,11 @@ class SkinManager:
     STATES = ("idle", "happy", "dizzy", "flat")
     ID_PATTERN = re.compile(r"user_[0-9a-f]{32}\Z")
 
-    def __init__(self, skins_root: Path) -> None:
+    def __init__(self, skins_root: Path, builtin_root: Path | None = None) -> None:
         self.root = Path(skins_root).absolute()
+        self.builtin_root = Path(builtin_root).absolute() if builtin_root is not None else None
+        if self.builtin_root is not None:
+            self._no_links(self.builtin_root)
         self._no_links(self.root)
         try:
             self.root.mkdir(parents=True, exist_ok=True)
@@ -578,6 +581,12 @@ class SkinManager:
     def list_skins(self) -> list[dict]:
         result = [{"id": "default", "name": "白汤圆", "author": "内置默认皮肤", "states": {}}]
         self._guard_root()
+        if self.builtin_root is not None:
+            for skin_id in sorted(TEAM_SKIN_IDS):
+                try:
+                    result.append(self.builtin_metadata(skin_id))
+                except (SkinImportError, OSError):
+                    continue
         for directory in sorted(self.root.iterdir(), key=lambda p: p.name):
             if self.ID_PATTERN.fullmatch(directory.name):
                 try:
@@ -586,7 +595,30 @@ class SkinManager:
                     continue
         return result
 
+    def builtin_metadata(self, skin_id: str, *, validate: bool = False) -> dict:
+        if self.builtin_root is None or skin_id not in TEAM_SKIN_IDS:
+            raise SkinImportError("内置战队皮肤不存在")
+        self._no_links(self.builtin_root)
+        directory = self.builtin_root / skin_id
+        self._no_links(directory)
+        if not directory.resolve(strict=True).is_relative_to(self.builtin_root.resolve(strict=True)):
+            raise SkinImportError("战队皮肤路径无效")
+        manifest = self._manifest(self._read_file(directory / "manifest.json", self.MAX_MANIFEST_BYTES))
+        for filename in dict.fromkeys(manifest["states"].values()):
+            target = directory / filename
+            if not target.resolve(strict=True).is_relative_to(directory.resolve(strict=True)):
+                raise SkinImportError("战队贴图路径越界")
+            payload = self._read_file(target)
+            if validate:
+                self._validate_media(payload, PurePosixPath(filename).suffix.lower())
+        return {"id": skin_id, "directory": str(directory), "builtin": True, **manifest}
+
     def resolve(self, skin_id: str) -> Path:
+        if skin_id in TEAM_SKIN_IDS:
+            try:
+                return Path(self.builtin_metadata(skin_id, validate=True)["directory"])
+            except (SkinImportError, OSError, TypeError):
+                pass
         if skin_id != "default":
             try:
                 self._metadata(skin_id, validate=True)

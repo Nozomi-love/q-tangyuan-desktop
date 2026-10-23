@@ -147,6 +147,60 @@
       "dialogue": "gift_top",
       "room_effect": "spinning_top",
       "performance_seconds": 7
+    },
+    "egg": {
+      "name": "鸡蛋",
+      "icon": "egg",
+      "category": "food",
+      "tier": 1,
+      "cost": 30,
+      "hunger": 15,
+      "exp": 0,
+      "description": "泡面里的鸡蛋，关键一口。"
+    },
+    "gragas_barrel": {
+      "name": "酒桶",
+      "icon": "gragas_barrel",
+      "category": "food",
+      "tier": 3,
+      "cost": 135,
+      "hunger": 65,
+      "exp": 0,
+      "description": "谷物酒酿桶，吃饱再来一手肚皮弹跳。",
+      "buff": {
+        "name": "酒桶肚",
+        "color": "#d7ac73",
+        "scale": 1.08,
+        "description": "暖金染色，体型轻微膨胀1.08倍。"
+      }
+    },
+    "tes_guitar": {
+      "name": "吉他",
+      "icon": "tes_guitar",
+      "category": "gift",
+      "tier": 2,
+      "cost": 210,
+      "hunger": 0,
+      "exp": 80,
+      "required_skin": "team_s16_tes",
+      "description": "TES皮肤专属演出道具；换装后使用。",
+      "room_effect": "tes_guitar",
+      "performance_seconds": 7,
+      "dialogue": "tes_guitar"
+    },
+    "tes_microphone": {
+      "name": "麦克风",
+      "icon": "tes_microphone",
+      "category": "gift",
+      "tier": 3,
+      "cost": 540,
+      "hunger": 0,
+      "exp": 240,
+      "required_skin": "team_s16_tes",
+      "description": "TES皮肤专属演出道具；换装后使用。",
+      "room_effect": "tes_microphone",
+      "performance_seconds": 7,
+      "dialogue": "tes_microphone"
     }
   },
   "achievements": [
@@ -258,7 +312,7 @@
       "target": 1,
       "coins": 100,
       "title": "百变星君",
-      "description": "首次导入/切换自定义皮肤，或穿戴一件挂件"
+      "description": "首次切换战队皮肤，或穿戴一件挂件"
     },
     {
       "id": "warm_home",
@@ -301,7 +355,8 @@
     "custom_import": {
       "name": "本地自定义皮肤导入",
       "level": 3,
-      "kind": "system"
+      "kind": "system",
+      "retired": true
     },
     "effect_steam": {
       "name": "暖心热气",
@@ -405,6 +460,73 @@
       "level": 30,
       "kind": "title",
       "title": "汤圆守护仙"
+    },
+    "skin_s16_al": {
+      "name": "赤笠熊猫",
+      "level": 2,
+      "kind": "team_skin",
+      "item": "team_s16_al"
+    },
+    "skin_s16_blg": {
+      "name": "霓虹猫团",
+      "level": 3,
+      "kind": "team_skin",
+      "item": "team_s16_blg"
+    },
+    "skin_s16_tes": {
+      "name": "飞行桃团",
+      "level": 4,
+      "kind": "team_skin",
+      "item": "team_s16_tes"
+    },
+    "skin_s16_ig": {
+      "name": "柴犬白团",
+      "level": 5,
+      "kind": "team_skin",
+      "item": "team_s16_ig"
+    },
+    "skin_s16_gen": {
+      "name": "黑金虎团",
+      "level": 6,
+      "kind": "team_skin",
+      "item": "team_s16_gen"
+    },
+    "skin_s16_hle": {
+      "name": "元气橘团",
+      "level": 8,
+      "kind": "team_skin",
+      "item": "team_s16_hle"
+    },
+    "skin_s16_t1": {
+      "name": "赤焰凤团",
+      "level": 10,
+      "kind": "team_skin",
+      "item": "team_s16_t1"
+    },
+    "skin_s16_dk": {
+      "name": "薄荷电竞熊",
+      "level": 15,
+      "kind": "team_skin",
+      "item": "team_s16_dk"
+    },
+    "accessory_phoenix_wings": {
+      "name": "凤凰翅膀",
+      "level": 15,
+      "kind": "accessory",
+      "item": "phoenix_wings",
+      "slot": "back"
+    },
+    "title_world_tang": {
+      "name": "世一汤",
+      "level": 10,
+      "kind": "title",
+      "title": "世一汤"
+    },
+    "title_golden_bond": {
+      "name": "金汤良圆",
+      "level": 20,
+      "kind": "title",
+      "title": "金汤良圆"
     }
   },
   "milestones": [
@@ -415,72 +537,82 @@
     },
     {
       "level": 2,
-      "label": "萌芽相伴",
+      "label": "萌芽相伴 / 赤笠熊猫",
       "perks": [
         "accessory_sprout",
-        "trick_flip"
+        "trick_flip",
+        "skin_s16_al"
       ]
     },
     {
       "level": 3,
-      "label": "百变衣橱",
+      "label": "皇冠衣橱 / 霓虹猫团",
       "perks": [
         "accessory_crown",
-        "custom_import"
+        "skin_s16_blg"
       ]
     },
     {
       "level": 4,
-      "label": "暖心魔法",
+      "label": "暖心魔法 / 飞行桃团",
       "perks": [
         "effect_steam",
-        "trick_clone"
+        "trick_clone",
+        "skin_s16_tes"
       ]
     },
     {
       "level": 5,
-      "label": "玩伴时光",
+      "label": "玩伴时光 / 柴犬白团",
       "perks": [
         "accessory_sunglasses",
-        "trick_ball"
+        "trick_ball",
+        "skin_s16_ig"
       ]
     },
     {
       "level": 6,
-      "label": "阿一古",
+      "label": "阿一古 / 黑金虎团",
       "perks": [
         "accessory_bow",
-        "title_guardian"
+        "title_guardian",
+        "skin_s16_gen"
       ]
     },
     {
       "level": 8,
-      "label": "听风时光",
+      "label": "听风时光 / 元气橘团",
       "perks": [
-        "window_chime"
+        "window_chime",
+        "skin_s16_hle"
       ]
     },
     {
       "level": 10,
-      "label": "十级大礼",
+      "label": "十级大礼 / 赤焰凤团",
       "perks": [
         "accessory_orange",
-        "trick_disco"
+        "trick_disco",
+        "skin_s16_t1",
+        "title_world_tang"
       ]
     },
     {
       "level": 15,
-      "label": "仲夏萤火",
+      "label": "仲夏萤火 / 薄荷电竞熊",
       "perks": [
         "room_camp",
-        "effect_fireflies"
+        "effect_fireflies",
+        "skin_s16_dk",
+        "accessory_phoenix_wings"
       ]
     },
     {
       "level": 20,
       "label": "二十相伴",
       "perks": [
-        "companion_sesame"
+        "companion_sesame",
+        "title_golden_bond"
       ]
     },
     {
@@ -596,6 +728,18 @@
     ],
     "trick_disco": [
       "一起跳舞，快乐加倍！"
+    ],
+    "tes_guitar": [
+      "听见你说~ 吉他手已就位。"
+    ],
+    "tes_microphone": [
+      "有请TES主唱，这波开麦！"
+    ],
+    "team_history": [
+      "我们会创造新的历史"
+    ],
+    "morning_empty": [
+      "太阳升起了，大脑空空"
     ]
   },
   "furniture": {
@@ -758,6 +902,90 @@
       "emoji": "royal_rug",
       "description": "好感等级奖励",
       "unlock_perk": "rug_royal"
+    },
+    "air_conditioner": {
+      "id": "air_conditioner",
+      "name": "空调",
+      "emoji": "air_conditioner",
+      "slot": "wall",
+      "price": 360,
+      "default": false,
+      "description": "点击开关冷风，上单负责改善输出环境。"
+    }
+  },
+  "team_skins": {
+    "team_s16_al": {
+      "name": "赤笠熊猫",
+      "team": "AL",
+      "region": "LPL",
+      "cost": 900,
+      "level": 2,
+      "description": "S16战队应援皮肤，碗面使用队标。"
+    },
+    "team_s16_blg": {
+      "name": "霓虹猫团",
+      "team": "BLG",
+      "region": "LPL",
+      "cost": 900,
+      "level": 3,
+      "description": "S16战队应援皮肤，碗面使用队标。"
+    },
+    "team_s16_tes": {
+      "name": "飞行桃团",
+      "team": "TES",
+      "region": "LPL",
+      "cost": 900,
+      "level": 4,
+      "description": "S16战队应援皮肤，碗面使用队标。"
+    },
+    "team_s16_ig": {
+      "name": "柴犬白团",
+      "team": "iG",
+      "region": "LPL",
+      "cost": 900,
+      "level": 5,
+      "description": "S16战队应援皮肤，碗面使用队标。"
+    },
+    "team_s16_gen": {
+      "name": "黑金虎团",
+      "team": "GEN",
+      "region": "LCK",
+      "cost": 900,
+      "level": 6,
+      "description": "S16战队应援皮肤，碗面使用队标。"
+    },
+    "team_s16_hle": {
+      "name": "元气橘团",
+      "team": "HLE",
+      "region": "LCK",
+      "cost": 900,
+      "level": 8,
+      "description": "S16战队应援皮肤，碗面使用队标。"
+    },
+    "team_s16_t1": {
+      "name": "赤焰凤团",
+      "team": "T1",
+      "region": "LCK",
+      "cost": 900,
+      "level": 10,
+      "description": "S16战队应援皮肤，碗面使用队标。"
+    },
+    "team_s16_dk": {
+      "name": "薄荷电竞熊",
+      "team": "DK",
+      "region": "LCK",
+      "cost": 900,
+      "level": 15,
+      "description": "S16战队应援皮肤，碗面使用队标。"
+    }
+  },
+  "accessory_products": {
+    "phoenix_wings": {
+      "name": "凤凰翅膀",
+      "icon": "phoenix_wings",
+      "slot": "back",
+      "cost": 1200,
+      "description": "赤金双翼，缓慢扇动；Lv.15免费解锁。"
     }
   }
 }

@@ -85,6 +85,7 @@ class PetEngine:
         self.area = area
         self.elapsed = 0.0
         self.x = self.y = 0.0
+        self._rest_x: float | None = None
         self.vx = self.vy = 0.0
         self.angle = 0.0
         self.target_angle = 0.0
@@ -305,6 +306,7 @@ class PetEngine:
         self._trick_duration = 0.0
 
     def reset(self, area: WorkArea | None = None) -> None:
+        self._rest_x = None
         if area is not None:
             self.area = area
         self.vx = self.vy = 0.0
@@ -323,6 +325,7 @@ class PetEngine:
     def set_work_area(self, area: WorkArea) -> None:
         if area == self.area:
             return
+        self._rest_x = None
         old_bottom = self.area.bottom
         if self._trick == "screen_roll":
             self.cancel_trick()
@@ -338,6 +341,7 @@ class PetEngine:
                 self._align_with_floor()
 
     def set_pinned(self, enabled: bool) -> None:
+        self._rest_x = None
         if self._trick == "screen_roll":
             self.cancel_trick()
         self.pinned = bool(enabled)
@@ -346,6 +350,7 @@ class PetEngine:
         self.grounded = False
 
     def place(self, x: float, y: float) -> None:
+        self._rest_x = None
         self.x, self.y = x, y
         self.vx = self.vy = 0.0
         self.angle = self.target_angle = 0.0
@@ -369,6 +374,7 @@ class PetEngine:
             self.rebound()
 
     def rebound(self) -> None:
+        self._remember_rest_x()
         self.spring = -0.29
         self.spring_velocity = 0.0
         self.happy_until = self.elapsed + 0.8
@@ -387,11 +393,14 @@ class PetEngine:
         self._next_celebration_at = self.elapsed
 
     def set_buff(self, buff: dict) -> None:
+        self._remember_rest_x()
         was_running = self.buff.get("behavior_remaining", 0) > 0
         self.buff = dict(buff)
         if was_running and not self.buff.get("behavior_remaining", 0):
             self.vx = 0.0
         if self.grounded and not self.pinned:
+            if self._rest_x is not None:
+                self.x = self._rest_x
             self._align_with_floor()
             self._confine_horizontal()
 
@@ -402,6 +411,7 @@ class PetEngine:
         self.held = True
 
     def begin_drag(self) -> None:
+        self._rest_x = None
         self.cancel_trick()
         self.held = self.dragging = True
         self.grounded = False
@@ -431,6 +441,7 @@ class PetEngine:
         self.vy = clamp(pointer_vy, -self.MAX_THROW_SPEED, self.MAX_THROW_SPEED) * self.DRAG_INHERITANCE
 
     def click(self) -> None:
+        self._remember_rest_x()
         self.held = False
         self.happy_until = self.elapsed + 0.8
         self.spring = min(self.spring, -0.29)
@@ -447,6 +458,13 @@ class PetEngine:
 
     def _align_with_floor(self) -> None:
         self.y = self.area.bottom - self.bounds_offsets()[3]
+
+    def _remember_rest_x(self) -> None:
+        """Keep a resting anchor separate from temporary squash edge clearance."""
+        if (self._rest_x is None and self.grounded and not self.held and not self.dragging
+                and abs(self.vx) < .5 and not self.pinned
+                and not self.buff.get("behavior_remaining", 0)):
+            self._rest_x = self.x
 
     def _confine_horizontal(self, reflect: bool = True) -> None:
         left, _, right, _ = self.bounds_offsets()
@@ -471,6 +489,7 @@ class PetEngine:
         """
         if not math.isfinite(elapsed_seconds) or elapsed_seconds <= 0:
             return None
+        self._remember_rest_x()
         self.elapsed += elapsed_seconds
         if self._trick and self.elapsed - self._trick_started >= self._trick_duration:
             trick = self._trick
@@ -494,6 +513,8 @@ class PetEngine:
             if self.buff["remaining_seconds"] <= 0:
                 self.set_buff({})
         running = self.buff.get("behavior_remaining", 0) > 0 and not self.flat
+        if running or abs(self.vx) >= .5:
+            self._rest_x = None
         if running and not self.held and not self._trick:
             if self.pinned:
                 if self.elapsed >= self._next_spicy_at:
@@ -531,6 +552,9 @@ class PetEngine:
             if self.pinned or self._trick:
                 continue
 
+            if self._rest_x is not None:
+                self.x = self._rest_x
+
             if self.grounded:
                 self.vx *= math.exp(-9.0 * dt)
                 if abs(self.vx) < 0.5:
@@ -558,7 +582,9 @@ class PetEngine:
                     self.landing_count += 1
                     self._squash_on_landing(impact)
                     self._align_with_floor()
-            self._confine_horizontal()
+            # A stationary body's widening may require temporary clearance, but
+            # must not turn that visual correction into a throw or a new home.
+            self._confine_horizontal(reflect=self._rest_x is None)
             if running and abs(self.vx) > 1:
                 self._run_direction = 1.0 if self.vx > 0 else -1.0
         return impact
@@ -649,6 +675,8 @@ class SkinRenderer(QObject):
                 if isinstance(values.get("offset_y", 0), (int, float))
                 and math.isfinite(values.get("offset_y", 0)) else 0,
         }
+        if values.get("back") == "phoenix_wings":
+            self.accessories["back"] = "phoenix_wings"
         self.frame_changed.emit()
 
     @staticmethod
@@ -1062,6 +1090,9 @@ class SkinRenderer(QObject):
             result = result.united(QRectF(body.center().x() - 63, top - 72, 126, 75))
         if self.accessories["effect"] in {"fireflies", "rainbow"}:
             result = result.united(body.adjusted(-38, -35, 38, 20))
+        if self.accessories.get("back") == "phoenix_wings":
+            result = result.united(QRectF(body.center().x()-body.width()*.95,
+                                          body.top()-12+offset, body.width()*1.9, body.height()+24))
         return result
 
     def _clone_offsets(self, engine: PetEngine) -> list[tuple[float, float, float]]:
@@ -1123,6 +1154,7 @@ class SkinRenderer(QObject):
         painter.setOpacity(painter.opacity() * opacity)
         painter.setTransform(self.body_transform(engine, foot), combine=True)
         source = self.source_state(engine.state)
+        self._paint_back_accessory(painter, engine)
         if source is not None:
             color = engine.buff.get("color")
             pixmap = self.tinted_pixmap(source, color) if color else self.pixmaps[source]
@@ -1136,6 +1168,30 @@ class SkinRenderer(QObject):
                 painter.setBrush(tint)
                 painter.drawEllipse(self.body_rect())
         self._paint_accessories(painter, engine)
+        painter.restore()
+
+    def _paint_back_accessory(self, painter: QPainter, engine: PetEngine) -> None:
+        if self.accessories.get("back") != "phoenix_wings":
+            return
+        body = self.anchor_rect(engine.state)
+        flap = .94 + .055 * math.sin(engine.elapsed*3.2)
+        painter.save(); painter.translate(body.center().x(), body.top()+body.height()*.58+self.accessories["offset_y"])
+        for side in (-1,1):
+            painter.save(); painter.scale(side*body.width()/128*flap, body.height()/116)
+            wing=QPainterPath(QPointF(10,15)); wing.cubicTo(37,-11,58,-46,108,-64)
+            wing.cubicTo(102,-42,94,-25,80,-16)
+            wing.quadTo(95,-24,105,-32); wing.cubicTo(95,-6,82,9,65,14)
+            wing.quadTo(79,12,89,7); wing.cubicTo(72,34,46,41,10,15)
+            gradient=QLinearGradient(30,24,106,-59)
+            gradient.setColorAt(0,QColor("#c63f37")); gradient.setColorAt(.5,QColor("#ed7550")); gradient.setColorAt(1,QColor("#ffe19b"))
+            painter.setBrush(gradient); painter.setPen(QPen(QColor("#8a473b"),2.4,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap,Qt.PenJoinStyle.RoundJoin))
+            painter.drawPath(wing)
+            painter.setPen(QPen(QColor("#f6c071"),2,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap))
+            for index in range(3):
+                feather=QPainterPath(QPointF(24+index*5,17+index*2))
+                feather.quadTo(58+index*4,5+index*3,96-index*8,-47+index*25)
+                painter.drawPath(feather)
+            painter.restore()
         painter.restore()
 
     def _paint_accessories(self, painter: QPainter, engine: PetEngine) -> None:

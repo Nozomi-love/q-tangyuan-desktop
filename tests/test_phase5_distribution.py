@@ -23,7 +23,7 @@ ART.mkdir(parents=True, exist_ok=False)
 class DistributionTests(unittest.TestCase):
     def test_build_allow_list_excludes_all_player_data(self):
         files = resource_files(ROOT)
-        self.assertEqual(len([f for f in files if f.startswith("assets/item_icons/")]), 81)
+        self.assertEqual(len([f for f in files if f.startswith("assets/item_icons/")]), 87)
         self.assertEqual(len([f for f in files if f.endswith(".png") and "/default/" in f]), 4)
         self.assertIn("config/catalog.json", files)
         self.assertNotIn("data/save_data.json", files)

@@ -73,6 +73,14 @@ DEFAULT_DIALOGUES = {
 
 
 EXP_PER_LEVEL = 500
+TEAM_SKIN_IDS = frozenset("team_s16_" + team for team in ("al", "blg", "tes", "ig", "gen", "hle", "t1", "dk"))
+
+
+def valid_skin_id(value) -> bool:
+    return isinstance(value, str) and (value == "default" or value in TEAM_SKIN_IDS
+                                      or re.fullmatch(r"user_[0-9a-f]{32}", value) is not None)
+
+
 GUARDIAN_TITLE = "阿一古"
 LEGACY_GUARDIAN_TITLES = {"\u2728 汤圆守护神", "汤圆守护神"}
 
@@ -81,6 +89,7 @@ FURNITURE_SLOTS = ("theme", "rug", "wall", "corner", "bowl", "window", "companio
 DEFAULT_FURNITURE = {"theme": "cheese_room", "rug": "cloud_cushion",
                      "wall": "", "corner": "", "bowl": "wood_bowl", "window": "", "companion": ""}
 FURNITURE_SLOT_BY_ID = {
+    "air_conditioner": "wall",
     "cheese_room": "theme",
     "sakura_room": "theme",
     "matcha_room": "theme",
@@ -194,6 +203,29 @@ class Catalog:
         self.perks = deepcopy(source.get("perks", {}))
         self.milestones = deepcopy(source.get("milestones", []))
         self.trick_products = deepcopy(source.get("trick_products", {}))
+        self.team_skins = deepcopy(source.get("team_skins", {}))
+        self.accessory_products = deepcopy(source.get("accessory_products", {}))
+        if not isinstance(self.accessory_products, dict):
+            raise ValueError("装扮商品配置无效")
+        for accessory_id, product in self.accessory_products.items():
+            if accessory_id != "phoenix_wings" or product.get("slot") != "back":
+                raise ValueError("装扮商品槽位无效")
+            _integer(product.get("cost"), "装扮价格", 1)
+            for key in ("name", "icon", "description"):
+                if not isinstance(product.get(key), str) or not product[key]:
+                    raise ValueError("装扮商品资料无效")
+        if not isinstance(self.team_skins, dict):
+            raise ValueError("战队皮肤配置必须为对象")
+        for skin_id, product in self.team_skins.items():
+            if skin_id not in TEAM_SKIN_IDS or not isinstance(product, dict):
+                raise ValueError("战队皮肤 ID 无效")
+            for key in ("name", "team", "region", "description"):
+                if not isinstance(product.get(key), str) or not product[key]:
+                    raise ValueError("战队皮肤资料不完整")
+            if product["region"] not in ("LPL", "LCK"):
+                raise ValueError("战队皮肤赛区无效")
+            _integer(product.get("cost"), "战队皮肤价格", 1)
+            _integer(product.get("level"), "战队皮肤等级", 1, 30)
         if not isinstance(self.trick_products, dict):
             raise ValueError("特技商品必须为对象")
         for trick_id, product in self.trick_products.items():
@@ -223,6 +255,8 @@ class Catalog:
             _integer(item["exp"], "商品经验", 0)
             _number(item["hunger"], "商品饥饿恢复", 0, 100)
             category = item.get("category")
+            if "required_skin" in item and item["required_skin"] not in TEAM_SKIN_IDS:
+                raise ValueError("专属道具的皮肤限制无效")
             if category not in ("food", "gift"):
                 raise ValueError("商品类型必须为 food 或 gift")
             tier = _integer(item.get("tier"), "商品等级", 1, 3)
@@ -282,6 +316,8 @@ class PetData:
     claimed_achievements: list[str] = field(default_factory=list)
     active_buff: dict = field(default_factory=dict)
     selected_skin_id: str = "default"
+    owned_team_skins: list[str] = field(default_factory=list)
+    purchased_accessories: list[str] = field(default_factory=list)
     skin_configs: dict = field(default_factory=dict)
     archived_skins: list[str] = field(default_factory=list)
     custom_import_unlocked: bool = False
@@ -290,6 +326,7 @@ class PetData:
     equipped_furniture: dict = field(default_factory=lambda: dict(DEFAULT_FURNITURE))
     placed_furniture: list[str] = field(default_factory=list)
     lamp_on: bool = True
+    air_conditioner_on: bool = True
     overlay_visible: bool = False
     muted: bool = False
     coins: int = 100
@@ -325,12 +362,12 @@ class PetData:
                 else:
                     defaults[key] = deepcopy(raw[key])
         item = cls(**defaults)
-        if not isinstance(item.selected_skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", item.selected_skin_id):
+        if not valid_skin_id(item.selected_skin_id):
             raise ValueError("皮肤 ID 无效")
         if not isinstance(item.skin_configs, dict) or len(item.skin_configs) > 1000:
             raise ValueError("单皮肤配置数量无效")
         for skin_id, config in item.skin_configs.items():
-            if not isinstance(skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", skin_id) or not isinstance(config, dict):
+            if not valid_skin_id(skin_id) or not isinstance(config, dict):
                 raise ValueError("单皮肤配置 ID 无效")
             _number(config.get("scale_multiplier", 1.0), "角色大小", .6, 1.5)
             _integer(config.get("accessory_offset_y", 0), "独立挂件高度", -30, 30)
@@ -351,6 +388,8 @@ class PetData:
         for slot, choices in (("head", ("", "sprout", "crown", "bow", "orange")), ("face", ("", "sunglasses")), ("effect", ("", "steam", "fireflies", "rainbow"))):
             if item.accessories[slot] not in choices:
                 raise ValueError("挂件配置无效")
+        if item.accessories.get("back", "") not in ("", "phoenix_wings"):
+            raise ValueError("背部挂件配置无效")
         _integer(item.accessories["offset_y"], "挂件垂直偏移", -30, 30)
         for key in ("name", "equipped_title"):
             if not isinstance(getattr(item, key), str) or not 1 <= len(getattr(item, key)) <= 40:
@@ -358,14 +397,18 @@ class PetData:
         if not _valid_pet_name(item.name):
             raise ValueError("宠物名字需要 1～40 个字符且不能含控制字符")
         for key in ("titles", "flavors_seen", "unlocked_achievements", "claimed_achievements", "purchased_tricks",
-                    "owned_furniture", "placed_furniture"):
+                    "owned_furniture", "placed_furniture", "owned_team_skins", "purchased_accessories"):
             value = getattr(item, key)
             if (not isinstance(value, list) or not all(isinstance(v, str) for v in value)
                     or len(set(value)) != len(value)):
                 raise ValueError(f"{key} 必须为不重复的字符串列表")
+        if not set(item.owned_team_skins).issubset(TEAM_SKIN_IDS):
+            raise ValueError("已拥有战队皮肤 ID 无效")
+        if not set(item.purchased_accessories).issubset({"phoenix_wings"}):
+            raise ValueError("已购装扮 ID 无效")
         if any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", trick) for trick in item.purchased_tricks):
             raise ValueError("已购特技 ID 无效")
-        for key in ("lamp_on", "overlay_visible", "muted"):
+        for key in ("lamp_on", "air_conditioner_on", "overlay_visible", "muted"):
             if type(getattr(item, key)) is not bool:
                 raise ValueError(f"{key} 需要布尔值")
         for furniture_id in item.owned_furniture + item.placed_furniture:
@@ -438,6 +481,7 @@ class PetModel(QObject):
     gifted = Signal()
     presentation_requested = Signal(dict)
     gains_received = Signal(dict)
+    reward_sound_requested = Signal()
     interaction_started = Signal(str)
     achievement_unlocked = Signal(dict)
     buff_changed = Signal(dict)
@@ -510,17 +554,19 @@ class PetModel(QObject):
         self.data.daily_stats.update(date=value, poke_attempts=0, poke_coin_drops=0)
         return True
 
-    def _credit_coins(self, amount: int) -> None:
+    def _credit_coins(self, amount: int, *, audible: bool = True) -> None:
         self.data.coins += amount
         if amount > 0:
             self.gains_received.emit({"coins": amount})
+            if audible:
+                self.reward_sound_requested.emit()
 
     def set_muted(self, enabled: bool) -> None:
         if type(enabled) is bool and self.data.muted != enabled:
             self.data.muted = enabled
             self._publish(self.starving)
 
-    def _add_exp(self, amount: int) -> list[int]:
+    def _add_exp(self, amount: int, *, audible: bool = True) -> list[int]:
         before = self._lifetime_exp()
         levels = []
         if self.data.affection_level >= self.MAX_LEVEL:
@@ -529,7 +575,7 @@ class PetModel(QObject):
         while self.data.affection_level < self.MAX_LEVEL and self.data.affection_exp >= self.exp_required:
             self.data.affection_exp -= self.exp_required
             self.data.affection_level += 1
-            self._credit_coins(30)
+            self._credit_coins(30, audible=audible)
             levels.append(self.data.affection_level)
         if self.data.affection_level == self.MAX_LEVEL:
             self.data.affection_exp = 0
@@ -556,10 +602,10 @@ class PetModel(QObject):
         amount = self.data.pending_reward["coins"]
         if not amount:
             return 0, []
-        self._credit_coins(amount)
+        self._credit_coins(amount, audible=False)
         self.data.stats["total_gifts"] += 1
         self.data.pending_reward.update(coins=0, remaining_seconds=0.0)
-        levels = self._add_exp(5)
+        levels = self._add_exp(5, audible=False)
         self.collectible_changed.emit(False)
         return amount, levels
 
@@ -612,6 +658,9 @@ class PetModel(QObject):
         if item is None:
             self.feedback.emit("这件商品暂时没有上架。", "normal")
             return False
+        if feed_now and not self.can_use_item(item_id):
+            self.feedback.emit("这件道具是TES专属，请先换上TES皮肤；没有扣币。", "normal")
+            return False
         if self.data.coins < item["cost"]:
             self.feedback.emit("糯米币不够啦，戳戳或等一会儿拾币吧～", "hungry")
             return False
@@ -629,10 +678,20 @@ class PetModel(QObject):
         if item is None or self.data.inventory.get(item_id, 0) <= 0:
             self.feedback.emit("背包里还没有这件物品。", "normal")
             return False
+        if not self.can_use_item(item_id):
+            self.feedback.emit("请先换上TES皮肤再开演，道具仍在背包里。", "normal")
+            return False
         previous = self.starving
         self.data.inventory[item_id] -= 1
         self._consume(item_id, item, previous)
         return True
+
+    def can_use_item(self, item_id: str) -> bool:
+        item = self.catalog.items.get(item_id)
+        if item is None:
+            return False
+        required = item.get("required_skin")
+        return not required or (self.data.selected_skin_id == required and self.can_use_skin(required))
 
     def feed_sugar(self) -> bool:
         return self.buy_item("sugar", feed_now=True)
@@ -797,6 +856,8 @@ class PetModel(QObject):
     def has_perk(self, perk_id: str) -> bool:
         perk = self.catalog.perks.get(perk_id)
         return bool(perk and (self.debug_unlock_all or self.data.affection_level >= perk["level"]
+                              or (perk.get("kind") == "team_skin" and perk.get("item") in self.data.owned_team_skins)
+                              or (perk_id == "accessory_phoenix_wings" and "phoenix_wings" in self.data.purchased_accessories)
                               or (perk_id == "custom_import" and self.data.custom_import_unlocked)))
 
     def perk_status(self) -> list[dict]:
@@ -804,7 +865,7 @@ class PetModel(QObject):
                 for row in self.catalog.milestones]
 
     def _refresh_perks(self, announce: bool = True) -> None:
-        available = {key for key in self.catalog.perks if self.has_perk(key)}
+        available = {key for key, perk in self.catalog.perks.items() if not perk.get("retired") and self.has_perk(key)}
         newly = available - self._known_perks
         self._known_perks = available
         for key in available:
@@ -813,6 +874,10 @@ class PetModel(QObject):
                 self.data.titles.append(perk["title"])
             if perk.get("kind") == "furniture" and perk["item"] not in self.data.owned_furniture:
                 self.data.owned_furniture.append(perk["item"])
+            # Debug trial must not permanently grant the collection.
+            if (perk.get("kind") == "team_skin" and self.data.affection_level >= perk["level"]
+                    and perk["item"] not in self.data.owned_team_skins):
+                self.data.owned_team_skins.append(perk["item"])
         if newly and announce:
             self.perks_unlocked.emit([self.catalog.perks[key]["name"] for key in self.catalog.perks if key in newly])
 
@@ -821,6 +886,10 @@ class PetModel(QObject):
         if not authorized or type(enabled) is not bool:
             return False
         self.debug_unlock_all = enabled
+        if (not enabled and self.data.selected_skin_id in TEAM_SKIN_IDS
+                and not self.has_team_skin(self.data.selected_skin_id)):
+            self.data.selected_skin_id = "default"
+            self.data.accessories["offset_y"] = self.skin_config()["accessory_offset_y"]
         self._publish(self.starving, message=" 全部特权试用已" + ("开启" if enabled else "关闭"))
         self.appearance_changed.emit(self.effective_accessories())
         return True
@@ -838,28 +907,49 @@ class PetModel(QObject):
 
     def effective_accessories(self) -> dict:
         result = deepcopy(self.data.accessories)
-        for slot in ("head", "face", "effect"):
-            value = result[slot]
+        for slot in ("head", "face", "effect", "back"):
+            value = result.get(slot, "")
             perk_id = ("effect_" if slot == "effect" else "accessory_") + value
             if value and not self.has_perk(perk_id):
                 result[slot] = ""
         return result
 
     def equip_accessory(self, slot: str, item: str) -> bool:
-        choices = {"head": ("", "sprout", "crown", "bow", "orange"), "face": ("", "sunglasses"), "effect": ("", "steam", "fireflies", "rainbow")}
+        choices = {"head": ("", "sprout", "crown", "bow", "orange"), "face": ("", "sunglasses"), "effect": ("", "steam", "fireflies", "rainbow"), "back": ("", "phoenix_wings")}
         if slot not in choices or item not in choices[slot]:
             return False
         perk_id = ("effect_" if slot == "effect" else "accessory_") + item
         if item and not self.has_perk(perk_id):
             self.feedback.emit("再陪伴一阵子，就能解锁这个装扮啦～", "normal")
             return False
-        if self.data.accessories[slot] == item:
+        if self.data.accessories.get(slot, "") == item:
             return True
         self.data.accessories[slot] = item
         if item:
             self.data.stats["customizations"] += 1
         self._publish(self.starving)
         self.appearance_changed.emit(self.effective_accessories())
+        return True
+
+    def buy_accessory(self, accessory_id: str) -> bool:
+        product = self.catalog.accessory_products.get(accessory_id)
+        if product is None:
+            return False
+        if self.has_perk("accessory_" + accessory_id):
+            return True
+        if self.data.coins < product["cost"]:
+            self.feedback.emit("糯米币还不够，也可以升级后免费解锁。", "normal")
+            return False
+        self.data.coins -= product["cost"]
+        self.data.purchased_accessories.append(accessory_id)
+        self._publish(self.starving, message=f"已收藏{product['name']}，到挂件页展开翅膀吧。", tone="reward")
+        return True
+
+    def set_air_conditioner_on(self, enabled: bool) -> bool:
+        if type(enabled) is not bool or self.data.equipped_furniture.get("wall") != "air_conditioner":
+            return False
+        self.data.air_conditioner_on = enabled
+        self._publish(self.starving, message="空调已就位，这波降降温。" if enabled else "空调先歇会儿，别急着红温。", tone="interaction")
         return True
 
     def set_accessory_offset(self, offset_y: int) -> bool:
@@ -918,19 +1008,41 @@ class PetModel(QObject):
         self.buff_changed.emit(self.buff_view())
         self.appearance_changed.emit(self.effective_accessories())
 
+    def has_team_skin(self, skin_id: str) -> bool:
+        return skin_id in self.catalog.team_skins and (skin_id in self.data.owned_team_skins or self.debug_unlock_all)
+
+    def can_use_skin(self, skin_id: str) -> bool:
+        if not valid_skin_id(skin_id) or skin_id in self.data.archived_skins:
+            return False
+        if skin_id in TEAM_SKIN_IDS:
+            return self.has_team_skin(skin_id)
+        return skin_id == "default" or self.has_perk("custom_import")
+
+    def buy_team_skin(self, skin_id: str) -> bool:
+        product = self.catalog.team_skins.get(skin_id) if isinstance(skin_id, str) else None
+        if product is None:
+            return False
+        if skin_id in self.data.owned_team_skins:
+            return True
+        if self.data.coins < product["cost"]:
+            self.feedback.emit("糯米币还不够，达到对应等级也能免费获得这款皮肤。", "normal")
+            return False
+        self.data.coins -= product["cost"]
+        self.data.owned_team_skins.append(skin_id)
+        self._publish(self.starving, message=f"已获得{product['name']}，可以在衣橱换上。", tone="reward")
+        return True
+
     def select_skin(self, skin_id: str, *, imported: bool = False) -> bool:
-        if not isinstance(skin_id, str) or not re.fullmatch(r"default|user_[0-9a-f]{32}", skin_id):
-            return False
-        if skin_id != "default" and not self.has_perk("custom_import"):
-            return False
-        if skin_id in self.data.archived_skins:
+        if not self.can_use_skin(skin_id):
             return False
         changed = skin_id != self.data.selected_skin_id
         self.data.selected_skin_id = skin_id
         self.data.accessories["offset_y"] = self.skin_config()["accessory_offset_y"]
         if skin_id != "default" and (changed or imported):
             self.data.stats["customizations"] += 1
-        self._publish(self.starving, message=" 已换上新外观，挂件和小特技也能一起用哦～" if changed else "")
+        message = (self.dialogue("team_history") if skin_id in TEAM_SKIN_IDS
+                   else "已换上新外观，挂件和小特技也能一起用哦～") if changed else ""
+        self._publish(self.starving, message=message, tone="interaction" if skin_id in TEAM_SKIN_IDS else "normal")
         return True
 
     def has_trick(self, trick_id: str) -> bool:

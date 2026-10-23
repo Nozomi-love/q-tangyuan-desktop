@@ -1,0 +1,122 @@
+[
+  {
+    "id": "team_s16_blg",
+    "team": "BLG",
+    "name": "霓虹猫团",
+    "region": "LPL",
+    "size": [
+      1254,
+      1254
+    ],
+    "bytes": 1057165,
+    "sha256": "568866f8743fb05c122801386c91629b6fb462f36eb4bcfc2d1f1c61c7d5fb09",
+    "transparent_pixels": 751255,
+    "level": 3,
+    "cost": 900
+  },
+  {
+    "id": "team_s16_al",
+    "team": "AL",
+    "name": "赤笠熊猫",
+    "region": "LPL",
+    "size": [
+      1254,
+      1254
+    ],
+    "bytes": 1283935,
+    "sha256": "7e76afa911ab36a9c6440ec73c3570fde025887107b847e4281305cc05f5e592",
+    "transparent_pixels": 637764,
+    "level": 2,
+    "cost": 900
+  },
+  {
+    "id": "team_s16_tes",
+    "team": "TES",
+    "name": "飞行桃团",
+    "region": "LPL",
+    "size": [
+      1254,
+      1254
+    ],
+    "bytes": 1106530,
+    "sha256": "ca996a19b8ac4b33b9797206f4cd9a2f15d38b103cfa1b6108314cbf8c0b69d1",
+    "transparent_pixels": 788936,
+    "level": 4,
+    "cost": 900
+  },
+  {
+    "id": "team_s16_ig",
+    "team": "IG",
+    "name": "柴犬白团",
+    "region": "LPL",
+    "size": [
+      1254,
+      1254
+    ],
+    "bytes": 1046970,
+    "sha256": "681a112307af3df82022e02979b8519469535a1b62692c4d05ffd23ec5359d6f",
+    "transparent_pixels": 680987,
+    "level": 5,
+    "cost": 900
+  },
+  {
+    "id": "team_s16_gen",
+    "team": "GEN",
+    "name": "黑金虎团",
+    "region": "LCK",
+    "size": [
+      1254,
+      1254
+    ],
+    "bytes": 1039092,
+    "sha256": "d0ac96d34ce6271be78dd261fc66d8df9d9b582075f51119cd1d34e2ddfa6b85",
+    "transparent_pixels": 767786,
+    "level": 6,
+    "cost": 900
+  },
+  {
+    "id": "team_s16_hle",
+    "team": "HLE",
+    "name": "元气橘团",
+    "region": "LCK",
+    "size": [
+      1254,
+      1254
+    ],
+    "bytes": 961051,
+    "sha256": "403114147a822bb5cd594a726964b60c9cd31bc28ee3f83b43fb7837c7f8405c",
+    "transparent_pixels": 831208,
+    "level": 8,
+    "cost": 900
+  },
+  {
+    "id": "team_s16_t1",
+    "team": "T1",
+    "name": "赤焰凤团",
+    "region": "LCK",
+    "size": [
+      1254,
+      1254
+    ],
+    "bytes": 955680,
+    "sha256": "93efc677b7e9e2ed82be6865cfb19c87a0d06cc98fa12e092cee64f133dc9971",
+    "transparent_pixels": 814181,
+    "level": 10,
+    "cost": 900
+  },
+  {
+    "id": "team_s16_dk",
+    "team": "DK",
+    "name": "薄荷电竞熊",
+    "region": "LCK",
+    "size": [
+      1254,
+      1254
+    ],
+    "bytes": 1034364,
+    "sha256": "6b36bcf38377c83eafa37e4e70366e57ff18ec8575a0e62f379415333a6e2058",
+    "transparent_pixels": 712648,
+    "level": 15,
+    "cost": 900
+  }
+]

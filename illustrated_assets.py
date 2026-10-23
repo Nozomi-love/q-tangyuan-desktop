@@ -19,6 +19,7 @@ def plain_text(value) -> str:
 
 
 ICON_IDS = (
+    "air_conditioner", "egg", "gragas_barrel", "phoenix_wings", "tes_guitar", "tes_microphone",
     "water", "sugar", "osmanthus", "sesame", "strawberry", "matcha", "chili",
     "paper_star", "flower_bouquet", "music_box", "spinning_top",
     "sprout", "crown", "sunglasses", "bow", "steam", "flip", "clone", "ball", "screen_roll",
@@ -163,7 +164,51 @@ def paint_icon(painter: QPainter, key: str) -> None:
     painter.setPen(Qt.PenStyle.NoPen)
     b.ellipse(14, 65, 52, 8, "#18794f35")
     b.pen()
-    if key == "orange":
+    if key == "air_conditioner":
+        b.rect(8, 17, 64, 35, "#f4fbfd", 9, "#c9dce4")
+        b.rect(14, 38, 52, 10, "#819bad", 3); b.pen("#e8faff", 1.5)
+        for x in range(20, 65, 9): b.line(x, 39, x, 47)
+        b.ellipse(60, 24, 4, 4, "#8dc6ab"); b.pen("#9fcbd7", 2)
+        for x in (23, 40, 57):
+            path=QPainterPath(QPointF(x,54)); path.cubicTo(x-8,59,x+7,63,x,70)
+            painter.setBrush(Qt.BrushStyle.NoBrush); painter.drawPath(path)
+        b.shine(16, 23, 15, 3)
+    elif key == "egg":
+        b.ellipse(13, 59, 54, 10, "#ddc6a5")
+        path=QPainterPath(QPointF(40,12)); path.cubicTo(17,12,11,49,22,60)
+        path.cubicTo(34,72,61,65,62,47); path.cubicTo(62,30,52,12,40,12)
+        b.fill("#fffdf2", "#e4dac1"); painter.drawPath(path)
+        b.ellipse(30, 34, 25, 24, "#ffde77", "#e8a850"); b.shine(25,24,4,10)
+    elif key == "gragas_barrel":
+        b.rect(18, 16, 44, 50, "#e0b580", 14, "#a9754e")
+        b.ellipse(19, 11, 42, 14, "#d5ad77"); b.pen("#9b704b", 1.2)
+        for x in (28,40,52): b.line(x,23,x-2,59)
+        b.rect(17, 25, 46, 6, "#8c9194", 2); b.rect(17, 51, 46, 6, "#8c9194", 2)
+        b.rect(28, 35, 24, 12, "#f6e4ba", 4); b.shine(22,34,3,11)
+    elif key == "phoenix_wings":
+        for side in (-1,1):
+            painter.save(); painter.translate(40,48); painter.scale(side,1)
+            b.poly([(0,4),(12,-19),(34,-32),(29,-10),(22,1),(13,11)],"#f3b65d","#d46753")
+            b.pen("#9d4e3d",1.5)
+            for n in range(3): b.line(9+n*7,1-n*7,23+n*3,-17-n*5)
+            painter.restore()
+        b.star(40, 46, 10, "#ffd77d")
+    elif key == "tes_guitar":
+        painter.save(); painter.translate(40,42); painter.rotate(28)
+        b.ellipse(-17,-3,34,33,"#e5b77e","#bf855c"); b.ellipse(-13,-15,26,26,"#eecb91")
+        b.rect(-4,-34,8,39,"#b9845e",2); b.rect(-6,-41,12,13,"#b98c69",3)
+        b.ellipse(-5,1,10,10,"#67503c"); b.rect(-8,19,16,4,"#79573d",1)
+        b.pen("#fff3c6",.8)
+        for x in (-2,0,2): b.line(x,-34,x,22)
+        painter.restore()
+    elif key == "tes_microphone":
+        b.line(40,42,40,66); b.ellipse(22,63,36,8,"#7c7c85")
+        b.rect(31,12,18,37,"#c4c8ce",9,"#7b8790"); b.rect(31,30,18,18,"#bc5c5e",5)
+        b.pen("#64717d",1)
+        for y in (17,21,25): b.line(34,y,46,y)
+        b.pen("#d2a15b",2); painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawArc(QRectF(53,16,15,27),-65*16,130*16); painter.drawArc(QRectF(12,16,15,27),115*16,130*16)
+    elif key == "orange":
         b.ellipse(18, 26, 45, 38, "#ffd28a", "#e7a04c"); b.leaf(42, 28, 75, size=.5); b.shine(28, 35)
     elif key == "sunny_chime":
         b.line(40, 9, 40, 25); b.poly([(21, 47), (27, 27), (40, 21), (53, 27), (59, 47)], "#d0e5df")

@@ -55,7 +55,7 @@ class BalanceModelTests(unittest.TestCase):
                 self.assertEqual(pet.data.stats['total_feeds'],1)
     def test_food_tiers_have_distinct_recovery_and_zero_exp(self):
         items=[item for item in Catalog.load().items.values() if item['category']=='food']
-        self.assertEqual(len(items),7)
+        self.assertEqual(len(items),9)
         for tier,hunger in ((1,15),(2,35),(3,65)):
             same=[i for i in items if i['tier']==tier]
             self.assertTrue(same)
@@ -185,15 +185,15 @@ class NavigationAndCommerceTests(unittest.TestCase):
     def tearDown(self):
         self.window.close();self.window.deleteLater();APP.sendPostedEvents(None,QEvent.Type.DeferredDelete)
     def test_five_main_pages_and_three_independent_dressing_subpages(self):
-        self.assertEqual([self.window.tabs.tabText(i) for i in range(5)],['状态与背包','免费商城','成就图鉴','装扮','设置'])
-        self.assertEqual([self.window.dress_tabs.tabText(i) for i in range(3)],['皮肤衣橱','挂件装扮','特技与等级奖励'])
+        self.assertEqual([self.window.tabs.tabText(i) for i in range(4)],['背包','商城','成就与等级奖励','设置'])
+        self.assertEqual([self.window.dress_tabs.tabText(i) for i in range(3)],['皮肤','挂件','称号'])
         self.assertTrue(self.window.dress_tabs.widget(0).isAncestorOf(self.window.skin_combo))
         self.assertTrue(self.window.dress_tabs.widget(1).isAncestorOf(self.window.head_combo))
-        self.assertTrue(self.window.dress_tabs.widget(2).isAncestorOf(self.window.trick_buttons['flip']))
-        self.assertTrue(self.window.tabs.widget(4).isAncestorOf(self.window.pin_check))
+        self.assertTrue(self.window.bag_tabs.widget(3).isAncestorOf(self.window.trick_buttons['flip']))
+        self.assertTrue(self.window.tabs.widget(3).isAncestorOf(self.window.pin_check))
     def test_navigation_spans_divider_and_has_no_native_overlap(self):
         self.assertTrue(self.window.tabs.tabBar().isHidden())
-        self.assertEqual(list(self.window.nav_buttons), ['home','bag','shop','dress','achievements'])
+        self.assertEqual(list(self.window.nav_buttons), ['home','bag','shop','achievements','settings'])
         for width in (700,900,1100):
             self.window.resize(width,760);QTest.qWait(25)
             buttons=list(self.window.nav_buttons.values())

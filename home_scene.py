@@ -65,7 +65,7 @@ class RoomLife:
     def daily_line(hour, hunger, level):
         if hunger < 35: return "饭香好像从那边飘过来了。"
         if hour < 6 or hour >= 23: return "夜深啦，我陪你慢慢收个尾，记得早点休息。"
-        if hour < 11: return "早安，今天也要软乎乎地出发。"
+        if hour < 11: return "太阳升起了，大脑空空"
         if hour < 14: return "午饭时间，别忘了也照顾好自己。"
         if hour < 17: return "午后的光好暖，想和你坐一会儿。"
         if level >= 3: return "你回来啦，这盏小灯一直为你留着。"
@@ -163,8 +163,13 @@ class GiftPerformance:
     @property
     def pet_x(self):
         if self.item_id == "spinning_top": return self.start_x
-        target = .61 if self.item_id == "flower_bouquet" else .48
-        t = min(1, self.age / 2.5); t = t * t * (3 - 2 * t)
+        # Only the bouquet needs an approach. Other gifts play where the pet is.
+        # Reserve the final 1.4 seconds to return to this performance's origin.
+        target = .61 if self.item_id == "flower_bouquet" else self.start_x
+        returning = self.age >= self.duration - 1.4
+        t = (clamp((self.duration - self.age) / 1.4, 0, 1) if returning
+             else clamp(self.age / min(2.5, self.duration * .4), 0, 1))
+        t = t * t * (3 - 2 * t)
         return self.start_x + (target - self.start_x) * t
 
     @property
@@ -184,7 +189,7 @@ class GiftPerformance:
     @property
     def pose(self):
         t = self.age
-        if self.item_id == "music_box":
+        if self.item_id in ("music_box", "tes_guitar", "tes_microphone"):
             wave = .035 * math.sin(t * 7)
             return 1 + wave, 1 - wave, math.sin(t * 7) * 10, -abs(math.sin(t * 3.5)) * 6
         if self.item_id == "spinning_top":
@@ -211,6 +216,7 @@ class IllustratedRoomCanvas(RoomCanvas):
     """A large pet, curtained window, wallpaper detail and feeding flight."""
     sound_requested = Signal(str)
     mood_requested = Signal(float)
+    air_conditioner_toggle_requested = Signal()
 
     THEMES = dict(RoomCanvas.THEMES, camp_room=("#bbb9d0", "#ada4bd", "#877664", "#d0b9a4", "#a18b7a"))
 
@@ -252,10 +258,19 @@ class IllustratedRoomCanvas(RoomCanvas):
         self._last_external = (e.happy_until, e.dizzy_until, e.last_drag_time)
 
     def interact(self, cancel_gift=False):
-        if cancel_gift and self.performance:
-            self.life.x = self.performance.pet_x
-            self.performance = None
+        if cancel_gift:
+            if self.performance:
+                self.life.x = self.performance.pet_x
+                self.performance = None
+            self._last_toy = ""
+            self.update()
         self.life.interact()
+
+    def stop(self):
+        self.performance = None
+        self._gift_queue.clear()
+        self._last_toy = ""
+        super().stop()
 
     def start_activity(self, kind):
         if self._busy(): return False
@@ -281,7 +296,8 @@ class IllustratedRoomCanvas(RoomCanvas):
 
     def begin_trick(self, trick_id):
         if self._room_trick == trick_id: return
-        self._room_trick_origin = self.performance.pet_x if self.performance else self.life.x
+        self.interact(cancel_gift=True)
+        self._room_trick_origin = self.life.x
         self._room_trick = trick_id
         self.life.interact()
 
@@ -324,8 +340,10 @@ class IllustratedRoomCanvas(RoomCanvas):
         self._sync_room_trick()
         self.environment_time += clamp(float(dt), 0, 60)
         busy = self._busy()
-        self.life.toy_available = bool(self._last_toy or any(self._home.get("inventory", {}).get(k, 0)
-            for k in ("spinning_top", "music_box", "paper_star", "flower_bouquet")))
+        if busy and self.performance:
+            self.interact(cancel_gift=True)
+        self.life.toy_available = any(self._home.get("inventory", {}).get(k, 0)
+            for k in ("spinning_top", "music_box", "paper_star", "flower_bouquet", "tes_guitar", "tes_microphone"))
         old_state = self.life.state
         messages = self.life.advance(dt, hunger=self._home.get("hunger", 80),
             level=self._home.get("affection_level", 1), hour=datetime.now().hour if hour is None else hour,
@@ -337,12 +355,10 @@ class IllustratedRoomCanvas(RoomCanvas):
             self.performance.advance(dt)
             if not self.performance.active:
                 finished = self.performance
-                self.life.x = finished.pet_x
+                self.life.x = finished.start_x
                 self.performance = None
-                if finished.item_id == "spinning_top":
-                    self.life.interact()
-                else:
-                    self.life.state = "return"; self.life.target = .48; self.life.phase_time = 0
+                self._last_toy = ""
+                self.life.interact()
         if not self.performance and self._gift_queue and not busy:
             self._begin_gift(*self._gift_queue.pop(0))
         self._advance_food(dt)
@@ -350,10 +366,10 @@ class IllustratedRoomCanvas(RoomCanvas):
 
     def _begin_gift(self, item_id, duration, dialogue=""):
         self.performance = GiftPerformance(item_id, duration, start_x=self.life.x)
-        self._last_toy = "" if item_id == "spinning_top" else item_id
+        self._last_toy = ""
         if dialogue: self.show_message(dialogue, "interaction")
         self.mood_requested.emit(duration)
-        if item_id == "music_box": self.sound_requested.emit("music_box")
+        if item_id in ("music_box", "tes_guitar", "tes_microphone"): self.sound_requested.emit("music_box")
 
     def receive_gains(self, gains):
         # Hunger arrives with its food. Other rewards need no item performance.
@@ -386,7 +402,7 @@ class IllustratedRoomCanvas(RoomCanvas):
             self.show_food(event["item_id"], gain)
         else:
             item_id = event.get("effect", event["item_id"])
-            if item_id in {"spinning_top", "music_box", "paper_star", "flower_bouquet"}:
+            if item_id in {"spinning_top", "music_box", "paper_star", "flower_bouquet", "tes_guitar", "tes_microphone"}:
                 duration = clamp(float(event.get("duration", 7)), 6, 8)
                 dialogue = event.get("dialogue", "")
                 if not self.performance and not self._busy(): self._begin_gift(item_id, duration, dialogue)
@@ -401,10 +417,13 @@ class IllustratedRoomCanvas(RoomCanvas):
         foot = super()._render_foot()
         if self.engine.active_trick:
             foot.setX(self._trick_home_foot().x())
-        if not self._busy():
+        else:
             _scale, width, _height = self._geometry()
             ratio = self.performance.pet_x if self.performance else self.life.x
-            foot.setX(width * ratio)
+            # Busy states override the pose, never the room's saved location.
+            # Preserve the separate spicy-running displacement from the base view.
+            foot.setX(width * ratio + foot.x() - self._base_foot().x())
+        if not self._busy():
             foot.setY(foot.y() + self._local_pose()[3])
         return foot
 
@@ -521,13 +540,17 @@ class IllustratedRoomCanvas(RoomCanvas):
         self._paint_rug(painter, foot)
         painter.restore()
         self._paint_bowl(painter, width, height)
-        self._paint_gift(painter, width, height)
+        foreground_gift = self.performance and self.performance.item_id in {"tes_guitar", "tes_microphone"}
+        if not foreground_gift:
+            self._paint_gift(painter, width, height)
         self._paint_companion(painter)
         contact = self._pet_transform().map(self._render_foot())
         self._shadow(painter, QPointF(contact.x(), self._base_foot().y() + 3), 88, 15)
         painter.save(); painter.setTransform(self._pet_transform(), combine=True)
         self.renderer_provider().paint(painter, self._view(), self._render_foot())
         painter.restore()
+        if foreground_gift:
+            self._paint_gift(painter, width, height)
         self._paint_ambient(painter, width, height)
         painter.restore()
         self._paint_life_particles(painter)
@@ -598,6 +621,11 @@ class IllustratedRoomCanvas(RoomCanvas):
                       48 * scale, 105 * scale)
 
     def mouseReleaseEvent(self, event):
+        if self._slot("wall") == "air_conditioner" and self.air_conditioner_rect().contains(event.position()):
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.air_conditioner_toggle_requested.emit()
+                event.accept()
+                return
         if self._slot("window") == "sunny_chime" and self.chime_rect().contains(event.position()):
             self._chime_rang_at = self.environment_time
             self.sound_requested.emit("chime")
@@ -703,10 +731,32 @@ class IllustratedRoomCanvas(RoomCanvas):
         p.restore()
 
     def _paint_wall_decoration(self, p, width, height):
+        if self._slot("wall") == "air_conditioner":
+            scale, _w, _h = self._geometry()
+            rect = self.air_conditioner_rect()
+            rect = QRectF(rect.x()/scale,rect.y()/scale,rect.width()/scale,rect.height()/scale)
+            p.save(); p.setPen(ink(3)); p.setBrush(QColor("#ecf4f5"))
+            p.drawRoundedRect(rect,12,12); p.setBrush(QColor("#899fac"))
+            vent=rect.adjusted(12,rect.height()*.64,-12,-9); p.drawRoundedRect(vent,4,4)
+            on=self._home.get("air_conditioner_on",True)
+            p.setBrush(QColor("#8abca3" if on else "#b2aca5")); p.drawEllipse(rect.topRight()+QPointF(-17,15),3,3)
+            if on:
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                for n in range(4):
+                    phase=(self.environment_time*.45+n*.25)%1
+                    color=QColor("#a4d5de"); color.setAlphaF((1-phase)*.7)
+                    p.setPen(QPen(color,2.2,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap))
+                    start=QPointF(rect.left()+25+n*25,rect.bottom()+6+phase*75)
+                    wind=QPainterPath(start); wind.cubicTo(start+QPointF(-12,10),start+QPointF(12,25),start+QPointF(0,36)); p.drawPath(wind)
+            p.restore(); return
         # Keep decorations below the game HUD and away from the curtains.
         p.save(); p.translate(0, max(0, 191 - height * .34))
         super()._paint_wall_decoration(p, width, height)
         p.restore()
+
+    def air_conditioner_rect(self):
+        scale,width,height=self._geometry()
+        return QRectF(width*.20*scale, max(194,height*.34)*scale, 144*scale, 54*scale)
 
     def _paint_food_flight(self, p):
         age = self._food_age
@@ -851,13 +901,11 @@ class IllustratedRoomCanvas(RoomCanvas):
 
     def _paint_gift(self, p, width, height):
         perf = self.performance
-        item = perf.item_id if perf else self._last_toy
-        if not item or (not perf and item == "spinning_top"): return
-        t = perf.age if perf else self.life.elapsed
+        # Gift props belong only to their active performance, including particles.
+        if perf is None or not perf.active:
+            return
+        item, t = perf.item_id, perf.age
         x, y = width * .735, height - 86
-        if not perf:
-            p.save(); p.setOpacity(.72)
-            p.drawPixmap(QRectF(x - 20, y - 30, 40, 40), self.atlas.pixmap(item), QRectF(0, 0, 80, 80)); p.restore(); return
         opacity = min(1, max(.0, (perf.duration - t) / .7), t / .35)
         p.save(); p.setOpacity(opacity)
         if item == "spinning_top":
@@ -873,6 +921,17 @@ class IllustratedRoomCanvas(RoomCanvas):
             p.restore(); p.setPen(ink(3)); p.setBrush(QColor("#f7dcab")); p.drawRoundedRect(QRectF(-4, -25, 8, 26), 3, 3)
             p.setPen(QPen(QColor("#e0b573"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             for n in range(3): p.drawArc(QRectF(-45 - n * 3, -15 - n * 3, 90 + n * 6, 36 + n * 4), int((perf.angle + n * 97) * 16), 45 * 16)
+        elif item in ("tes_guitar", "tes_microphone"):
+            point=self.pet_center(); scale,_,_=self._geometry()
+            p.save(); p.translate(point.x()/scale+74,point.y()/scale+35)
+            p.rotate(math.sin(t*7)*9 if item=="tes_guitar" else 0)
+            p.drawPixmap(QRectF(-35,-68,70,70),self.atlas.pixmap(item),QRectF(0,0,80,80))
+            if item=="tes_guitar":
+                p.setPen(QPen(QColor("#e4b25e"),2)); p.drawArc(QRectF(-44,-32,88,42),int(t*260)*16,80*16)
+            p.restore()
+            for n,color in enumerate(("#cb8c94","#88b89b","#b5a2ce","#dfa95f")):
+                phase=(t*.32+n*.25)%1
+                self._note(p,QPointF(point.x()/scale+math.sin(t+n)*35,point.y()/scale-60-phase*100),color,math.sin(t+n)*14)
         elif item == "music_box":
             self._shadow(p, QPointF(x, y + 18), 60, 10); p.translate(x, y)
             p.setPen(ink(3)); p.setBrush(QColor("#b78c73")); p.drawRoundedRect(QRectF(-43, -22, 86, 45), 9, 9)

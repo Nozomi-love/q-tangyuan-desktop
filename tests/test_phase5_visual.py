@@ -90,7 +90,7 @@ class IllustratedUI(unittest.TestCase):
         self.assertIsInstance(self.panel.face_check, IconTile)
 
     def test_all_five_navigation_entries_are_large_pixmap_buttons(self):
-        self.assertEqual(set(self.panel.nav_buttons), {"home", "bag", "shop", "dress", "achievements"})
+        self.assertEqual(set(self.panel.nav_buttons), {"home", "bag", "shop", "achievements", "settings"})
         for button in self.panel.nav_buttons.values():
             self.assertFalse(button.icon().isNull()); self.assertEqual(button.iconSize().width(), 36)
             self.assertGreaterEqual(button.height(), 60)
@@ -107,7 +107,7 @@ class IllustratedUI(unittest.TestCase):
 
     def test_shop_has_separate_scrollable_food_gift_furniture_and_trick_galleries(self):
         self.panel.show_section("shop", animate=False)
-        self.assertEqual(self.panel.market_tabs.count(), 3)
+        self.assertEqual(self.panel.market_tabs.count(), 4)
         self.assertEqual(self.panel.shop_tabs.count(), 2)
         for key, (buy, feed, _text) in self.panel.shop_buttons.items():
             self.assertIsNotNone(buy.parentWidget().findChild(QLabel, "itemArtwork"), key)
