@@ -49,7 +49,7 @@ def main() -> int:
     # Compare Windows EXE's actual icon resource bytes to the desktop ICO.
     import pefile
     pe = pefile.PE(str(exe))
-    assert pe.VS_FIXEDFILEINFO[0].FileVersionMS == (2 << 16)
+    assert pe.VS_FIXEDFILEINFO[0].FileVersionMS == (1 << 16)
     assert pe.VS_FIXEDFILEINFO[0].FileVersionLS == 0
     icons = set()
     groups = 0
@@ -86,7 +86,7 @@ def main() -> int:
         assert result.returncode == 0, (name, result.returncode, result.stderr.decode(errors="replace"))
         assert not result.stderr, (name, result.stderr.decode(errors="replace"))
         state = json.loads(report.read_text(encoding="utf-8"))
-        assert state["version"] == "Q弹汤圆 v2.0 正式版"
+        assert state["version"] == "Q弹汤圆 v1.0 正式版"
         assert state["debug_menu_visible"] == ("demo-dev" in name)
         assert state["frozen"] is frozen
         assert Path(state["resource_root"]).resolve() == resource_root.resolve()

@@ -16,7 +16,8 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from models import PetData
 from save_manager import SaveDataError, SaveManager, SkinManager, SkinImportError, _reject_constant, _UNSEEN
 
-APP_VERSION = "Q弹汤圆 v2.0 正式版"
+VERSION = "1.0.0"
+APP_VERSION = "Q弹汤圆 v1.0 正式版"
 
 def player_paths(resource_root: Path, *, frozen: bool, isolated: bool = False):
     """Resolve paths without touching disk; frozen updates share a stable profile."""

@@ -32,7 +32,7 @@ from models import GameRules, PetData, PetModel
 from pet_engine import PetEngine, SkinRenderer, WorkArea
 from pet_window import PetWindow, ProceduralAudio
 from save_manager import SaveDataError, SaveManager, SkinManager, SkinImportError
-from release_support import APP_VERSION, BackupManager, SingleInstance, player_paths
+from release_support import APP_VERSION, VERSION, BackupManager, SingleInstance, player_paths
 
 PROJECT_ROOT = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
                 else Path(__file__).resolve().parent)
@@ -633,7 +633,7 @@ def main() -> int:
     app = QApplication([sys.argv[0]])
     app.setApplicationName("Q弹汤圆")
     app.setOrganizationName("Q弹汤圆")
-    app.setApplicationVersion("2.0.0")
+    app.setApplicationVersion(VERSION)
     app.setQuitOnLastWindowClosed(False)
 
     style_path = PROJECT_ROOT / "styles" / "theme.qss"
