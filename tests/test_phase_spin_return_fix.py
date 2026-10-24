@@ -115,7 +115,7 @@ class SpinReturnTests(unittest.TestCase):
             self.m.buy_item('spinning_top',True)
             for i in range(1,60):
                 self.r.performance.age=i*.1;bounds=self.r.pet_bounds()
-                self.assertGreaterEqual(bounds.top(),147);self.assertLessEqual(bounds.bottom(),self.r.height()-10)
+                self.assertGreaterEqual(bounds.top(),self.p.hud.geometry().bottom()+4);self.assertLessEqual(bounds.bottom(),self.r.height()-10)
                 self.assertTrue(self.r._hit_pet(self.r.pet_center()));self.r.grab()
             self.assertTrue(renderer.movies)
         finally:self.r.renderer_provider=old;renderer.stop()

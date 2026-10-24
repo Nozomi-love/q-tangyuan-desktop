@@ -16,6 +16,7 @@ from pathlib import Path
 import time
 
 from models import PetData, TEAM_SKIN_IDS
+from content_registry import strict_json_object
 
 
 def _reject_constant(value: str):
@@ -42,7 +43,8 @@ class SaveManager:
         except OSError as error:
             raise SaveDataError(f"无法读取存档：{error}") from error
         try:
-            data = json.loads(raw.decode("utf-8-sig"), parse_constant=_reject_constant)
+            data = json.loads(raw.decode("utf-8-sig"), parse_constant=_reject_constant,
+                              object_pairs_hook=strict_json_object)
             if not isinstance(data, dict):
                 raise ValueError("存档根节点必须是对象")
             version = data.get("schema_version", 1)

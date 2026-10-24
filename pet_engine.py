@@ -25,6 +25,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from illustrated_assets import plain_text
+from item_expansion import paint_headwear
+from content_registry import BUILTIN_REGISTRY, BUILTIN_TRICKS
 
 LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +71,56 @@ class Pose:
     angle: float
 
 
+class PresentationLifecycle(QObject):
+    """One explicit foreground performance; presentation events never pay rewards.
+
+    A token identifies one acceptance, including two consecutive uses of the same
+    item. Ending an already ended token is harmless. The engine owns trick
+    events; each room owns only its food/gift events and follows engine tricks.
+    """
+    changed = Signal(dict)
+    accepted = Signal(dict)
+    finished = Signal(dict)
+    cancelled = Signal(dict)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.active = None
+        self._serial = 0
+
+    def _emit(self, phase, reason="", record=None):
+        event = dict(self.active if record is None else record)
+        event.update(phase=phase, reason=str(reason))
+        # A receiver may retain this event; never expose our mutable anchor.
+        event["anchor"] = list(event["anchor"])
+        self.changed.emit(event)
+        getattr(self, phase).emit(event)
+        return event
+
+    def begin(self, kind, item_id, anchor):
+        if self.active is not None:
+            self.cancel("replaced")
+        self._serial += 1
+        self.active = {"kind": str(kind), "id": str(item_id),
+                       "token": self._serial,
+                       "anchor": [float(anchor.x()), float(anchor.y())]}
+        return self._emit("accepted")
+
+    def finish(self, reason="completed"):
+        if self.active is None:
+            return None
+        record = self.active
+        self.active = None
+        return self._emit("finished", reason, record)
+
+    def cancel(self, reason="cancelled"):
+        if self.active is None:
+            return None
+        record = self.active
+        self.active = None
+        return self._emit("cancelled", reason, record)
+
+
 class PetEngine:
     """Time-based movement; no QWidget, OS pixel coordinates, or file writes."""
 
@@ -82,6 +134,7 @@ class PetEngine:
     MAX_FRAME_DELTA = 0.10
 
     def __init__(self, area: WorkArea) -> None:
+        self.presentation = PresentationLifecycle()
         self.area = area
         self.elapsed = 0.0
         self.x = self.y = 0.0
@@ -104,11 +157,16 @@ class PetEngine:
         self._roll_rect = QRectF()
         self._roll_start_distance = 0.0
         self._roll_revolutions = 1
+        self._flash_distance = 0.0
+        self.scarf_lag = 0.0
+        self.goggles_flash_until = 0.0
         self.ball_x = self.ball_y = 0.0
         self.ball_vx = self.ball_vy = 0.0
         self.buff: dict = {}
+        self.cooling = False
         self.skin_scale = 1.0
         self.fireworks_until = 0.0
+        self.hood_flash_until = 0.0
         self.dizzy_until = 0.0
         self._next_spicy_at = 0.0
         self._run_direction = -1.0
@@ -141,7 +199,7 @@ class PetEngine:
         breath = 1.0 + 0.033 * math.sin(math.tau * self.elapsed / 3.2)
         # Rolling keeps a stable envelope so the whole skin and accessories fit
         # beside each edge; the jelly spring resumes when the tour finishes.
-        dynamic_height = breath if self._trick == "screen_roll" else breath * clamp(1.0 + self.spring, 0.55, 1.38)
+        dynamic_height = breath if self._trick in {"screen_roll", "reverse_flash"} else breath * clamp(1.0 + self.spring, 0.55, 1.38)
         # Breathing and jelly motion conserve projected area. Hunger is a
         # separate deformation: flatten without excessive 2.5x widening.
         return Pose(
@@ -185,6 +243,8 @@ class PetEngine:
         # A visual jump preserves the saved foot anchor even when pinned.
         if self._trick == "screen_roll":
             return self._roll_offset()
+        if self._trick == "reverse_flash":
+            return self.reverse_flash_offset()
         if self._trick == "flip":
             return QPointF(0, -self._trick_jump_height * math.sin(math.pi * self.trick_progress))
         if self._trick == "disco":
@@ -193,6 +253,34 @@ class PetEngine:
             hop = abs(math.sin((self.elapsed - self._trick_started) * math.pi * 2.4))
             return QPointF(0, -min(12.0, self._trick_jump_height) * hop)
         return QPointF()
+
+    def reverse_flash_offset(self, distance: float | None = None,
+                             pinned: bool | None = None) -> QPointF:
+        """A bounded presentation displacement, never a physical coordinate.
+
+        A room can pass its own safe distance and pinned=False; desktop pinning
+        must not suppress the independent room performance.
+        """
+        if self._trick != "reverse_flash":
+            return QPointF()
+        if (self.pinned if pinned is None else bool(pinned)):
+            return QPointF()
+        span = self._flash_distance if distance is None else float(distance)
+        if not math.isfinite(span):
+            return QPointF()
+        span = clamp(span, 0.0, 60.0)
+        age = clamp(self.elapsed - self._trick_started, 0.0, 2.6)
+        if age < .4:
+            return QPointF()
+        if age < .65:
+            u = (age - .4) / .25
+            mix = u * u * (3 - 2 * u)
+        elif age < 1.4:
+            mix = 1.0
+        else:
+            u = (age - 1.4) / 1.2
+            mix = 1.0 - u * u * (3 - 2 * u)
+        return QPointF(-span * mix, 0.0)
 
     @property
     def visual_angle(self) -> float:
@@ -260,18 +348,21 @@ class PetEngine:
         self._roll_revolutions = max(4, round(perimeter / (math.tau * self.BODY_HEIGHT / 2)))
         return True
 
-    def perform_trick(self, trick: str, *, roll_padding: float = 140.0) -> bool:
-        durations = {"flip": 1.1, "clone": 2.5, "ball": 5.0, "screen_roll": 12.0, "disco": 6.0}
-        if (trick not in durations or self._trick or self.held or self.dragging
-                or self.flat or not (self.grounded or self.pinned)):
+    def perform_trick(self, trick: str, *, roll_padding: float = 140.0,
+                      flash_distance: float | None = None) -> bool:
+        if not self.can_start_trick(trick, roll_padding=roll_padding, flash_distance=flash_distance):
             return False
         if trick == "screen_roll" and not self._prepare_screen_roll(roll_padding):
             return False
         self._trick = trick
-        if trick == "screen_roll":
+        if trick in {"screen_roll", "reverse_flash"}:
             self.angle = self.target_angle = 0.0
+        if trick == "reverse_flash":
+            body_left = self.x - self.BODY_WIDTH * self.pose.scale_x * .54
+            safe = min(60.0, self.area.width * .08, max(0.0, body_left - self.area.left - 4))
+            self._flash_distance = min(safe, 60.0 if flash_distance is None else flash_distance)
         self._trick_started = self.elapsed
-        self._trick_duration = durations[trick]
+        self._trick_duration = BUILTIN_TRICKS[trick].duration
         self._trick_jump_height = min(170.0, max(0.0,
             self.y - self.area.top - self.BODY_HEIGHT * self.buff.get("scale", 1.0) - 65.0))
         self.vx = self.vy = 0.0
@@ -280,6 +371,27 @@ class PetEngine:
             self.ball_vx, self.ball_vy = 145.0, -30.0
         self._celebration_hops = 0
         self.happy_until = self.elapsed + self._trick_duration + 0.8
+        self.presentation.begin("trick", trick, QPointF(self.x, self.y))
+        return True
+
+    def can_start_trick(self, trick: str, *, replacing: bool = False,
+                        roll_padding: float = 140.0,
+                        flash_distance: float | None = None) -> bool:
+        """Validate before replacing a previous performance; do not move it."""
+        if (trick not in BUILTIN_TRICKS or (self._trick and not replacing)
+                or self.held or self.dragging or self.flat
+                or self.state == PetState.DIZZY
+                or not (self.grounded or self.pinned)):
+            return False
+        if trick == "screen_roll":
+            if not math.isfinite(roll_padding) or roll_padding < 1:
+                return False
+            if min(self.area.width, self.area.height) - roll_padding * 2 < 20:
+                return False
+        if (trick == "reverse_flash" and flash_distance is not None
+                and (isinstance(flash_distance, bool) or not isinstance(flash_distance, (int, float))
+                     or not math.isfinite(flash_distance) or not 0 <= flash_distance <= 60)):
+            return False
         return True
 
     def _advance_ball(self, duration: float) -> None:
@@ -301,9 +413,18 @@ class PetEngine:
                 self.ball_vy = -max(190.0, self.ball_vy * 0.82)
                 self.happy_until = self.elapsed + 0.8
 
-    def cancel_trick(self) -> None:
+    def cancel_trick(self, reason: str = "cancelled") -> None:
         self._trick = ""
         self._trick_duration = 0.0
+        self._trick_jump_height = 0.0
+        self._roll_rect = QRectF()
+        self._roll_start_distance = 0.0
+        self._flash_distance = 0.0
+        self.ball_x = self.ball_y = self.ball_vx = self.ball_vy = 0.0
+        if reason == "completed":
+            self.presentation.finish(reason)
+        else:
+            self.presentation.cancel(reason)
 
     def reset(self, area: WorkArea | None = None) -> None:
         self._rest_x = None
@@ -328,7 +449,7 @@ class PetEngine:
         self._rest_x = None
         old_bottom = self.area.bottom
         if self._trick == "screen_roll":
-            self.cancel_trick()
+            self.cancel_trick("work_area_changed")
         self.area = area
         if self.pinned:
             self._confine_drag()
@@ -342,8 +463,7 @@ class PetEngine:
 
     def set_pinned(self, enabled: bool) -> None:
         self._rest_x = None
-        if self._trick == "screen_roll":
-            self.cancel_trick()
+        self.cancel_trick()
         self.pinned = bool(enabled)
         self.vx = self.vy = 0.0
         self.target_angle = 0.0
@@ -351,6 +471,8 @@ class PetEngine:
 
     def place(self, x: float, y: float) -> None:
         self._rest_x = None
+        self.cancel_trick()
+        self.spring = self.spring_velocity = 0.0
         self.x, self.y = x, y
         self.vx = self.vy = 0.0
         self.angle = self.target_angle = 0.0
@@ -446,6 +568,8 @@ class PetEngine:
         self.happy_until = self.elapsed + 0.8
         self.spring = min(self.spring, -0.29)
         self.spring_velocity = 0.0
+        # One deadline, not a queue of flashes: rapid pokes merge into one glint.
+        self.goggles_flash_until = self.elapsed + .55
         if not self.pinned and not self.flat and not self._trick:
             self.grounded = False
             self.vy = min(self.vy, -self.CLICK_JUMP_SPEED)
@@ -493,9 +617,10 @@ class PetEngine:
         self.elapsed += elapsed_seconds
         if self._trick and self.elapsed - self._trick_started >= self._trick_duration:
             trick = self._trick
-            self.cancel_trick()
+            self.cancel_trick("completed")
             self.rebound()
             if trick == "flip":
+                self.hood_flash_until = self.elapsed + 1.4
                 self._squash_on_landing(520.0)
         if (self._celebration_hops and not self._trick and not self.held and not self.flat
                 and self.elapsed >= self._next_celebration_at
@@ -541,6 +666,8 @@ class PetEngine:
             if self.dragging and self.elapsed - self.last_drag_time > 0.12:
                 target = 0.0
             self.angle += (target - self.angle) * (1.0 - math.exp(-14.0 * dt))
+            scarf_target = clamp(-target * 1.35, -25.0, 25.0) if self.dragging else 0.0
+            self.scarf_lag += (scarf_target - self.scarf_lag) * (1.0 - math.exp(-8.0 * dt))
             if abs(self.angle) < 0.002 and target == 0.0:
                 self.angle = 0.0
 
@@ -615,6 +742,7 @@ class SkinRenderer(QObject):
         self.images: dict[PetState, QImage] = {}
         self.draw_rects: dict[PetState, QRectF] = {}
         self.source_paths: dict[PetState, Path] = {}
+        self._flash_snapshots: dict[str, tuple] = {}
         self.reload()
 
     @staticmethod
@@ -665,18 +793,24 @@ class SkinRenderer(QObject):
         self.movies.clear()
         self._movie_states.clear()
 
-    def set_accessories(self, accessories: dict) -> None:
+    @staticmethod
+    def normalize_accessories(accessories: dict) -> dict:
         values = accessories if isinstance(accessories, dict) else {}
-        self.accessories = {
-            "head": values.get("head") if values.get("head") in {"sprout", "crown", "bow", "orange"} else "",
-            "face": "sunglasses" if values.get("face") == "sunglasses" else "",
-            "effect": values.get("effect") if values.get("effect") in {"steam", "fireflies", "rainbow"} else "",
+        choices = BUILTIN_REGISTRY.accessory_choices
+        result = {
+            "head": values.get("head") if values.get("head") in choices["head"] else "",
+            "face": values.get("face") if values.get("face") in choices["face"] else "",
+            "effect": values.get("effect") if values.get("effect") in choices["effect"] else "",
             "offset_y": int(clamp(values.get("offset_y", 0), -30, 30))
                 if isinstance(values.get("offset_y", 0), (int, float))
                 and math.isfinite(values.get("offset_y", 0)) else 0,
         }
-        if values.get("back") == "phoenix_wings":
-            self.accessories["back"] = "phoenix_wings"
+        if values.get("back") in choices["back"] and values.get("back"):
+            result["back"] = values["back"]
+        return result
+
+    def set_accessories(self, accessories: dict) -> None:
+        self.accessories = self.normalize_accessories(accessories)
         self.frame_changed.emit()
 
     @staticmethod
@@ -1082,7 +1216,7 @@ class SkinRenderer(QObject):
         offset = self.accessories["offset_y"]
         top = body.top() + offset
         if self.accessories["head"]:
-            result = result.united(QRectF(body.center().x() - 35, top - 38, 70, 48))
+            result = result.united(QRectF(body.center().x() - 44, top - 45, 88, 60))
         if self.accessories["face"]:
             result = result.united(QRectF(body.left() - 5, body.top() + body.height() * 0.42 + offset - 15,
                                           body.width() + 10, 30))
@@ -1093,7 +1227,37 @@ class SkinRenderer(QObject):
         if self.accessories.get("back") == "phoenix_wings":
             result = result.united(QRectF(body.center().x()-body.width()*.95,
                                           body.top()-12+offset, body.width()*1.9, body.height()+24))
+        elif self.accessories.get("back") == "summit_backpack":
+            result = result.united(QRectF(body.right()-20, top+body.height()*.25-35, 57, body.height()*.7+40))
+        elif self.accessories.get("back") == "kiting_scarf":
+            result = result.united(QRectF(body.left()-55, top+body.height()*.42-8,
+                                         body.width()+110, body.height()*.5+30))
         return result
+
+    def _flash_neutral_bounds(self, engine: PetEngine) -> QRectF:
+        """Time-independent art envelope for a pinned/free flash surface.
+
+        Expressions, ornaments, inverse breathing and the largest supported Buff
+        are included, so a GIF frame or breathing cannot resize the native Tool
+        window midway through this short performance.
+        """
+        local = QRectF()
+        for state in PetState:
+            local = local.united(self.visible_rect(state).united(self.accessory_bounds(state)))
+        scale = max(.6, float(engine.skin_scale)) * 1.2 * 1.065
+        result = QTransform().scale(scale, scale).mapRect(local)
+        return result.adjusted(-4, -38, 4, 4)
+
+    def desktop_flash_distance(self, engine: PetEngine) -> float:
+        """Shorten the visual dash using real art, never move a saved anchor."""
+        extent = self._flash_neutral_bounds(engine)
+        clearance = engine.x + extent.left() - engine.area.left - 5.0
+        return min(60.0, engine.area.width * .08, max(0.0, clearance))
+
+    @staticmethod
+    def flash_render_distance(engine: PetEngine) -> float:
+        value = getattr(engine, "flash_distance", getattr(engine, "_flash_distance", 0.0))
+        return clamp(float(value), 0.0, 60.0) if isinstance(value, (int, float)) and math.isfinite(value) else 0.0
 
     def _clone_offsets(self, engine: PetEngine) -> list[tuple[float, float, float]]:
         if engine.active_trick != "clone":
@@ -1107,6 +1271,10 @@ class SkinRenderer(QObject):
                  0.42 * envelope) for side in (-1, 1)]
 
     def scene_bounds(self, engine: PetEngine, foot: QPointF) -> QRectF:
+        if engine.active_trick == "reverse_flash":
+            base = self._flash_neutral_bounds(engine).translated(foot)
+            span = self.flash_render_distance(engine)
+            return base.united(base.translated(-span, 0)).adjusted(-3, -3, 3, 3)
         source = self.source_state(engine.state)
         body = self.visible_rect(engine.state)
         local = body.united(self.accessory_bounds(engine.state))
@@ -1128,11 +1296,17 @@ class SkinRenderer(QObject):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        if engine.active_trick == "reverse_flash":
+            self._paint_flash_echo(painter, engine, foot)
+        else:
+            self._flash_snapshots.clear()
         for dx, dy, opacity in self._clone_offsets(engine):
             self._paint_instance(painter, engine, foot + QPointF(dx, dy), opacity)
         if engine.active_trick == "disco":
             self._paint_disco(painter, engine, foot)
         self._paint_instance(painter, engine, foot, 1.0)
+        if engine.active_trick == "reverse_flash":
+            self._paint_flash_sign(painter, engine, foot)
         if engine.elapsed < engine.fireworks_until:
             self._paint_fireworks(painter, engine, foot)
         if engine.active_trick == "ball":
@@ -1147,6 +1321,73 @@ class SkinRenderer(QObject):
                 color.setAlphaF(0.5 * math.sin(math.pi * phase))
                 painter.setBrush(color)
                 painter.drawEllipse(QPointF(x, y), 2.0 + index % 3, 2.0 + index % 3)
+        painter.restore()
+
+    def _paint_flash_echo(self, painter: QPainter, engine: PetEngine, foot: QPointF) -> None:
+        """One frozen alpha silhouette per view/token; never accumulating trails."""
+        context = type(engine).__name__
+        token = (engine.presentation.active or {}).get("token", 0)
+        entry = self._flash_snapshots.get(context)
+        if entry is None or entry[0] != token:
+            # Capture the current PNG/GIF frame once in neutral coordinates.
+            class SnapshotView:
+                def __init__(self, owner):
+                    self.owner = owner
+                    self.visual_offset = QPointF()
+                    self.visual_angle = 0.0
+                    self.pose = owner.pose
+                    self.elapsed = owner.elapsed
+                def __getattr__(self, key):
+                    return getattr(self.owner, key)
+            rect = self._flash_neutral_bounds(engine).toAlignedRect()
+            pixmap = QPixmap(rect.size()); pixmap.fill(Qt.GlobalColor.transparent)
+            capture = QPainter(pixmap); capture.setRenderHint(QPainter.RenderHint.Antialiasing)
+            capture.translate(-rect.topLeft()); self._paint_instance(capture, SnapshotView(engine), QPointF(), 1.0)
+            capture.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+            capture.fillRect(rect, QColor("#d8ba7d")); capture.end()
+            entry = (token, pixmap, QRectF(rect))
+            self._flash_snapshots[context] = entry
+        age = engine.elapsed - engine._trick_started
+        if not .4 <= age < 2.5:
+            return
+        # Free bodies leave the silhouette behind; pinned bodies send only the
+        # silhouette left. A room supplies its own independent visual offset.
+        span = self.flash_render_distance(engine)
+        moving = engine.visual_offset
+        echo_offset = (engine.reverse_flash_offset(span, pinned=False)
+                       if abs(moving.x()) < 1e-8 and getattr(engine, "pinned", False) else QPointF())
+        opacity = .22 * min(1.0, (age - .4) / .12, max(0.0, (2.5 - age) / .55))
+        painter.save(); painter.setOpacity(painter.opacity() * max(0.0, opacity))
+        painter.drawPixmap(entry[2].translated(foot + echo_offset), entry[1], QRectF(entry[1].rect()))
+        painter.restore()
+
+    def _paint_flash_sign(self, painter: QPainter, engine: PetEngine, foot: QPointF) -> None:
+        age = engine.elapsed - engine._trick_started
+        opacity = min(1.0, age / .2, max(0.0, (2.6 - age) / .35))
+        if opacity <= 0:
+            return
+        bounds = self._flash_neutral_bounds(engine)
+        painter.save(); painter.setOpacity(painter.opacity() * opacity)
+        painter.translate(foot + QPointF(0, bounds.top() + 17))
+        turn = clamp((age - .65) / .75, 0, 1)
+        painter.scale(math.cos(math.pi * turn), 1)
+        painter.setPen(QPen(QColor("#a57a42"), 1.6, Qt.PenStyle.SolidLine,
+                            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        gradient = QLinearGradient(0, -10, 0, 10)
+        gradient.setColorAt(0, QColor("#fff0b9")); gradient.setColorAt(1, QColor("#dbb76f"))
+        painter.setBrush(gradient)
+        painter.drawRoundedRect(QRectF(-27, -12, 54, 24), 7, 7)
+        arrow = QPainterPath(QPointF(-15, 0)); arrow.lineTo(14, 0)
+        arrow.moveTo(6, -6); arrow.lineTo(14, 0); arrow.lineTo(6, 6)
+        painter.setPen(QPen(QColor("#8f6838"), 2.4, Qt.PenStyle.SolidLine,
+                            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        painter.drawPath(arrow); painter.restore()
+        painter.save(); painter.setPen(Qt.PenStyle.NoPen)
+        for index in range(2):
+            pulse = .5 + .5 * math.sin(age * 9 + index * math.pi)
+            color = QColor("#f0d18e"); color.setAlphaF(opacity * pulse * .6)
+            painter.setBrush(color)
+            painter.drawEllipse(foot + QPointF((index * 2 - 1) * 13, -8), 2.5, 2.5)
         painter.restore()
 
     def _paint_instance(self, painter: QPainter, engine: PetEngine, foot: QPointF, opacity: float) -> None:
@@ -1171,6 +1412,46 @@ class SkinRenderer(QObject):
         painter.restore()
 
     def _paint_back_accessory(self, painter: QPainter, engine: PetEngine) -> None:
+        if self.accessories.get("back") == "kiting_scarf":
+            body = self.anchor_rect(engine.state)
+            lag = clamp(float(getattr(engine, "scarf_lag", 0.0)), -25, 25)
+            sway = math.sin(engine.elapsed * 2.2) * 2.5
+            painter.save()
+            painter.translate(body.center().x(), body.top() + body.height() * .55 + self.accessories["offset_y"])
+            painter.setPen(QPen(QColor("#805a4d"), 1.7, Qt.PenStyle.SolidLine,
+                                Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            for side, color in ((-1, "#ba7472"), (1, "#88a7b8")):
+                tip_x = side * (body.width() * .43 + 31) + lag
+                tip_y = 25 + side * sway + abs(lag) * .15
+                ribbon = QPainterPath(QPointF(side * 14, -3))
+                ribbon.cubicTo(side * 35 + lag * .3, -8, tip_x - side * 16, tip_y - 10, tip_x, tip_y)
+                ribbon.lineTo(tip_x - side * 5, tip_y + 12)
+                ribbon.cubicTo(tip_x - side * 20, tip_y + 2, side * 32, 10, side * 10, 8)
+                ribbon.closeSubpath()
+                gradient = QLinearGradient(0, -4, 0, 40)
+                gradient.setColorAt(0, QColor(color).lighter(116)); gradient.setColorAt(1, QColor(color))
+                painter.setBrush(gradient); painter.drawPath(ribbon)
+                painter.setPen(QPen(QColor("#e8c9b0"), 1.2))
+                for i in range(3):
+                    x = tip_x - side * (3 + i * 2.8)
+                    painter.drawLine(QPointF(x, tip_y + 8), QPointF(x + side * 2, tip_y + 13))
+                painter.setPen(QPen(QColor("#805a4d"), 1.7))
+            painter.setBrush(QColor("#c48f89")); painter.drawRoundedRect(QRectF(-21, -7, 42, 15), 7, 7)
+            painter.setBrush(QColor("#e4b9a3")); painter.drawEllipse(QPointF(2, 0), 8, 8)
+            painter.restore(); return
+        if self.accessories.get("back") == "summit_backpack":
+            body=self.anchor_rect(engine.state)
+            painter.save(); painter.translate(body.right()-4, body.top()+body.height()*.55+self.accessories["offset_y"])
+            painter.setPen(QPen(QColor("#79523b"),2)); painter.setBrush(QColor("#d79c62"))
+            painter.drawRoundedRect(QRectF(-17,-24,43,52),10,10)
+            painter.setBrush(QColor("#efbf7b")); painter.drawRoundedRect(QRectF(1,2,28,21),5,5)
+            painter.setBrush(Qt.BrushStyle.NoBrush); painter.setPen(QPen(QColor("#f0d295"),2.4))
+            painter.drawEllipse(QRectF(-12,-19,31,13)); painter.drawEllipse(QRectF(-7,-16,22,7))
+            wave=math.sin(engine.elapsed*3)*4
+            painter.setPen(QPen(QColor("#826147"),2)); painter.drawLine(QPointF(22,-7),QPointF(24+wave,-48))
+            painter.setBrush(QColor("#ffe2a1" if getattr(engine,"trail_flash",False) else "#da8c75"))
+            painter.drawPolygon(QPolygonF([QPointF(24+wave,-48),QPointF(38+wave,-40),QPointF(24+wave,-33)]))
+            painter.restore(); return
         if self.accessories.get("back") != "phoenix_wings":
             return
         body = self.anchor_rect(engine.state)
@@ -1200,19 +1481,21 @@ class SkinRenderer(QObject):
         head = self.accessories["head"]
         painter.save()
         painter.translate(rect.center().x(), rect.top() + offset)
+        hot = engine.buff.get("item_id") == "chili" and not getattr(engine, "cooling", False)
         if self.accessories["effect"] == "steam":
             for index in range(4):
-                phase = (engine.elapsed * 0.32 + index * 0.25) % 1
+                cooled = getattr(engine, "cooling", False)
+                phase = (engine.elapsed * (.65 if hot else .16 if cooled else .32) + index * 0.25) % 1
                 x = (index - 1.5) * 26
                 y = -8 - phase * 49
-                color = QColor("#e6bc87")
-                color.setAlphaF(0.62 * math.sin(math.pi * phase))
+                color = QColor("#ce6858" if hot else "#b39e94" if cooled else "#cf8b78")
+                color.setAlphaF((.3 if cooled else .68) * math.sin(math.pi * phase))
                 painter.setPen(QPen(color, 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
                 path = QPainterPath(QPointF(x, y + 9))
                 path.cubicTo(x - 8, y + 3, x + 8, y - 3, x, y - 10)
                 painter.drawPath(path)
                 painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor(245, 204, 116, int(150 * math.sin(math.pi * phase))))
+                painter.setBrush(QColor(228, 132, 108, int(110 * math.sin(math.pi * phase))))
                 painter.drawEllipse(QPointF(x + 9, y - 5), 1.8, 1.8)
         effect = self.accessories["effect"]
         if effect == "fireflies":
@@ -1225,17 +1508,29 @@ class SkinRenderer(QObject):
                 painter.setBrush(glow); painter.drawEllipse(QPointF(x, y), 6, 6)
                 painter.setBrush(QColor("#fff5b8")); painter.drawEllipse(QPointF(x, y), 2, 2)
         elif effect == "rainbow":
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            for i, color in enumerate(("#ecb0b6", "#efbd91", "#eedc97", "#b8d29f", "#a0cbd5", "#b1b7df", "#d4b2de")):
-                painter.setPen(QPen(QColor(color), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-                painter.drawEllipse(QRectF(-rect.width()/2 - 20 - i*2, rect.height() - 18 - i,
-                    rect.width() + 40 + i*4, 24 + i*2))
+            painter.setPen(Qt.PenStyle.NoPen)
+            for side in (-1,1):
+                x=side*(rect.width()*.35+8+math.sin(engine.elapsed*.7)*4)
+                gradient=QLinearGradient(x,-62,0,rect.height()+8)
+                gradient.setColorAt(0,QColor(255,230,168,12)); gradient.setColorAt(.7,QColor(255,239,192,65)); gradient.setColorAt(1,QColor(255,247,219,10))
+                painter.setBrush(gradient)
+                painter.drawPolygon(QPolygonF([QPointF(x-5,-62),QPointF(x+5,-62),QPointF(30,rect.height()+8),QPointF(-30,rect.height()+8)]))
+            painter.setPen(QPen(QColor(220,185,107,145),2)); painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(QRectF(-rect.width()/2-16,rect.height()-8,rect.width()+32,14))
         if head == "orange":
             painter.setPen(QPen(QColor("#79523b"), 2.0))
             painter.setBrush(QColor("#efa54d")); painter.drawEllipse(QRectF(-21, -32, 42, 33))
             painter.setBrush(QColor("#a6bd78")); painter.drawEllipse(QRectF(1, -37, 19, 8))
             painter.setBrush(QColor("#fff0b5")); painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(QRectF(-13, -24, 6, 4))
+            if engine.state == PetState.DIZZY:
+                painter.setPen(QPen(QColor("#bb823e"),1.5)); painter.setBrush(QColor("#f5cc89"))
+                for side in (-1,1):
+                    spread=6+abs(math.sin(engine.elapsed*7))*6
+                    painter.drawPolygon(QPolygonF([QPointF(side*12,-22),QPointF(side*(24+spread),-29),QPointF(side*(27+spread),-13),QPointF(side*13,-9)]))
+        elif head in {"cooling_cap", "demon_hood", "mini_gnar_hat"}:
+            paint_headwear(painter, head, engine.elapsed, bool(engine.active_trick), hot,
+                           engine.elapsed < engine.hood_flash_until)
         elif head == "sprout":
             painter.setPen(QPen(QColor("#5f9965"), 3.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             stem = QPainterPath(QPointF(0, 2))
@@ -1275,6 +1570,33 @@ class SkinRenderer(QObject):
             painter.setBrush(QColor("#ef9ab7"))
             painter.drawRoundedRect(QRectF(-5, -14, 10, 13), 4, 4)
         painter.restore()
+        if self.accessories["face"] == "seven_goggles":
+            painter.save()
+            painter.translate(rect.center().x(), rect.top() + rect.height() * .42 + offset)
+            width = min(100.0, rect.width() * .86)
+            painter.setPen(QPen(QColor("#7c6453"), 2.2, Qt.PenStyle.SolidLine,
+                                Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            band = QPainterPath(QPointF(-width / 2 - 8, 0))
+            band.quadTo(0, 9, width / 2 + 8, 0)
+            painter.setBrush(Qt.BrushStyle.NoBrush); painter.drawPath(band)
+            lens = width * .43
+            for side in (-1, 1):
+                x = -width / 2 if side < 0 else width / 2 - lens
+                gradient = QLinearGradient(x, -12, x + lens, 12)
+                gradient.setColorAt(0, QColor("#e9f5e9")); gradient.setColorAt(.5, QColor("#a1c8c4")); gradient.setColorAt(1, QColor("#69969e"))
+                painter.setBrush(gradient); painter.drawRoundedRect(QRectF(x, -12, lens, 24), 7, 7)
+                painter.setPen(QPen(QColor("#eff8ef"), 1.7))
+                painter.drawLine(QPointF(x + 7, -6), QPointF(x + 16, -2))
+                painter.setPen(QPen(QColor("#7c6453"), 2.2))
+            painter.setBrush(QColor("#d1b889")); painter.drawRoundedRect(QRectF(-8, -6, 16, 10), 3, 3)
+            remaining = getattr(engine, "goggles_flash_until", 0) - engine.elapsed
+            if 0 < remaining <= .55:
+                opacity = math.sin(math.pi * remaining / .55)
+                painter.setPen(QPen(QColor(255, 247, 196, int(220 * opacity)), 3.0,
+                                    Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+                seven = QPainterPath(QPointF(10, -7)); seven.lineTo(26, -7); seven.lineTo(15, 9)
+                painter.drawPath(seven)
+            painter.restore()
         if self.accessories["face"] == "sunglasses":
             painter.save()
             painter.translate(rect.center().x(), rect.top() + rect.height() * 0.42 + offset)

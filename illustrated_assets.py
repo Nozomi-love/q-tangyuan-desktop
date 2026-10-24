@@ -18,7 +18,17 @@ def plain_text(value) -> str:
     return _EMOJI.sub("", str(value)).strip()
 
 
+from item_expansion import paint_collection_icon
+
 ICON_IDS = (
+    "gnar_workbook", "practice_hourglass", "fist_bump_glove",
+    "postmatch_noodles", "late_practice_snack", "seven_goggles", "kiting_scarf",
+    "practice_room", "summit_wall", "reverse_flash",
+    "form_dice", "kiting_rope", "summit_pickaxe", "drama_clapper",
+    "iced_cola", "early_champagne", "summit_lunch", "watchparty_popcorn",
+    "cooling_cap", "demon_hood", "summit_backpack", "mini_gnar_hat",
+    "esports_chair", "training_dummy", "tactics_screen", "postmatch_studio",
+    "red_steam", "cleanse_orange", "champion_spotlight",
     "air_conditioner", "egg", "gragas_barrel", "phoenix_wings", "tes_guitar", "tes_microphone",
     "water", "sugar", "osmanthus", "sesame", "strawberry", "matcha", "chili",
     "paper_star", "flower_bouquet", "music_box", "spinning_top",
@@ -33,6 +43,16 @@ ICON_IDS = (
     "sunny_chime", "orange", "disco", "camp_room", "fireflies", "sesame_friend", "royal_rug", "rainbow",
     "level_8", "level_10", "level_15", "level_20", "level_25", "level_30",
 )
+
+
+def registered_icon_ids(catalog=None) -> tuple[str, ...]:
+    """The same explicit icon set is used by the UI and portable builds."""
+    from content_registry import BUILTIN_REGISTRY, valid_content_id
+    selected = set(ICON_IDS)
+    selected.update(catalog.icon_ids if catalog is not None else BUILTIN_REGISTRY.icon_ids)
+    if any(not valid_content_id(key) for key in selected):
+        raise ValueError("图标注册表包含不安全的资源 ID")
+    return tuple(sorted(selected))
 
 
 class Brush:
@@ -164,7 +184,10 @@ def paint_icon(painter: QPainter, key: str) -> None:
     painter.setPen(Qt.PenStyle.NoPen)
     b.ellipse(14, 65, 52, 8, "#18794f35")
     b.pen()
-    if key == "air_conditioner":
+    if paint_collection_icon(b, key):
+        painter.restore()
+        return
+    elif key == "air_conditioner":
         b.rect(8, 17, 64, 35, "#f4fbfd", 9, "#c9dce4")
         b.rect(14, 38, 52, 10, "#819bad", 3); b.pen("#e8faff", 1.5)
         for x in range(20, 65, 9): b.line(x, 39, x, 47)
@@ -572,6 +595,6 @@ class IconAtlas:
     def icon(self, key: str) -> QIcon:
         return QIcon(self.pixmap(key))
 
-    def warm(self) -> None:
-        for key in ICON_IDS:
+    def warm(self, catalog=None) -> None:
+        for key in registered_icon_ids(catalog):
             self.pixmap(key)

@@ -92,7 +92,7 @@ class IllustratedUI(unittest.TestCase):
     def test_all_five_navigation_entries_are_large_pixmap_buttons(self):
         self.assertEqual(set(self.panel.nav_buttons), {"home", "bag", "shop", "achievements", "settings"})
         for button in self.panel.nav_buttons.values():
-            self.assertFalse(button.icon().isNull()); self.assertEqual(button.iconSize().width(), 36)
+            self.assertFalse(button.icon().isNull()); self.assertGreaterEqual(button.iconSize().width(), 40)
             self.assertGreaterEqual(button.height(), 60)
 
     def test_every_book_opens_without_squeezing_room_or_clipping_page(self):
@@ -119,7 +119,7 @@ class IllustratedUI(unittest.TestCase):
         self.panel.show_section("dress", animate=False); self.panel.dress_tabs.setCurrentIndex(1)
         self.panel.head_combo.buttons[self.panel.head_combo.findData("crown")].click()
         self.assertEqual(model.data.accessories["head"], "crown")
-        tile = self.panel.head_combo.buttons[2]
+        tile = self.panel.head_combo.buttons[self.panel.head_combo.findData("crown")]
         self.assertTrue(tile.isChecked()); self.assertEqual(tile.badge, "已穿戴")
         self.assertFalse(tile.icon().isNull())
 
@@ -167,7 +167,7 @@ class IllustratedUI(unittest.TestCase):
                     bounds = room.pet_bounds()
                     self.assertGreaterEqual(bounds.left(), -1, (width, trick, step))
                     self.assertLessEqual(bounds.right(), width + 1, (width, trick, step))
-                    self.assertGreaterEqual(bounds.top(), 147, (width, trick, step))
+                    self.assertGreaterEqual(bounds.top(), self.panel.hud.geometry().bottom() + 4, (width, trick, step))
                     self.assertLessEqual(bounds.bottom(), height + 1, (width, trick, step))
                     engine.advance(duration / 31)
                 engine.cancel_trick()

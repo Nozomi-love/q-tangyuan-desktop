@@ -284,6 +284,8 @@ class SpeechBubble(QWidget):
 
 class PetWindow(QWidget):
     trick_finished = Signal(str)
+    presentation_event = Signal(dict)
+    presentation_interrupt_requested = Signal(str)
     clicked = Signal()
     collectible_clicked = Signal()
     dashboard_requested = Signal()
@@ -325,6 +327,7 @@ class PetWindow(QWidget):
             raise RuntimeError("未找到可用显示器")
         self.active_screen = primary
         self.engine = PetEngine(self.work_area(primary))
+        self.engine.presentation.changed.connect(self.presentation_event.emit)
         self.renderer = SkinRenderer(skin_directory)
         self.renderer.frame_changed.connect(self.update)
         self._overlay_enabled = True
@@ -382,7 +385,7 @@ class PetWindow(QWidget):
 
     def _screen_geometry_changed(self, _rect: object) -> None:
         if self.active_screen in QGuiApplication.screens():
-            self.engine.set_work_area(self.work_area(self.active_screen))
+            self._set_work_area(self.work_area(self.active_screen))
             self._sync_window()
             self.position_changed.emit()
 
@@ -409,12 +412,20 @@ class PetWindow(QWidget):
 
     def _adopt_screen(self, screen: QScreen) -> None:
         self.active_screen = screen
-        self.engine.set_work_area(self.work_area(screen))
+        self._set_work_area(self.work_area(screen))
+
+    def _set_work_area(self, area: WorkArea) -> None:
+        if area != self.engine.area and self.engine.active_trick:
+            self.presentation_interrupt_requested.emit("work_area_changed")
+            self.cancel_presentation("work_area_changed")
+        self.engine.set_work_area(area)
 
     def reset_to_primary(self) -> None:
         primary = QGuiApplication.primaryScreen()
         if primary is None:
             return
+        self.presentation_interrupt_requested.emit("reset")
+        self.cancel_presentation("reset")
         self._pressed = False
         self._samples.clear()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -429,6 +440,8 @@ class PetWindow(QWidget):
     def set_pinned(self, enabled: bool) -> None:
         if self.engine.pinned == bool(enabled):
             return
+        self.presentation_interrupt_requested.emit("pin_changed")
+        self.cancel_presentation("pin_changed")
         self.engine.set_pinned(enabled)
         self._sync_window()
         self.pinned_changed.emit(self.engine.pinned)
@@ -436,10 +449,12 @@ class PetWindow(QWidget):
 
     def capture_position(self) -> dict:
         area = self.engine.area
+        resting_x = self.engine._rest_x
+        x = self.engine.x if resting_x is None else resting_x
         return {
             "pinned": self.engine.pinned,
             "screen": self.active_screen.name(),
-            "x_ratio": min(1.0, max(0.0, (self.engine.x - area.left) / area.width)),
+            "x_ratio": min(1.0, max(0.0, (x - area.left) / area.width)),
             "y_ratio": min(1.0, max(0.0, (self.engine.y - area.top) / area.height)),
         }
 
@@ -451,6 +466,8 @@ class PetWindow(QWidget):
                       QGuiApplication.primaryScreen())
         if screen is None:
             return
+        self.presentation_interrupt_requested.emit("restore")
+        self.cancel_presentation("restore")
         self._adopt_screen(screen)
         area = self.engine.area
         self.engine.set_pinned(bool(state.get("pinned", False)))
@@ -466,8 +483,8 @@ class PetWindow(QWidget):
             candidate.deleteLater()
             return False
         old = self.renderer
-        if self.engine.active_trick == "screen_roll":
-            self.engine.cancel_trick()
+        self.presentation_interrupt_requested.emit("skin_changed")
+        self.cancel_presentation("skin_changed")
         candidate.set_accessories(old.accessories)
         self.renderer = candidate
         candidate.frame_changed.connect(self.update)
@@ -477,30 +494,52 @@ class PetWindow(QWidget):
         return True
 
     def set_accessories(self, accessories: dict) -> None:
-        before = dict(self.renderer.accessories)
-        self.renderer.set_accessories(accessories)
-        if self.engine.active_trick == "screen_roll" and before != self.renderer.accessories:
-            self.engine.cancel_trick()
+        candidate = self.renderer.normalize_accessories(accessories)
+        if self.engine.active_trick and candidate != self.renderer.accessories:
+            self.presentation_interrupt_requested.emit("accessories_changed")
+            self.cancel_presentation("accessories_changed")
+        self.renderer.set_accessories(candidate)
         self._sync_window()
 
     def perform_trick(self, trick: str) -> bool:
-        started = (self.engine.perform_trick(trick, roll_padding=self.renderer.screen_roll_padding(self.engine.skin_scale))
-                   if trick == "screen_roll" else self.engine.perform_trick(trick))
+        options = ({"roll_padding": self.renderer.screen_roll_padding(self.engine.skin_scale)}
+                   if trick == "screen_roll" else
+                   {"flash_distance": self.renderer.desktop_flash_distance(self.engine)}
+                   if trick == "reverse_flash" else {})
+        started = self.engine.perform_trick(trick, **options)
         if not started:
             return False
         self._awaiting_drop = False
         self._sync_window()
         return True
 
+    def can_start_trick(self, trick: str, *, replacing: bool = False) -> bool:
+        return self.engine.can_start_trick(trick, replacing=replacing,
+            roll_padding=self.renderer.screen_roll_padding(self.engine.skin_scale),
+            flash_distance=self.renderer.desktop_flash_distance(self.engine) if trick == "reverse_flash" else None)
+
+    def cancel_presentation(self, reason: str = "cancelled") -> bool:
+        """Clear temporary trick layers, preserving the saved desktop anchor."""
+        active = bool(self.engine.active_trick)
+        self.engine.cancel_trick(reason)
+        self._sync_window()
+        return active
+
     def set_buff(self, buff: dict) -> None:
         self.engine.set_buff(buff)
         self._sync_window()
 
     def set_test_flat(self, enabled: bool) -> None:
+        if enabled and not self.engine.manual_flat:
+            self.presentation_interrupt_requested.emit("starving")
+            self.cancel_presentation("starving")
         self.engine.set_flat(enabled)
         self.update()
 
     def set_starving(self, enabled: bool) -> None:
+        if enabled and not self.engine.starving:
+            self.presentation_interrupt_requested.emit("starving")
+            self.cancel_presentation("starving")
         self.engine.set_starving(enabled)
         self._sync_window()
 
@@ -511,6 +550,8 @@ class PetWindow(QWidget):
             self._sync_window()
             self.show()
         else:
+            self.presentation_interrupt_requested.emit("hidden")
+            self.cancel_presentation("hidden")
             self.bubble._notifications.clear()
             self.bubble._expires = 0.0
             self.bubble.stop()
@@ -537,6 +578,8 @@ class PetWindow(QWidget):
         self.bubble.follow(transform.mapRect(rect), self.engine.area)
 
     def reload_skins(self) -> None:
+        self.presentation_interrupt_requested.emit("skin_changed")
+        self.cancel_presentation("skin_changed")
         self.renderer.reload()
         self.update()
 
@@ -579,7 +622,7 @@ class PetWindow(QWidget):
         if self.active_screen not in QGuiApplication.screens():
             self.reset_to_primary()
         else:
-            self.engine.set_work_area(self.work_area(self.active_screen))
+            self._set_work_area(self.work_area(self.active_screen))
         impact = self.engine.advance(dt)
         if impact is not None:
             self.landed.emit(impact)
@@ -636,11 +679,14 @@ class PetWindow(QWidget):
             event.ignore()
             return
         if self.engine.active_trick == "screen_roll":
-            self.engine.cancel_trick()
+            self.presentation_interrupt_requested.emit("pointer_press")
+            self.cancel_presentation("pointer_press")
             self.engine.rebound()
             self._sync_window()
             event.accept()
             return
+        self.presentation_interrupt_requested.emit("pointer_press")
+        self.cancel_presentation("pointer_press")
         self._pressed = True
         self._press_time = time.perf_counter()
         self._press_global = QPointF(event.globalPosition())
@@ -799,11 +845,12 @@ class PetWindow(QWidget):
         self.close_requested.emit()
 
     def stop(self) -> None:
+        self.presentation_interrupt_requested.emit("stopped")
+        self.cancel_presentation("stopped")
         self.timer.stop()
         self.click_timer.stop()
         self._pending_pokes.clear()
         self.bubble.stop()
         self.renderer.stop()
-        self.engine.cancel_trick()
         self._pressed = False
         self.engine.held = self.engine.dragging = False

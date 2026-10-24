@@ -1,7 +1,6 @@
 """Build a fresh Windows portable ZIP without copying player data or deleting files."""
 from __future__ import annotations
 
-import ast
 from datetime import datetime
 import hashlib
 from importlib.metadata import version
@@ -38,9 +37,14 @@ def checked_source(root: Path, relative: str) -> Path:
 
 def resource_files(root: Path) -> list[str]:
     """Allow-list only built-in art, current configuration and the theme."""
-    tree = ast.parse((root / "illustrated_assets.py").read_text(encoding="utf-8"))
-    icons = next(ast.literal_eval(n.value) for n in tree.body
-                 if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "ICON_IDS" for t in n.targets))
+    # Resolve metadata without constructing widgets or generating any artwork.
+    # Runtime loading and distribution share one explicit content registration.
+    project_path = str(ROOT)
+    if project_path not in sys.path:
+        sys.path.insert(0, project_path)
+    from illustrated_assets import registered_icon_ids
+    from models import Catalog
+    icons = registered_icon_ids(Catalog.load(checked_source(root, "config/catalog.json")))
     expression_file = "assets/skins/default/expressions.json"
     expressions = json.loads(checked_source(root, expression_file).read_text(encoding="utf-8"))
     selected = ["assets/icons/tangyuan.ico", "config/catalog.json", "styles/theme.qss", expression_file]
@@ -48,6 +52,19 @@ def resource_files(root: Path) -> list[str]:
     selected += ["assets/item_icons/" + icon + ".png" for icon in icons]
     selected += ["assets/sounds/" + name + ".wav" for name in ("poke", "eat", "coin", "music_box", "chime")]
     catalog = json.loads(checked_source(root, "config/catalog.json").read_text(encoding="utf-8"))
+    # Artist room layers are opt-in known IDs, never an unrestricted recursive
+    # asset copy. Private imports, unused drafts and reference PNGs stay outside.
+    furniture = catalog.get("furniture", {})
+    themes = [key for key, item in furniture.items() if item.get("slot") == "theme"]
+    room_ids = set(furniture) | {"window_frame", "low_bookcase"}
+    room_stages = ("outdoors", "walls_floor", "back_furniture", "lighting", "middle_furniture", "foreground")
+    room_ids.update(theme + "__" + stage for theme in themes for stage in room_stages)
+    for key in sorted(room_ids):
+        relative = "assets/room_layers/" + key + ".png"
+        candidate = root / relative
+        if candidate.exists() or candidate.is_symlink():
+            checked_source(root, relative)
+            selected.append(relative)
     for skin_id in catalog.get("team_skins", {}):
         prefix = "assets/skins/teams_s16/" + skin_id + "/"
         manifest = json.loads(checked_source(root, prefix + "manifest.json").read_text(encoding="utf-8"))

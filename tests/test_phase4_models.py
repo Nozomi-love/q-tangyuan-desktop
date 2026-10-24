@@ -19,7 +19,7 @@ class PerkTests(unittest.TestCase):
         for level in range(1,7):
             pet = PetModel(PetData(affection_level=level))
             for key, perk in pet.catalog.perks.items():
-                self.assertEqual(pet.has_perk(key), level >= perk['level'])
+                self.assertEqual(pet.has_perk(key), not perk.get('store_only') and level >= perk['level'])
 
     def test_upgrade_unlock_signal_and_guardian_once(self):
         pet = PetModel(PetData(affection_level=5, affection_exp=2499))
@@ -77,12 +77,12 @@ class PerkTests(unittest.TestCase):
 
     def test_accessory_equip_replaces_slot_offset_and_unequip_persist(self):
         pet=PetModel(PetData(affection_level=6))
-        for slot,item in [('head','sprout'),('head','crown'),('head','bow'),('face','sunglasses'),('effect','steam')]:
+        for slot,item in [('head','crown'),('face','sunglasses'),('effect','steam')]:
             self.assertTrue(pet.equip_accessory(slot,item))
         self.assertTrue(pet.set_accessory_offset(-30))
         self.assertTrue(pet.set_accessory_offset(30))
         restored=PetModel(PetData.from_dict(pet.snapshot()))
-        self.assertEqual(restored.effective_accessories(),{'head':'bow','face':'sunglasses','effect':'steam','offset_y':30})
+        self.assertEqual(restored.effective_accessories(),{'head':'crown','face':'sunglasses','effect':'steam','offset_y':30})
         self.assertTrue(restored.equip_accessory('head',''))
         self.assertEqual(restored.effective_accessories()['head'],'')
 
@@ -95,8 +95,8 @@ class PerkTests(unittest.TestCase):
         self.assertEqual(pet.data.accessories['head'],'crown')
 
     def test_soul_achievement_on_accessory_and_claim_exactly_once(self):
-        pet=PetModel(PetData(affection_level=2))
-        pet.equip_accessory('head','sprout')
+        pet=PetModel(PetData(affection_level=3))
+        pet.equip_accessory('head','crown')
         self.assertIn('soul_infusion',pet.data.unlocked_achievements)
         coins=pet.data.coins
         self.assertTrue(pet.claim_achievement('soul_infusion'))
@@ -148,7 +148,7 @@ class PerkTests(unittest.TestCase):
         self.assertFalse(data.custom_import_unlocked)
 
     def test_invalid_persistent_customization_fields_fail_closed(self):
-        for raw in [{'selected_skin_id':'../x'},{'custom_import_unlocked':1},{'accessories':{'head':'evil'}},{'accessories':{'offset_y':float('nan')}},{'stats':{'customizations':-1}}]:
+        for raw in [{'selected_skin_id':'../x'},{'custom_import_unlocked':1},{'accessories':{'head':'../evil'}},{'accessories':{'offset_y':float('nan')}},{'stats':{'customizations':-1}}]:
             with self.subTest(raw=raw),self.assertRaises(ValueError):
                 PetData.from_dict(raw)
 

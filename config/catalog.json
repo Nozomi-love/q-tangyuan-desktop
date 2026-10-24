@@ -201,6 +201,175 @@
       "room_effect": "tes_microphone",
       "performance_seconds": 7,
       "dialogue": "tes_microphone"
+    },
+    "form_dice": {
+      "name": "状态骰子",
+      "icon": "form_dice",
+      "category": "gift",
+      "tier": 2,
+      "cost": 210,
+      "hunger": 0,
+      "exp": 80,
+      "dialogue": "item_form_dice",
+      "room_effect": "form_dice",
+      "performance_seconds": 7,
+      "description": "333 / 666 / 999 · 三段随机体型"
+    },
+    "kiting_rope": {
+      "name": "拉扯弹力绳",
+      "icon": "kiting_rope",
+      "category": "gift",
+      "tier": 1,
+      "cost": 60,
+      "hunger": 0,
+      "exp": 20,
+      "dialogue": "item_kiting_rope",
+      "room_effect": "kiting_rope",
+      "performance_seconds": 7,
+      "description": "进退三回 · 弹力绳拉扯"
+    },
+    "summit_pickaxe": {
+      "name": "登山镐",
+      "icon": "summit_pickaxe",
+      "category": "gift",
+      "tier": 2,
+      "cost": 210,
+      "hunger": 0,
+      "exp": 80,
+      "dialogue": "item_summit_pickaxe",
+      "room_effect": "summit_pickaxe",
+      "performance_seconds": 7,
+      "description": "三阶登峰 · 插旗回程"
+    },
+    "drama_clapper": {
+      "name": "短剧场记板",
+      "icon": "drama_clapper",
+      "category": "gift",
+      "tier": 2,
+      "cost": 210,
+      "hunger": 0,
+      "exp": 80,
+      "dialogue": "item_drama_clapper",
+      "room_effect": "drama_clapper",
+      "performance_seconds": 7,
+      "description": "三幕短剧 · 双分身同台"
+    },
+    "iced_cola": {
+      "name": "冰镇可乐",
+      "icon": "iced_cola",
+      "category": "food",
+      "tier": 1,
+      "cost": 30,
+      "hunger": 15,
+      "exp": 0,
+      "dialogue": "item_iced_cola",
+      "room_effect": "iced_cola",
+      "performance_seconds": 3,
+      "description": "冰雾降温 · 解除辣油红温"
+    },
+    "early_champagne": {
+      "name": "赛前香槟",
+      "icon": "early_champagne",
+      "category": "food",
+      "tier": 3,
+      "cost": 135,
+      "hunger": 65,
+      "exp": 0,
+      "dialogue": "item_early_champagne",
+      "room_effect": "early_champagne",
+      "performance_seconds": 3,
+      "description": "气泡庆贺 · 木塞回落"
+    },
+    "summit_lunch": {
+      "name": "山顶便当",
+      "icon": "summit_lunch",
+      "category": "food",
+      "tier": 2,
+      "cost": 75,
+      "hunger": 35,
+      "exp": 0,
+      "dialogue": "item_summit_lunch",
+      "room_effect": "summit_lunch",
+      "performance_seconds": 3,
+      "description": "三座饭峰 · 吃到插旗"
+    },
+    "watchparty_popcorn": {
+      "name": "观赛爆米花",
+      "icon": "watchparty_popcorn",
+      "category": "food",
+      "tier": 1,
+      "cost": 30,
+      "hunger": 15,
+      "exp": 0,
+      "dialogue": "item_watchparty_popcorn",
+      "room_effect": "watchparty_popcorn",
+      "performance_seconds": 3,
+      "description": "五颗抛物线 · 接住最后一颗"
+    },
+    "gnar_workbook": {
+      "name": "纳尔练习册",
+      "icon": "gnar_workbook",
+      "category": "gift",
+      "tier": 1,
+      "cost": 60,
+      "hunger": 0,
+      "exp": 20,
+      "dialogue": "item_gnar_workbook",
+      "room_effect": "gnar_workbook",
+      "performance_seconds": 7,
+      "description": "三拍练习 · 回旋镖与练习印章"
+    },
+    "practice_hourglass": {
+      "name": "加练沙漏",
+      "icon": "practice_hourglass",
+      "category": "gift",
+      "tier": 1,
+      "cost": 60,
+      "hunger": 0,
+      "exp": 20,
+      "dialogue": "item_practice_hourglass",
+      "room_effect": "practice_hourglass",
+      "performance_seconds": 7,
+      "description": "翻转糯米沙漏 · 三次稳稳落地"
+    },
+    "fist_bump_glove": {
+      "name": "击拳手套",
+      "icon": "fist_bump_glove",
+      "category": "gift",
+      "tier": 1,
+      "cost": 60,
+      "hunger": 0,
+      "exp": 20,
+      "dialogue": "item_fist_bump_glove",
+      "room_effect": "fist_bump_glove",
+      "performance_seconds": 7,
+      "description": "伸手击拳 · 无人点击也会完成"
+    },
+    "postmatch_noodles": {
+      "name": "赛后泡面",
+      "icon": "postmatch_noodles",
+      "category": "food",
+      "tier": 1,
+      "cost": 30,
+      "hunger": 15,
+      "exp": 0,
+      "dialogue": "item_postmatch_noodles",
+      "room_effect": "postmatch_noodles",
+      "performance_seconds": 3,
+      "description": "两口吸面 · 最后一根弹回碗里"
+    },
+    "late_practice_snack": {
+      "name": "加练夜宵",
+      "icon": "late_practice_snack",
+      "category": "food",
+      "tier": 2,
+      "cost": 75,
+      "hunger": 35,
+      "exp": 0,
+      "dialogue": "item_late_practice_snack",
+      "room_effect": "late_practice_snack",
+      "performance_seconds": 3,
+      "description": "练习册边的夜宵 · 点头开吃"
     }
   },
   "achievements": [
@@ -338,7 +507,8 @@
       "level": 2,
       "kind": "accessory",
       "slot": "head",
-      "item": "sprout"
+      "item": "sprout",
+      "retired": true
     },
     "trick_flip": {
       "name": "原地空翻",
@@ -359,11 +529,12 @@
       "retired": true
     },
     "effect_steam": {
-      "name": "暖心热气",
+      "name": "红温热气",
       "level": 4,
       "kind": "accessory",
       "slot": "effect",
-      "item": "steam"
+      "item": "steam",
+      "icon": "red_steam"
     },
     "trick_clone": {
       "name": "Q弹影分身",
@@ -387,7 +558,8 @@
       "level": 6,
       "kind": "accessory",
       "slot": "head",
-      "item": "bow"
+      "item": "bow",
+      "retired": true
     },
     "title_guardian": {
       "name": "阿一古",
@@ -403,11 +575,12 @@
       "item": "sunny_chime"
     },
     "accessory_orange": {
-      "name": "大吉小橘子",
+      "name": "解控橘子帽",
       "level": 10,
       "kind": "accessory",
       "slot": "head",
-      "item": "orange"
+      "item": "orange",
+      "icon": "cleanse_orange"
     },
     "trick_disco": {
       "name": "迪斯科蹦迪",
@@ -426,7 +599,8 @@
       "level": 15,
       "kind": "accessory",
       "slot": "effect",
-      "item": "fireflies"
+      "item": "fireflies",
+      "retired": true
     },
     "companion_sesame": {
       "name": "芝麻小团子",
@@ -449,11 +623,12 @@
       "title": "糯米大宗师"
     },
     "effect_rainbow": {
-      "name": "七彩祥云光环",
+      "name": "冠军聚光灯",
       "level": 30,
       "kind": "accessory",
       "slot": "effect",
-      "item": "rainbow"
+      "item": "rainbow",
+      "icon": "champion_spotlight"
     },
     "title_immortal": {
       "name": "汤圆守护仙",
@@ -527,6 +702,60 @@
       "level": 20,
       "kind": "title",
       "title": "金汤良圆"
+    },
+    "accessory_cooling_cap": {
+      "name": "红温散热帽",
+      "icon": "cooling_cap",
+      "kind": "accessory",
+      "slot": "head",
+      "item": "cooling_cap",
+      "level": 1,
+      "store_only": true
+    },
+    "accessory_demon_hood": {
+      "name": "大魔王兜帽",
+      "icon": "demon_hood",
+      "kind": "accessory",
+      "slot": "head",
+      "item": "demon_hood",
+      "level": 1,
+      "store_only": true
+    },
+    "accessory_summit_backpack": {
+      "name": "登峰小背包",
+      "icon": "summit_backpack",
+      "kind": "accessory",
+      "slot": "back",
+      "item": "summit_backpack",
+      "level": 1,
+      "store_only": true
+    },
+    "accessory_mini_gnar_hat": {
+      "name": "小纳尔耳帽",
+      "icon": "mini_gnar_hat",
+      "kind": "accessory",
+      "slot": "head",
+      "item": "mini_gnar_hat",
+      "level": 1,
+      "store_only": true
+    },
+    "accessory_seven_goggles": {
+      "name": "七号护目镜",
+      "icon": "seven_goggles",
+      "kind": "accessory",
+      "slot": "face",
+      "item": "seven_goggles",
+      "level": 1,
+      "store_only": true
+    },
+    "accessory_kiting_scarf": {
+      "name": "拉扯围巾",
+      "icon": "kiting_scarf",
+      "kind": "accessory",
+      "slot": "back",
+      "item": "kiting_scarf",
+      "level": 1,
+      "store_only": true
     }
   },
   "milestones": [
@@ -537,9 +766,8 @@
     },
     {
       "level": 2,
-      "label": "萌芽相伴 / 赤笠熊猫",
+      "label": "空翻初试 / 赤笠熊猫",
       "perks": [
-        "accessory_sprout",
         "trick_flip",
         "skin_s16_al"
       ]
@@ -554,7 +782,7 @@
     },
     {
       "level": 4,
-      "label": "暖心魔法 / 飞行桃团",
+      "label": "红温分身 / 飞行桃团",
       "perks": [
         "effect_steam",
         "trick_clone",
@@ -574,7 +802,6 @@
       "level": 6,
       "label": "阿一古 / 黑金虎团",
       "perks": [
-        "accessory_bow",
         "title_guardian",
         "skin_s16_gen"
       ]
@@ -589,7 +816,7 @@
     },
     {
       "level": 10,
-      "label": "十级大礼 / 赤焰凤团",
+      "label": "解控登场 / 赤焰凤团",
       "perks": [
         "accessory_orange",
         "trick_disco",
@@ -599,10 +826,9 @@
     },
     {
       "level": 15,
-      "label": "仲夏萤火 / 薄荷电竞熊",
+      "label": "星夜展翼 / 薄荷电竞熊",
       "perks": [
         "room_camp",
-        "effect_fireflies",
         "skin_s16_dk",
         "accessory_phoenix_wings"
       ]
@@ -672,6 +898,12 @@
       "icon": "screen_roll",
       "cost": 360,
       "description": "永久解锁；沿当前屏幕四边滚动约12秒，回到原位。冷却20秒，途中点击可提前结束，固定状态保留。"
+    },
+    "reverse_flash": {
+      "name": "反向闪现",
+      "icon": "reverse_flash",
+      "cost": 360,
+      "description": "永久学习；向反方向短闪后回位，固定时只留短闪轮廓。2.6秒演出，冷却12秒，表演不增加好感。"
     }
   },
   "dialogues": {
@@ -740,6 +972,48 @@
     ],
     "morning_empty": [
       "太阳升起了，大脑空空"
+    ],
+    "item_form_dice": [
+      "今天这个状态，你就说行不行。"
+    ],
+    "item_kiting_rope": [
+      "我真的在拉扯了。"
+    ],
+    "item_summit_pickaxe": [
+      "山还在，先往上走。"
+    ],
+    "item_drama_clapper": [
+      "激动不已，溢于言表。"
+    ],
+    "item_iced_cola": [
+      "先降个温。"
+    ],
+    "item_early_champagne": [
+      "先开了，等会儿再解释。"
+    ],
+    "item_summit_lunch": [
+      "爬到这儿，值得加一口。"
+    ],
+    "item_watchparty_popcorn": [
+      "正片这就开始。"
+    ],
+    "item_gnar_workbook": [
+      "这次真的练好了。"
+    ],
+    "item_practice_hourglass": [
+      "别催，在练了。"
+    ],
+    "item_fist_bump_glove": [
+      "来，击个拳。"
+    ],
+    "item_postmatch_noodles": [
+      "这场看得我想加个餐。"
+    ],
+    "item_late_practice_snack": [
+      "吃完这口再练一次。"
+    ],
+    "trick_reverse_flash": [
+      "方向不重要，气势已经到了。"
     ]
   },
   "furniture": {
@@ -911,6 +1185,60 @@
       "price": 360,
       "default": false,
       "description": "点击开关冷风，上单负责改善输出环境。"
+    },
+    "esports_chair": {
+      "name": "电竞椅",
+      "emoji": "esports_chair",
+      "slot": "corner",
+      "price": 360,
+      "default": false,
+      "description": "点击后汤圆转头示意，椅背轻轻回摆；不把角色永久挂到椅子坐标",
+      "id": "esports_chair"
+    },
+    "training_dummy": {
+      "name": "训练假人",
+      "emoji": "training_dummy",
+      "slot": "corner",
+      "price": 360,
+      "default": false,
+      "description": "点击后弹出一次练习目标，汤圆轻顶三次，假人弹回直立",
+      "id": "training_dummy"
+    },
+    "tactics_screen": {
+      "name": "战术大屏",
+      "emoji": "tactics_screen",
+      "slot": "wall",
+      "price": 600,
+      "default": false,
+      "description": "只回顾本机最近三类互动的简洁图形，不联网读取真实赛事",
+      "id": "tactics_screen"
+    },
+    "postmatch_studio": {
+      "name": "赛后录音棚",
+      "emoji": "postmatch_studio",
+      "slot": "theme",
+      "price": 900,
+      "default": false,
+      "description": "换主题后乐器演出共用录音氛围，吉他和麦克风仍按原皮肤权限使用",
+      "id": "postmatch_studio"
+    },
+    "practice_room": {
+      "id": "practice_room",
+      "name": "加练训练室",
+      "emoji": "practice_room",
+      "slot": "theme",
+      "price": 720,
+      "default": false,
+      "description": "战术线与软木训练室；只显示本次练习计次，不自动增加经验"
+    },
+    "summit_wall": {
+      "id": "summit_wall",
+      "name": "登峰岩壁",
+      "emoji": "summit_wall",
+      "slot": "wall",
+      "price": 480,
+      "default": false,
+      "description": "软木岩壁三级挂点；登山镐演出时依次点亮，结束收回"
     }
   },
   "team_skins": {
@@ -986,6 +1314,49 @@
       "slot": "back",
       "cost": 1200,
       "description": "赤金双翼，缓慢扇动；Lv.15免费解锁。"
+    },
+    "cooling_cap": {
+      "name": "红温散热帽",
+      "icon": "cooling_cap",
+      "slot": "head",
+      "cost": 480,
+      "description": "红温时小风扇转快，平常慢转；无后台声音"
+    },
+    "demon_hood": {
+      "name": "大魔王兜帽",
+      "icon": "demon_hood",
+      "slot": "head",
+      "cost": 900,
+      "description": "空翻成功时边缘亮一次红线，待机时随呼吸微动"
+    },
+    "summit_backpack": {
+      "name": "登峰小背包",
+      "icon": "summit_backpack",
+      "slot": "back",
+      "cost": 600,
+      "description": "日常探索时小旗轻摇，完成登山镐演出后弹出一枚路标"
+    },
+    "mini_gnar_hat": {
+      "name": "小纳尔耳帽",
+      "icon": "mini_gnar_hat",
+      "slot": "head",
+      "cost": 600,
+      "description": "按一次特技状态展开耳朵，回中性时合拢，体型不额外放大"
+    },
+    "seven_goggles": {
+      "name": "七号护目镜",
+      "icon": "seven_goggles",
+      "slot": "face",
+      "cost": 540,
+      "description": "戳戳时镜面掠过一次七字柔光，不遮住五官"
+    },
+    "kiting_scarf": {
+      "name": "拉扯围巾",
+      "icon": "kiting_scarf",
+      "slot": "back",
+      "cost": 480,
+      "description": "拖拽时围巾尾端反向轻摆，松手缓缓收拢"
     }
-  }
+  },
+  "collection_revision": "first-wave-16"
 }

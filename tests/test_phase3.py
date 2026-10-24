@@ -44,10 +44,10 @@ def simulate(engine: PetEngine, seconds: float):
 class CommerceTests(unittest.TestCase):
     def test_foods_gifts_and_sugar_rules_share_config(self):
         pet = wealthy()
-        self.assertEqual(len(pet.catalog.items), 15)
+        self.assertEqual(len(pet.catalog.items), 28)
         rules = GameRules.from_catalog(ROOT / "config/catalog.json")
         self.assertEqual((rules.sugar_cost, rules.sugar_hunger, rules.sugar_exp), (30, 15, 0))
-        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [30, 30, 135, 75, 75, 75, 135, 60, 210, 540, 540, 30, 135, 210, 540])
+        self.assertEqual([pet.item(x)["cost"] for x in pet.catalog.items], [30, 30, 135, 75, 75, 75, 135, 60, 210, 540, 540, 30, 135, 210, 540, 210, 60, 210, 210, 30, 135, 75, 30, 60, 60, 60, 30, 75])
 
     def test_purchase_stores_without_feeding_and_use_does_not_recharge(self):
         pet = wealthy()

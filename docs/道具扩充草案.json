@@ -1,0 +1,1248 @@
+{
+  "schema_version": 1,
+  "status": "first_wave_implemented_rest_proposed",
+  "date": "2026-10-23",
+  "base_product_version": "2.0.0",
+  "scope": "首批16件已在本地实现；其余44件仍为设计稿；本轮未更新GitHub",
+  "items": [
+    {
+      "id": "form_dice",
+      "name": "状态骰子",
+      "category": "gift",
+      "status": "implemented_local",
+      "icon_concept": "奶白骰子，三面分别为333、666、999",
+      "interaction": "骰子落地后随机选一种小、正常、大姿态，三连切换后恢复原比例",
+      "research_refs": [
+        "M023",
+        "M032"
+      ],
+      "wave": 1,
+      "tier": 2,
+      "price": 210,
+      "hunger_gain": 0,
+      "exp_gain": 80,
+      "duration_seconds": 7,
+      "dialogue": "今天这个状态，你就说行不行。"
+    },
+    {
+      "id": "gnar_workbook",
+      "name": "纳尔练习册",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "翻开的练习本，画着弧线和小回旋镖",
+      "interaction": "前两次出手略歪，第三次准确收回，依次亮三枚练习印章",
+      "research_refs": [
+        "M021",
+        "M022"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 60,
+      "hunger_gain": 0,
+      "exp_gain": 20,
+      "duration_seconds": 7,
+      "dialogue": "这次真的练好了。"
+    },
+    {
+      "id": "callback_boomerang",
+      "name": "回旋镖",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "软木回旋镖，缠着一条可翻面的纸条",
+      "interaction": "飞出时带上最近一句本地Flag，回程纸条翻面，轻轻碰一下额头",
+      "research_refs": [
+        "M020",
+        "M039"
+      ],
+      "wave": 2,
+      "tier": 2,
+      "price": 210,
+      "hunger_gain": 0,
+      "exp_gain": 80,
+      "duration_seconds": 7,
+      "dialogue": "这话怎么又回来了。"
+    },
+    {
+      "id": "kiting_rope",
+      "name": "拉扯弹力绳",
+      "category": "gift",
+      "status": "implemented_local",
+      "icon_concept": "两端圆环、中间红蓝弹力绳",
+      "interaction": "汤圆横向探出、后退、再探出，保留原锚点，结束绳子缩回",
+      "research_refs": [
+        "M020"
+      ],
+      "wave": 1,
+      "tier": 1,
+      "price": 60,
+      "hunger_gain": 0,
+      "exp_gain": 20,
+      "duration_seconds": 7,
+      "dialogue": "我真的在拉扯了。"
+    },
+    {
+      "id": "prematch_flag",
+      "name": "赛前Flag牌",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "写着先相信的可折小旗",
+      "interaction": "先举旗得意，再被一阵小风吹歪，自己扶正；记住最近三条自己的Flag",
+      "research_refs": [
+        "M028",
+        "M039"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 60,
+      "hunger_gain": 0,
+      "exp_gain": 20,
+      "duration_seconds": 7,
+      "dialogue": "这把我先把话放这儿。"
+    },
+    {
+      "id": "reverse_crystal",
+      "name": "反向预测水晶球",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "紫色水晶球与小问号底座",
+      "interaction": "只预测本次虚构小动作，先出结果牌，再演相反动作，最后翻牌自圆其说",
+      "research_refs": [
+        "M007",
+        "M032"
+      ],
+      "wave": 2,
+      "tier": 3,
+      "price": 540,
+      "hunger_gain": 0,
+      "exp_gain": 240,
+      "duration_seconds": 7,
+      "dialogue": "我说的是另一种赢。"
+    },
+    {
+      "id": "review_tape",
+      "name": "复盘录像带",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "带棕色标签的迷你录像带",
+      "interaction": "按上一条本地互动做三格剪影回放，用暂停箭头指向自己刚才的小失误",
+      "research_refs": [
+        "M031",
+        "M037"
+      ],
+      "wave": 2,
+      "tier": 2,
+      "price": 210,
+      "hunger_gain": 0,
+      "exp_gain": 80,
+      "duration_seconds": 7,
+      "dialogue": "过程有点问题，结论先不改。"
+    },
+    {
+      "id": "tactics_board",
+      "name": "战术白板",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "白板、三条路线与磁吸圆点",
+      "interaction": "三枚圆点按箭头配合行进，汤圆认真指挥，最后所有箭头一起指向饭碗",
+      "research_refs": [
+        "M058"
+      ],
+      "wave": 2,
+      "tier": 2,
+      "price": 210,
+      "hunger_gain": 0,
+      "exp_gain": 80,
+      "duration_seconds": 7,
+      "dialogue": "我们先统一一下思路。"
+    },
+    {
+      "id": "practice_hourglass",
+      "name": "加练沙漏",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "沙漏里是细小糯米粒",
+      "interaction": "翻转一次沙漏，连续三次短跳越来越稳，最后盖一个已练印章",
+      "research_refs": [
+        "M021",
+        "M022"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 60,
+      "hunger_gain": 0,
+      "exp_gain": 20,
+      "duration_seconds": 7,
+      "dialogue": "别催，在练了。"
+    },
+    {
+      "id": "summit_pickaxe",
+      "name": "登山镐",
+      "category": "gift",
+      "status": "implemented_local",
+      "icon_concept": "圆头登山镐和一卷橙色绳索",
+      "interaction": "脚下出现三段临时小台阶，汤圆逐级蹦上去，举旗后平滑回原地",
+      "research_refs": [
+        "M058",
+        "M063"
+      ],
+      "wave": 1,
+      "tier": 2,
+      "price": 210,
+      "hunger_gain": 0,
+      "exp_gain": 80,
+      "duration_seconds": 7,
+      "dialogue": "山还在，先往上走。"
+    },
+    {
+      "id": "fist_bump_glove",
+      "name": "击拳手套",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "一大一小两只柔软拳套",
+      "interaction": "一只拳套伸向鼠标，点击可完成击拳；无人点则自碰另一只拳套，收益相同",
+      "research_refs": [
+        "M060"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 60,
+      "hunger_gain": 0,
+      "exp_gain": 20,
+      "duration_seconds": 7,
+      "dialogue": "来，击个拳。"
+    },
+    {
+      "id": "debut_demo",
+      "name": "出道Demo",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "贴着试听标签的透明磁带",
+      "interaction": "展开临时小录音架，汤圆对拍三次，最后摆出新歌封面；可选原创四音短旋律",
+      "research_refs": [
+        "M016",
+        "M059"
+      ],
+      "wave": 2,
+      "tier": 3,
+      "price": 540,
+      "hunger_gain": 0,
+      "exp_gain": 240,
+      "duration_seconds": 7,
+      "dialogue": "新歌正在路上。"
+    },
+    {
+      "id": "encore_stick",
+      "name": "返场应援棒",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "可变色磨砂应援棒",
+      "interaction": "按当前皮肤主色亮起柔和光圈，汤圆跟着三拍摇头谢幕",
+      "research_refs": [
+        "M016",
+        "M059"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 60,
+      "hunger_gain": 0,
+      "exp_gain": 20,
+      "duration_seconds": 7,
+      "dialogue": "懂了，再来一首。"
+    },
+    {
+      "id": "drama_clapper",
+      "name": "短剧场记板",
+      "category": "gift",
+      "status": "implemented_local",
+      "icon_concept": "黑白场记板与折叠纸幕布",
+      "interaction": "同一汤圆以两个半透明角色演三格短剧，嘴上激动，表情却极其平静",
+      "research_refs": [
+        "M058",
+        "M061"
+      ],
+      "wave": 1,
+      "tier": 2,
+      "price": 210,
+      "hunger_gain": 0,
+      "exp_gain": 80,
+      "duration_seconds": 7,
+      "dialogue": "激动不已，溢于言表。"
+    },
+    {
+      "id": "glory_invitation",
+      "name": "荣光邀请函",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "蓝金封蜡的折叠邀请函",
+      "interaction": "一束窄聚光灯照到小信封，汤圆郑重拆开，发现邀请事项只是去吃一口饭",
+      "research_refs": [
+        "M033",
+        "M034"
+      ],
+      "wave": 2,
+      "tier": 3,
+      "price": 540,
+      "hunger_gain": 0,
+      "exp_gain": 240,
+      "duration_seconds": 7,
+      "dialogue": "这可能是我此刻最重要的一口。"
+    },
+    {
+      "id": "award_envelope",
+      "name": "颁奖信封",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "金边信封与小奖座剪影",
+      "interaction": "打开信封念出宠物当前名字，把迷你奖座颁给自己，向左右各鞠一次躬",
+      "research_refs": [
+        "M024",
+        "M045"
+      ],
+      "wave": 2,
+      "tier": 2,
+      "price": 210,
+      "hunger_gain": 0,
+      "exp_gain": 80,
+      "duration_seconds": 7,
+      "dialogue": "这一次，先颁给我自己。"
+    },
+    {
+      "id": "chat_remote",
+      "name": "弹幕遥控器",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "三个彩色按键的圆角遥控器",
+      "interaction": "最多出现三张自写弹幕小卡：先相信、合理质疑、不赖；不调用真实直播弹幕",
+      "research_refs": [
+        "M002",
+        "M003"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 60,
+      "hunger_gain": 0,
+      "exp_gain": 20,
+      "duration_seconds": 7,
+      "dialogue": "有一说一，确实。"
+    },
+    {
+      "id": "selective_earplugs",
+      "name": "选择性耳塞",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "两颗奶杏色耳塞和打开的收纳盒",
+      "interaction": "面对吐槽把耳塞塞上，面对夸奖立刻取下；不修改用户全局声音设置",
+      "research_refs": [
+        "M009",
+        "M037"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 60,
+      "hunger_gain": 0,
+      "exp_gain": 20,
+      "duration_seconds": 7,
+      "dialogue": "夸我的那句我听到了。"
+    },
+    {
+      "id": "engage_horn",
+      "name": "开团小喇叭",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "短喇叭，出口是柔软纸花",
+      "interaction": "深吸一口气后向前冲出很短一段，纸花展开，自己又倒退回原位",
+      "research_refs": [
+        "M012",
+        "M024"
+      ],
+      "wave": 2,
+      "tier": 2,
+      "price": 210,
+      "hunger_gain": 0,
+      "exp_gain": 80,
+      "duration_seconds": 7,
+      "dialogue": "别急，我先说两句。"
+    },
+    {
+      "id": "smoke_practice_can",
+      "name": "烟位练习罐",
+      "category": "gift",
+      "status": "proposal",
+      "icon_concept": "无火花的小圆罐，盖子带云朵孔",
+      "interaction": "在房内指定安全区域浮出淡烟圈，汤圆从另一边探头；不会遮住HUD或按钮",
+      "research_refs": [
+        "M055",
+        "M057"
+      ],
+      "wave": 2,
+      "tier": 3,
+      "price": 540,
+      "hunger_gain": 0,
+      "exp_gain": 240,
+      "duration_seconds": 7,
+      "dialogue": "见过这个位置吗？"
+    },
+    {
+      "id": "postmatch_noodles",
+      "name": "赛后泡面",
+      "category": "food",
+      "status": "proposal",
+      "icon_concept": "纸杯泡面与一枚小面饼",
+      "interaction": "面条分两次吸入，最后一根弹回碗里；只恢复饱食",
+      "research_refs": [
+        "M010"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 30,
+      "hunger_gain": 15,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "这场看得我想加个餐。"
+    },
+    {
+      "id": "review_rice",
+      "name": "复盘拌饭",
+      "category": "food",
+      "status": "proposal",
+      "icon_concept": "米饭盖着红蓝两色配菜",
+      "interaction": "饭粒先摆成小箭头，汤圆边看复盘剪影边吃，食物抵达后显示实际恢复值",
+      "research_refs": [
+        "M031",
+        "M037"
+      ],
+      "wave": 2,
+      "tier": 2,
+      "price": 75,
+      "hunger_gain": 35,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "先吃饭，再看这一波。"
+    },
+    {
+      "id": "overheat_hotpot",
+      "name": "红温火锅",
+      "category": "food",
+      "status": "proposal",
+      "icon_concept": "铜色小锅和鲜红汤面",
+      "interaction": "锅盖被蒸汽轻顶三下，汤圆先嘴硬再扇风，短时红脸但不强制奔跑",
+      "research_refs": [
+        "M027"
+      ],
+      "wave": 2,
+      "tier": 3,
+      "price": 135,
+      "hunger_gain": 65,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "温度上来了，问题不大。"
+    },
+    {
+      "id": "iced_cola",
+      "name": "冰镇可乐",
+      "category": "food",
+      "status": "implemented_local",
+      "icon_concept": "带凝水的玻璃杯、两块方冰",
+      "interaction": "冰块碰杯后低温雾气绕身；有红温表现时先渐退，再正常饮用",
+      "research_refs": [
+        "M027"
+      ],
+      "wave": 1,
+      "tier": 1,
+      "price": 30,
+      "hunger_gain": 15,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "先降个温。"
+    },
+    {
+      "id": "hype_soda",
+      "name": "上头气泡水",
+      "category": "food",
+      "status": "proposal",
+      "icon_concept": "蓝色细口瓶、少量小气泡",
+      "interaction": "喝下后顶起三颗泡泡，汤圆逐个戳破，最后一颗追着鼻尖跑",
+      "research_refs": [
+        "M012"
+      ],
+      "wave": 2,
+      "tier": 1,
+      "price": 30,
+      "hunger_gain": 15,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "这气泡比我还急。"
+    },
+    {
+      "id": "early_champagne",
+      "name": "赛前香槟",
+      "category": "food",
+      "status": "implemented_local",
+      "icon_concept": "没有酒精标记的庆祝气泡饮和软木塞",
+      "interaction": "先喷出一小串庆祝泡泡，瓶塞落回自己头顶；是过早庆祝的小反转",
+      "research_refs": [
+        "M028"
+      ],
+      "wave": 1,
+      "tier": 3,
+      "price": 135,
+      "hunger_gain": 65,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "先开了，等会儿再解释。"
+    },
+    {
+      "id": "summit_lunch",
+      "name": "山顶便当",
+      "category": "food",
+      "status": "implemented_local",
+      "icon_concept": "山形饭团与折叠野餐盒",
+      "interaction": "饭团叠成三级山峰，汤圆从山脚一路吃到插旗处",
+      "research_refs": [
+        "M058",
+        "M063"
+      ],
+      "wave": 1,
+      "tier": 2,
+      "price": 75,
+      "hunger_gain": 35,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "爬到这儿，值得加一口。"
+    },
+    {
+      "id": "late_practice_snack",
+      "name": "加练夜宵",
+      "category": "food",
+      "status": "proposal",
+      "icon_concept": "小托盘、饭团与一杯温饮",
+      "interaction": "练习册旁摆出夜宵，汤圆先认真点头再快速吃完；不额外发挂机收益",
+      "research_refs": [
+        "M021",
+        "M022"
+      ],
+      "wave": 2,
+      "tier": 2,
+      "price": 75,
+      "hunger_gain": 35,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "吃完这口再练一次。"
+    },
+    {
+      "id": "jungle_meal",
+      "name": "打野营养餐",
+      "category": "food",
+      "status": "proposal",
+      "icon_concept": "盒饭上有红蓝双色小团与叶片",
+      "interaction": "三份配菜依次摆好，汤圆先挑工具再发现每样都一样香",
+      "research_refs": [
+        "M037"
+      ],
+      "wave": 2,
+      "tier": 3,
+      "price": 135,
+      "hunger_gain": 65,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "配置到了，这下能练了。"
+    },
+    {
+      "id": "watchparty_popcorn",
+      "name": "观赛爆米花",
+      "category": "food",
+      "status": "implemented_local",
+      "icon_concept": "小号条纹纸桶、圆润玉米花",
+      "interaction": "五颗玉米花按弧线飞向嘴边，最后一颗落空又被接住",
+      "research_refs": [
+        "M016",
+        "M058"
+      ],
+      "wave": 1,
+      "tier": 1,
+      "price": 30,
+      "hunger_gain": 15,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "正片这就开始。"
+    },
+    {
+      "id": "blue_energy_drink",
+      "name": "蓝色能量饮",
+      "category": "food",
+      "status": "proposal",
+      "icon_concept": "淡蓝饮料瓶与简单折线标签",
+      "interaction": "出现三枚虚构属性小标签，越贴越多后统统折进肚子里，不修改数值规则",
+      "research_refs": [
+        "M035"
+      ],
+      "wave": 3,
+      "tier": 2,
+      "price": 75,
+      "hunger_gain": 35,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "状态回来了，先别问参数。"
+    },
+    {
+      "id": "duo_cookie",
+      "name": "双人分享饼",
+      "category": "food",
+      "status": "proposal",
+      "icon_concept": "能分成两半的双圆小饼",
+      "interaction": "饼分左右两半，伴宠在场时分享，不在场则用短暂小团子剪影接住；总饱食不翻倍",
+      "research_refs": [
+        "M017"
+      ],
+      "wave": 3,
+      "tier": 2,
+      "price": 75,
+      "hunger_gain": 35,
+      "exp_gain": 0,
+      "duration_seconds": 3,
+      "dialogue": "一人一半，别抢。"
+    },
+    {
+      "id": "cooling_cap",
+      "name": "红温散热帽",
+      "category": "accessory",
+      "status": "implemented_local",
+      "icon_concept": "圆顶散热帽、透明小风扇",
+      "interaction": "红温时小风扇转快，平常慢转；无后台声音",
+      "research_refs": [
+        "M027"
+      ],
+      "wave": 1,
+      "price": 480,
+      "slot": "head",
+      "permanent": true,
+      "dialogue": "风扇在转，我没急。"
+    },
+    {
+      "id": "seven_goggles",
+      "name": "七号护目镜",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "镜腿藏有七号标记的护目镜",
+      "interaction": "戳戳时闪出一次七字形柔光，连续特效合并，不刷数字弹幕",
+      "research_refs": [
+        "M050"
+      ],
+      "wave": 3,
+      "price": 540,
+      "slot": "face",
+      "permanent": true,
+      "dialogue": "不多说，看操作。"
+    },
+    {
+      "id": "demon_hood",
+      "name": "大魔王兜帽",
+      "category": "accessory",
+      "status": "implemented_local",
+      "icon_concept": "黑红软布兜帽、短而圆的角",
+      "interaction": "空翻成功时边缘亮一次红线，待机时随呼吸微动",
+      "research_refs": [
+        "M044"
+      ],
+      "wave": 1,
+      "price": 900,
+      "slot": "head",
+      "permanent": true,
+      "dialogue": "关底这就到了。"
+    },
+    {
+      "id": "optimistic_jester",
+      "name": "乐观小丑帽",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "三角软帽、圆形无声绒球",
+      "interaction": "动作失误时绒球仍开心晃两下，眼睛保持淡定",
+      "research_refs": [
+        "M047",
+        "M048"
+      ],
+      "wave": 3,
+      "price": 540,
+      "slot": "head",
+      "permanent": true,
+      "dialogue": "问题不大，我还挺乐观。"
+    },
+    {
+      "id": "summit_backpack",
+      "name": "登峰小背包",
+      "category": "accessory",
+      "status": "implemented_local",
+      "icon_concept": "橙色背包，露出卷绳与折叠小旗",
+      "interaction": "日常探索时小旗轻摇，完成登山镐演出后弹出一枚路标",
+      "research_refs": [
+        "M063"
+      ],
+      "wave": 1,
+      "price": 600,
+      "slot": "back",
+      "permanent": true,
+      "dialogue": "今天也往上挪一点。"
+    },
+    {
+      "id": "spring_tiger_cape",
+      "name": "春日虎纹披风",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "金棕虎纹短披风",
+      "interaction": "只在表演时展开轮廓，平常自然垂下；季节文案作为可选彩蛋",
+      "research_refs": [
+        "M030"
+      ],
+      "wave": 3,
+      "price": 720,
+      "slot": "back",
+      "permanent": true,
+      "dialogue": "这个季节，状态到了。"
+    },
+    {
+      "id": "kiting_scarf",
+      "name": "拉扯围巾",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "红蓝长围巾，末端短而柔软",
+      "interaction": "拖拽时末端反向滞后，松手后缓慢收拢，不增加碰撞位移",
+      "research_refs": [
+        "M020"
+      ],
+      "wave": 3,
+      "price": 480,
+      "slot": "back",
+      "permanent": true,
+      "dialogue": "再拉一下，就一下。"
+    },
+    {
+      "id": "tactical_monocle",
+      "name": "战术单片镜",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "金棕单片镜和小号镜链",
+      "interaction": "看饭碗时浮出两条原创分析线，最后一条标注可以开饭",
+      "research_refs": [
+        "M003",
+        "M031"
+      ],
+      "wave": 3,
+      "price": 390,
+      "slot": "face",
+      "permanent": true,
+      "dialogue": "分析完了，先吃。"
+    },
+    {
+      "id": "mini_gnar_hat",
+      "name": "小纳尔耳帽",
+      "category": "accessory",
+      "status": "implemented_local",
+      "icon_concept": "圆润大耳朵与小骨纹布帽",
+      "interaction": "按一次特技状态展开耳朵，回中性时合拢，体型不额外放大",
+      "research_refs": [
+        "M021",
+        "M032"
+      ],
+      "wave": 1,
+      "price": 600,
+      "slot": "head",
+      "permanent": true,
+      "dialogue": "现在这个形态刚好。"
+    },
+    {
+      "id": "five_blade_circlet",
+      "name": "五剑小冠",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "五枚钝圆剑形的小金属冠",
+      "interaction": "一次演出完成后依次点亮五枚装饰剑，不计真实击杀或赛果",
+      "research_refs": [
+        "M043"
+      ],
+      "wave": 3,
+      "price": 900,
+      "slot": "head",
+      "permanent": true,
+      "dialogue": "五个位置，一个不落。"
+    },
+    {
+      "id": "champion_star_ring",
+      "name": "冠军星环",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "一圈稀疏金星和浅色轨迹",
+      "interaction": "星星沿身体缓慢绕行，开心时升起一颗；不绑定现实冠军数量",
+      "research_refs": [
+        "M045"
+      ],
+      "wave": 3,
+      "price": 1080,
+      "slot": "effect",
+      "permanent": true,
+      "dialogue": "这一圈，自己挣的。"
+    },
+    {
+      "id": "earthfire_steps",
+      "name": "地火脚印",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "赤金短弧组成的三段地面纹",
+      "interaction": "只有跳跃落地后沿脚边点亮三段暖色纹，迅速熄灭，不留下地面道具",
+      "research_refs": [
+        "M042"
+      ],
+      "wave": 3,
+      "price": 720,
+      "slot": "effect",
+      "permanent": true,
+      "dialogue": "这波地面有点热。"
+    },
+    {
+      "id": "recall_pillar",
+      "name": "回城小光柱",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "淡蓝细光柱与底部小圆环",
+      "interaction": "静置时偶尔只亮无声轮廓，主动点击时立刻收起；不移动宠物",
+      "research_refs": [
+        "M032"
+      ],
+      "wave": 3,
+      "price": 900,
+      "slot": "effect",
+      "permanent": true,
+      "dialogue": "回来了，位置没变。"
+    },
+    {
+      "id": "understated_halo",
+      "name": "不赖小光圈",
+      "category": "accessory",
+      "status": "proposal",
+      "icon_concept": "一条简洁的暖白不闭合光环",
+      "interaction": "特技后光环只闪一下，和夸张表演形成很轻的反差",
+      "research_refs": [
+        "M002",
+        "M024"
+      ],
+      "wave": 3,
+      "price": 390,
+      "slot": "effect",
+      "permanent": true,
+      "dialogue": "不赖。"
+    },
+    {
+      "id": "esports_chair",
+      "name": "电竞椅",
+      "category": "furniture",
+      "status": "implemented_local",
+      "icon_concept": "奶白与队色拼接的圆背电竞椅",
+      "interaction": "点击后汤圆转头示意，椅背轻轻回摆；不把角色永久挂到椅子坐标",
+      "research_refs": [
+        "M040"
+      ],
+      "wave": 1,
+      "price": 360,
+      "slot": "corner",
+      "permanent": true,
+      "dialogue": "这个位置留给高手。"
+    },
+    {
+      "id": "training_dummy",
+      "name": "训练假人",
+      "category": "furniture",
+      "status": "implemented_local",
+      "icon_concept": "糯米色软垫假人、可回弹短杆",
+      "interaction": "点击后弹出一次练习目标，汤圆轻顶三次，假人弹回直立",
+      "research_refs": [
+        "M021",
+        "M022"
+      ],
+      "wave": 1,
+      "price": 360,
+      "slot": "corner",
+      "permanent": true,
+      "dialogue": "这次练习算数。"
+    },
+    {
+      "id": "summit_wall",
+      "name": "登峰岩壁",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "小幅软木岩壁与三级山形挂点",
+      "interaction": "登山镐演出时挂点依次发亮，平常只作无声装饰",
+      "research_refs": [
+        "M063"
+      ],
+      "wave": 3,
+      "price": 480,
+      "slot": "wall",
+      "permanent": true,
+      "dialogue": "山在这里，慢慢翻。"
+    },
+    {
+      "id": "tactics_screen",
+      "name": "战术大屏",
+      "category": "furniture",
+      "status": "implemented_local",
+      "icon_concept": "圆角显示屏、三段分屏",
+      "interaction": "只回顾本机最近三类互动的简洁图形，不联网读取真实赛事",
+      "research_refs": [
+        "M031",
+        "M058"
+      ],
+      "wave": 1,
+      "price": 600,
+      "slot": "wall",
+      "permanent": true,
+      "dialogue": "上一波，我们再看一眼。"
+    },
+    {
+      "id": "rift_sandtable",
+      "name": "峡谷沙盘",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "原创三路小沙盘、红蓝圆点",
+      "interaction": "点击沙盘后圆点按三路绕行，最后在饭碗图案处集合",
+      "research_refs": [
+        "M058"
+      ],
+      "wave": 3,
+      "price": 720,
+      "slot": "corner",
+      "permanent": true,
+      "dialogue": "这波集合吃饭。"
+    },
+    {
+      "id": "costream_desk",
+      "name": "二路解说台",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "迷你桌面、静音麦与两张提示卡",
+      "interaction": "点击后出现最多两句自写解说卡，汤圆端正坐好；无自动广播",
+      "research_refs": [
+        "M003",
+        "M048"
+      ],
+      "wave": 3,
+      "price": 540,
+      "slot": "corner",
+      "permanent": true,
+      "dialogue": "让我从另一个角度说两句。"
+    },
+    {
+      "id": "postmatch_studio",
+      "name": "赛后录音棚",
+      "category": "furniture",
+      "status": "implemented_local",
+      "icon_concept": "吸音棉墙、暖木地板、简化录音窗",
+      "interaction": "换主题后乐器演出共用录音氛围，吉他和麦克风仍按原皮肤权限使用",
+      "research_refs": [
+        "M016",
+        "M059"
+      ],
+      "wave": 1,
+      "price": 900,
+      "slot": "theme",
+      "permanent": true,
+      "dialogue": "录音棚已经就位。"
+    },
+    {
+      "id": "practice_room",
+      "name": "加练训练室",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "战术线墙纸、软木地板、细小计次牌",
+      "interaction": "主题只改配色与固定细节，配合练习礼物显示本次演出计数，不加自动经验",
+      "research_refs": [
+        "M021",
+        "M022"
+      ],
+      "wave": 3,
+      "price": 720,
+      "slot": "theme",
+      "permanent": true,
+      "dialogue": "练完这一组再下班。"
+    },
+    {
+      "id": "drama_stage",
+      "name": "短剧摄影棚",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "折叠舞台纹墙纸与侧边软幕",
+      "interaction": "场记板使用时幕布开合，其他时候保持房间核心区通透",
+      "research_refs": [
+        "M058",
+        "M061"
+      ],
+      "wave": 3,
+      "price": 900,
+      "slot": "theme",
+      "permanent": true,
+      "dialogue": "演员已经到齐。"
+    },
+    {
+      "id": "trophy_cabinet",
+      "name": "冠军陈列柜",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "玻璃小柜、四个圆角展示位",
+      "interaction": "展示玩家已解锁里程碑的原创奖章，不使用现实战队冠军数量",
+      "research_refs": [
+        "M024",
+        "M045"
+      ],
+      "wave": 3,
+      "price": 600,
+      "slot": "wall",
+      "permanent": true,
+      "dialogue": "这些，都是自己的进度。"
+    },
+    {
+      "id": "silent_seven_clock",
+      "name": "七点报时钟",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "七刻度稍大的圆形钟、无声摆锤",
+      "interaction": "按真实时间走针，只有七点位视觉标记，不报时、不定期响铃",
+      "research_refs": [
+        "M050"
+      ],
+      "wave": 3,
+      "price": 390,
+      "slot": "wall",
+      "permanent": true,
+      "dialogue": "到点了，继续看。"
+    },
+    {
+      "id": "summit_rug",
+      "name": "翻山地毯",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "软边山脊剪影、浅橙路径线",
+      "interaction": "汤圆脚下有三层山形色块，跳跃时路径微亮后熄灭",
+      "research_refs": [
+        "M063"
+      ],
+      "wave": 3,
+      "price": 360,
+      "slot": "rug",
+      "permanent": true,
+      "dialogue": "这条路还挺熟。"
+    },
+    {
+      "id": "nonstick_bowl",
+      "name": "不粘锅食盆",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "圆角黑色小锅置于原侧边茶几",
+      "interaction": "满饱再喂时锅盖立起挡一下，随后照常按规则消费，不额外退款",
+      "research_refs": [
+        "M037"
+      ],
+      "wave": 3,
+      "price": 300,
+      "slot": "bowl",
+      "permanent": true,
+      "dialogue": "锅可以粘，我不粘。"
+    },
+    {
+      "id": "flag_capsule_cabinet",
+      "name": "Flag时光柜",
+      "category": "furniture",
+      "status": "proposal",
+      "icon_concept": "三层纸条小柜，每层有一枚卡扣",
+      "interaction": "只保存最近三条游戏内自写Flag；点击翻卡，旧话可被回旋镖取用",
+      "research_refs": [
+        "M039",
+        "M041"
+      ],
+      "wave": 3,
+      "price": 600,
+      "slot": "wall",
+      "permanent": true,
+      "dialogue": "这话是谁说的？哦，是我。"
+    }
+  ],
+  "old_accessory_review": [
+    {
+      "id": "sprout",
+      "current": "呆毛嫩芽",
+      "action": "retire",
+      "reason": "通用可爱元素，和现有赛事人格关联较弱；Lv.2仍有空翻与赤笠熊猫"
+    },
+    {
+      "id": "bow",
+      "current": "樱粉蝴蝶结",
+      "action": "retire",
+      "reason": "仅改变造型，与其他头饰功能重叠；Lv.6保留阿一古与黑金虎团"
+    },
+    {
+      "id": "fireflies",
+      "current": "流光萤火虫",
+      "action": "retire",
+      "reason": "与多种周身光点重复；Lv.15已有凤凰翅膀、星夜主题与薄荷电竞熊"
+    },
+    {
+      "id": "steam",
+      "current": "暖心热气",
+      "action": "rework",
+      "new_name": "红温热气",
+      "reason": "保留旧ID和解锁等级，改为温度表达，辣油触发加速、可乐或空调使其缓和"
+    },
+    {
+      "id": "orange",
+      "current": "大吉小橘子",
+      "action": "rework",
+      "new_name": "解控橘子帽",
+      "reason": "保留旧ID，加入眩晕时橘瓣弹开的原创视觉；不自动增加饱食或抹除核心物理"
+    },
+    {
+      "id": "rainbow",
+      "current": "七彩祥云光环",
+      "action": "rework",
+      "new_name": "冠军聚光灯",
+      "reason": "保留Lv.30与旧ID，改成金白收束光与谢幕表现，减少常驻粒子"
+    },
+    {
+      "id": "crown",
+      "current": "迷你金皇冠",
+      "action": "keep",
+      "reason": "与世一汤、颁奖和冠军叙事有明确互动空间"
+    },
+    {
+      "id": "sunglasses",
+      "current": "酷盖墨镜",
+      "action": "keep",
+      "reason": "适合嘴硬、装酷与表情反差，造型辨识度高"
+    },
+    {
+      "id": "phoenix_wings",
+      "current": "凤凰翅膀",
+      "action": "keep",
+      "reason": "用户指定FPX灵感，已有明确文化指向和独立背部表现"
+    }
+  ],
+  "combinations": [
+    {
+      "name": "降温三件套",
+      "items": [
+        "chili",
+        "air_conditioner",
+        "iced_cola"
+      ],
+      "performance": "红温后依次开空调、喝可乐，先嘴硬再降温；只改变演出，不重复计数值"
+    },
+    {
+      "name": "滔搏录音现场",
+      "items": [
+        "tes_guitar",
+        "tes_microphone",
+        "postmatch_studio"
+      ],
+      "performance": "飞行桃团持琴或开麦，主题用录音棚灯光呼应；仍受TES皮肤使用权限约束"
+    },
+    {
+      "name": "从练习生到我练好了",
+      "items": [
+        "gnar_workbook",
+        "training_dummy",
+        "mini_gnar_hat"
+      ],
+      "performance": "连续三次不同练习动作完成后盖章；演出成功不额外加经验"
+    },
+    {
+      "name": "山顶见",
+      "items": [
+        "summit_pickaxe",
+        "summit_backpack",
+        "summit_wall"
+      ],
+      "performance": "岩壁挂点逐级亮起，背包小旗升起，人物最后回原锚点"
+    },
+    {
+      "name": "剧情反转",
+      "items": [
+        "drama_clapper",
+        "drama_stage"
+      ],
+      "performance": "两个汤圆剪影一动一静，最后一格故作平静，台词和表情反差"
+    },
+    {
+      "name": "回旋镖闭环",
+      "items": [
+        "prematch_flag",
+        "callback_boomerang",
+        "flag_capsule_cabinet"
+      ],
+      "performance": "记录自己游戏内说过的话，再拿回来对照本次小动作，不接真实比赛赛果"
+    },
+    {
+      "name": "世一汤受访",
+      "items": [
+        "crown",
+        "award_envelope"
+      ],
+      "performance": "颁奖后皇冠亮一下，汤圆一本正经回答自己提出的问题"
+    },
+    {
+      "name": "红温但散热",
+      "items": [
+        "cooling_cap",
+        "steam"
+      ],
+      "performance": "散热帽越忙，嘴上越淡定；全程无被动音效"
+    },
+    {
+      "name": "一边复盘一边吃",
+      "items": [
+        "review_tape",
+        "review_rice",
+        "tactics_screen"
+      ],
+      "performance": "大屏画简洁本地回放，饭粒排成箭头，汤圆吃完后仍维持自信"
+    },
+    {
+      "name": "先相信",
+      "items": [
+        "early_champagne",
+        "optimistic_jester"
+      ],
+      "performance": "过早庆祝后小瓶塞顶到帽子，帽球依旧乐观摆动；不扣钱、不扣好感"
+    }
+  ],
+  "bonus_titles": [
+    {
+      "name": "合理质疑",
+      "condition": "首次完成Flag牌与回旋镖的组合演出"
+    },
+    {
+      "name": "乐坛新汤",
+      "condition": "飞行桃团分别使用过吉他、麦克风和出道Demo"
+    },
+    {
+      "name": "这次真练好了",
+      "condition": "练习册、训练假人、加练沙漏各体验一次"
+    },
+    {
+      "name": "登峰造圆",
+      "condition": "布置登峰岩壁并完成登山镐演出"
+    },
+    {
+      "name": "纯路人",
+      "condition": "体验弹幕遥控器的三种原创反应，不要求真实站队"
+    },
+    {
+      "name": "不粘圆",
+      "condition": "布置不粘锅食盆并体验一次满饱喂食反应"
+    }
+  ],
+  "notes": [
+    "配文包含原创及已收录社区短语，演出为产品二创，不新增真人逐字原话归因。",
+    "M编号指向项目既有研究，保留原证据等级；C级线索不包装成定论。",
+    "烟位练习罐是研究中记录的VALORANT跨游戏语境，不称作LOL正式道具。",
+    "橘子重做仅借英雄技能意象，官方英文英雄页确认Remove Scurvy名称，具体产品演出为原创。"
+  ],
+  "source_extra": {
+    "gangplank": "https://www.leagueoflegends.com/en-us/champions/gangplank/"
+  }
+}

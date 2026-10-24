@@ -1,0 +1,1201 @@
+{
+  "schema_version": 1,
+  "status": "proposal_not_runtime_catalog",
+  "date": "2026-10-24",
+  "base_product_version": "2.0.0",
+  "scope": "原60中25已本地实装、35待实现；六款商城特技中反向闪现已本地实装、其余5款待实现。本文件为计划和进度记录，非运行配置。",
+  "runtime_changes_this_request": "Part2练习与走位篇9件道具与反向闪现已本地实现并验证（808项自动化，89项互动与33项边界原生检查）；其余35件道具与5款特技未上架。",
+  "developer_balance": "--dev-mode运行期无限支付；真实余额不改成巨额值且无限标记不入档；库存/正常所有权/互动经验仍可保存。--demo --dev-mode隔离演示档。",
+  "source_files": {
+    "draft": "docs/道具扩充草案.json",
+    "catalog": "config/catalog.json",
+    "research": "docs/背景研究/梗资料索引.json"
+  },
+  "baseline_sha256": {
+    "draft": "5ca98d9b163799db6da683d1dccb4c0bb912f1cc95be78fa6ab6eb8e2b5f345c",
+    "catalog": "7d754c68d15f3b00503312fe7439bd668382c6a5e69ac67cbb716a3a7f00767f"
+  },
+  "shared_contract": {
+    "purchase": "商城永久解锁，存入现有特技所有权；重复购买拒绝且不扣币，购买本身不播放演出。",
+    "activation": "背包特技页及右键特技子菜单主动触发；房间与桌宠共用一次接受事件、冷却和结束事件。",
+    "eligibility": "沿用真实饿扁、拖拽、繁忙和冷却校验；拒绝不扣款、不启动冷却。无限币只绕过余额约束，不绕过皮肤资格/库存/所有权。",
+    "gains": "购买及每次表演零金币/好感收益，不回复饱食，避免可重复表演成为刷取资源入口。",
+    "rendering": "默认四图、八款内置队伍皮肤及旧档仍支持的PNG/GIF共用Alpha保留姿态管线；挂件跟随，Buff时限照常推进，不恢复已移除的自定义导入UI。",
+    "single_owner": "最多一个显式前景演出；新动作替换旧动作先执行退出清理。房间不能重复推进桌宠物理时钟。",
+    "recovery": "房间捕获表演前实际脚底起点，完成归还该起点；中断保留当帧实际位置再平滑消除临时姿态，静置1.5秒后沿既有RoomLife回到HOME_X=0.48。桌宠不得把演出偏移写入固定坐标或位置存档。",
+    "cleanup": "自然完成、点击/摸头/投喂/拖拽、新特技、隐藏、换皮肤和退出均撤销演出专属姿态、粒子、虚构血条、道具和覆盖层；不清玩家常驻挂件及有效Buff。",
+    "boundaries": "房间使用安全活动区，桌面按当前availableGeometry及挂件/1.5x皮肤/1.2xBuff计算包围盒，不以裁切或永久挪锚点处理越界。",
+    "sound": "默认仅视觉。可选音效只在主动操作时一次原创短播且受总静音约束；没有后台deng、循环BGM、商业歌曲和真人原声。",
+    "art": "独立80×80透明插画，暖咖细线、受光/侧面/暗面和接地影；同名本地PNG优先只读，不用Emoji代替图标。",
+    "provenance": "以下配文与分镜都是产品原创二创；research_refs沿用本地背景索引证据等级，不冒充逐字采访或新赛果。"
+  },
+  "tricks": [
+    {
+      "id": "reverse_flash",
+      "name": "反向闪现",
+      "status": "implemented_local_verified",
+      "permanent": true,
+      "cost": 360,
+      "duration_seconds": 2.6,
+      "cooldown_seconds": 12,
+      "exp_per_use": 0,
+      "coins_per_use": 0,
+      "part": 2,
+      "research_refs": [
+        "M020",
+        "M028"
+      ],
+      "concept": "朝一个方向郑重蓄力，却向反方向短闪，再悄悄把方向牌转过来。",
+      "storyboard": [
+        {
+          "from_seconds": 0,
+          "to_seconds": 0.4,
+          "action": "朝右侧预告箭头探身，脚边蓄起淡金两点光。"
+        },
+        {
+          "from_seconds": 0.4,
+          "to_seconds": 0.65,
+          "action": "箭头仍朝右，汤圆向左短闪，只留一道不更新的薄轮廓。"
+        },
+        {
+          "from_seconds": 0.65,
+          "to_seconds": 1.4,
+          "action": "回看箭头，箭头悄悄改向，表情努力镇定。"
+        },
+        {
+          "from_seconds": 1.4,
+          "to_seconds": 2.6,
+          "action": "沿软弧收回起点，箭头、光点和残影全消失。"
+        }
+      ],
+      "room_mode": "演出局部偏移不超过安全区宽8%、上限60逻辑像素；RoomLife永久锚点不改。",
+      "desktop_mode": "自由状态在当前屏幕安全包围盒内短闪，上限60逻辑像素；屏边缩短不切屏，不把偏移存档。",
+      "pinned_mode": "本体脚底完全固定，仅一道半透明轮廓反向短闪，窗口不移动。",
+      "icon_concept": "金色右箭头与落在左侧的白汤圆薄轮廓，短断光痕点出反向。",
+      "dialogue": "方向不重要，气势已经到了。",
+      "distinct_from": "没有360度转体或分身围绕，不重复空翻和影分身。"
+    },
+    {
+      "id": "recall_taunt",
+      "name": "回城嘲讽",
+      "status": "proposal",
+      "permanent": true,
+      "cost": 480,
+      "duration_seconds": 4.6,
+      "cooldown_seconds": 18,
+      "exp_per_use": 0,
+      "coins_per_use": 0,
+      "part": 3,
+      "research_refs": [
+        "M002",
+        "M003",
+        "M032"
+      ],
+      "concept": "认真读条到最后一刻，然后自己取消，像什么都没发生。",
+      "storyboard": [
+        {
+          "from_seconds": 0,
+          "to_seconds": 0.8,
+          "action": "脚边蓝色细阵纹展开，汤圆左右看一眼。"
+        },
+        {
+          "from_seconds": 0.8,
+          "to_seconds": 3.6,
+          "action": "局部迷你读条走到九成，轻轻侧身示意；不盖HUD。"
+        },
+        {
+          "from_seconds": 3.6,
+          "to_seconds": 4,
+          "action": "挥手自己取消，阵纹和读条像纸片收回。"
+        },
+        {
+          "from_seconds": 4,
+          "to_seconds": 4.6,
+          "action": "抬头停顿，回中性姿态，原地结束。"
+        }
+      ],
+      "room_mode": "脚底始终为本次起点；不传送或跳回中央。",
+      "desktop_mode": "原位读条，不隐藏桌宠或切换窗口。",
+      "pinned_mode": "脚底固定，和自由状态相同。",
+      "icon_concept": "淡蓝细环托着卷回的小读条木牌，末端缺口暗示取消。",
+      "dialogue": "我回了。骗你的。",
+      "distinct_from": "主动完整读条反转，区别于装扮recall_pillar的无声待机轮廓，不混卖为同一物。"
+    },
+    {
+      "id": "golden_stasis",
+      "name": "金身摆烂",
+      "status": "proposal",
+      "permanent": true,
+      "cost": 600,
+      "duration_seconds": 3.8,
+      "cooldown_seconds": 20,
+      "exp_per_use": 0,
+      "coins_per_use": 0,
+      "part": 4,
+      "research_refs": [
+        "M003",
+        "M032"
+      ],
+      "concept": "局势看上去很复杂，于是决定先把自己定成金色摆件。",
+      "storyboard": [
+        {
+          "from_seconds": 0,
+          "to_seconds": 0.6,
+          "action": "左右两条原创小路线箭头接近，汤圆微缩。"
+        },
+        {
+          "from_seconds": 0.6,
+          "to_seconds": 2.8,
+          "action": "Alpha保留暖金薄镀层扫过本体，保留五官/挂件，演出姿态定格。"
+        },
+        {
+          "from_seconds": 2.8,
+          "to_seconds": 3.3,
+          "action": "金粉渐散，两条箭头自己收走。"
+        },
+        {
+          "from_seconds": 3.3,
+          "to_seconds": 3.8,
+          "action": "轻回弹恢复呼吸，脚底不动。"
+        }
+      ],
+      "room_mode": "仅冻结演出姿态，环境/饱食/Buff照常计时，随时可打断。",
+      "desktop_mode": "局部镀金，不暂停主计时器/重力，不锁输入。",
+      "pinned_mode": "完全原地，金粉结束无残留。",
+      "icon_concept": "暖金三层明暗的汤圆小雕像、深咖眼睛和一道斜高光。",
+      "dialogue": "先别问，我在等技能。",
+      "distinct_from": "无彩灯、转圈、分身或小球，不重复迪斯科或陀螺。"
+    },
+    {
+      "id": "chat_barrier",
+      "name": "弹幕护体",
+      "status": "proposal",
+      "permanent": true,
+      "cost": 540,
+      "duration_seconds": 4.5,
+      "cooldown_seconds": 18,
+      "exp_per_use": 0,
+      "coins_per_use": 0,
+      "part": 4,
+      "research_refs": [
+        "M002",
+        "M003",
+        "M009"
+      ],
+      "concept": "用一圈有一说一的卡片护住自己，最后只留一句不赖。",
+      "storyboard": [
+        {
+          "from_seconds": 0,
+          "to_seconds": 0.7,
+          "action": "先相信、合理质疑、有一说一三张原创纸卡展开。"
+        },
+        {
+          "from_seconds": 0.7,
+          "to_seconds": 3,
+          "action": "三卡椭圆轨道前后错层，两个小问号撞卡化星屑；不滚动刷屏。"
+        },
+        {
+          "from_seconds": 3,
+          "to_seconds": 3.8,
+          "action": "卡片合为一张不赖小牌，汤圆点头。"
+        },
+        {
+          "from_seconds": 3.8,
+          "to_seconds": 4.5,
+          "action": "小牌折起收走，星屑与护体层消失。"
+        }
+      ],
+      "room_mode": "围绕本体，不占真实家具槽、不遮抽屉和HUD。",
+      "desktop_mode": "屏边收窄轨道，所有卡片留在安全绘制框内。",
+      "pinned_mode": "轨道局部，本体脚底固定。",
+      "icon_concept": "三张杏白厚纸卡围成盾形，中间汤圆印章，图标不塞长字。",
+      "dialogue": "有一说一，我先保护一下我自己。",
+      "distinct_from": "chat_remote礼物是三次反应，本特技是纸卡实体护盾碰撞；不读网络弹幕。"
+    },
+    {
+      "id": "clutch_turnaround",
+      "name": "残血反打",
+      "status": "proposal",
+      "permanent": true,
+      "cost": 720,
+      "duration_seconds": 5.2,
+      "cooldown_seconds": 22,
+      "exp_per_use": 0,
+      "coins_per_use": 0,
+      "part": 5,
+      "research_refs": [
+        "M024",
+        "M032",
+        "M043"
+      ],
+      "concept": "只剩一小格演出血条，先退半步，再三拍把软团目标弹走。",
+      "storyboard": [
+        {
+          "from_seconds": 0,
+          "to_seconds": 0.8,
+          "action": "生成标演出的虚构迷你血条，三颗软团慢慢接近。"
+        },
+        {
+          "from_seconds": 0.8,
+          "to_seconds": 1.7,
+          "action": "小退半步蓄力，迟疑变开心；血条不读取饱食值。"
+        },
+        {
+          "from_seconds": 1.7,
+          "to_seconds": 3.6,
+          "action": "三拍前倾弹撞，软团依次化星屑，不计真实击杀。"
+        },
+        {
+          "from_seconds": 3.6,
+          "to_seconds": 5.2,
+          "action": "小血条翻成完美木牌淡出，身体回起点，所有目标清场。"
+        }
+      ],
+      "room_mode": "后退不超过24逻辑像素，临时目标只存在本次演出。",
+      "desktop_mode": "只在局部安全区前倾，不沿任务栏追逐或改抛投速度。",
+      "pinned_mode": "后退改为原地压缩蓄力，脚底不移动。",
+      "icon_concept": "小红演出条下的白汤圆顶起三颗软星，短弧指向反打方向。",
+      "dialogue": "血条是给你看的，操作才是重点。",
+      "distinct_from": "不新增真实血量/死亡，不是训练假人站桩；有诱退、反击、嘴硬结尾。"
+    },
+    {
+      "id": "trophy_lift",
+      "name": "捧杯时刻",
+      "status": "proposal",
+      "permanent": true,
+      "cost": 900,
+      "duration_seconds": 6,
+      "cooldown_seconds": 30,
+      "exp_per_use": 0,
+      "coins_per_use": 0,
+      "part": 6,
+      "research_refs": [
+        "M024",
+        "M045"
+      ],
+      "concept": "把小事当成夺冠，捧完杯才发现里面是一口热汤。",
+      "storyboard": [
+        {
+          "from_seconds": 0,
+          "to_seconds": 1,
+          "action": "原创小金杯从脚边升起，两束局部柔光收拢。"
+        },
+        {
+          "from_seconds": 1,
+          "to_seconds": 3.5,
+          "action": "托杯向外，最多12片金纸屑，皇冠/聚光灯只加一次高光。"
+        },
+        {
+          "from_seconds": 3.5,
+          "to_seconds": 4.8,
+          "action": "探头看杯内，一丝热气升起，完成大事与小事的反差。"
+        },
+        {
+          "from_seconds": 4.8,
+          "to_seconds": 6,
+          "action": "杯下降收起，点头谢幕；金纸、光和热气全部归零。"
+        }
+      ],
+      "room_mode": "局部庆贺，不全屏闪烁；陈列柜只亮玩家自己的进度章。",
+      "desktop_mode": "桌宠安全包围盒内升杯，不创建额外窗口、托盘或通知。",
+      "pinned_mode": "原位托杯点头，保留固定脚底。",
+      "icon_concept": "钝圆双耳小金杯、汤圆纹章和热气，原创造型不复刻现实奖杯。",
+      "dialogue": "这一杯，献给刚才那一口。",
+      "distinct_from": "不重复满级自动礼花或颁奖信封宣读；永久主动演出无额外收益，不声称真实队伍夺冠。"
+    }
+  ],
+  "parts": [
+    {
+      "part": 0,
+      "name": "已交付基线与旧物整理",
+      "status": "implemented_local_baseline",
+      "depends_on": [],
+      "item_ids": [
+        "form_dice",
+        "kiting_rope",
+        "summit_pickaxe",
+        "drama_clapper",
+        "iced_cola",
+        "early_champagne",
+        "summit_lunch",
+        "watchparty_popcorn",
+        "cooling_cap",
+        "demon_hood",
+        "summit_backpack",
+        "mini_gnar_hat",
+        "esports_chair",
+        "training_dummy",
+        "tactics_screen",
+        "postmatch_studio"
+      ],
+      "trick_ids": [],
+      "goals": [
+        "核对已完成16件、旧装扮下架/同ID重做、2.5D场景与脚底复位基线。",
+        "旧所有权、库存、称号和原始素材保留，不重新收费或物理删除。"
+      ],
+      "tests": [
+        "运行catalog逐ID核对16件，回归首批道具和位置生命周期。",
+        "下架装扮已穿戴可保留，换下后退出新售/奖励列表。"
+      ],
+      "exit_criteria": [
+        "历史本地完成，不算本轮新交付16件。",
+        "其余44件仍是设计稿；新6特技未入运行商城。"
+      ],
+      "counts": {
+        "gift": 4,
+        "food": 4,
+        "accessory": 4,
+        "furniture": 4,
+        "trick": 0
+      },
+      "total_products": 16,
+      "original_items": [
+        {
+          "id": "form_dice",
+          "name": "状态骰子",
+          "category": "gift",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "kiting_rope",
+          "name": "拉扯弹力绳",
+          "category": "gift",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "summit_pickaxe",
+          "name": "登山镐",
+          "category": "gift",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "drama_clapper",
+          "name": "短剧场记板",
+          "category": "gift",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "iced_cola",
+          "name": "冰镇可乐",
+          "category": "food",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "early_champagne",
+          "name": "赛前香槟",
+          "category": "food",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "summit_lunch",
+          "name": "山顶便当",
+          "category": "food",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "watchparty_popcorn",
+          "name": "观赛爆米花",
+          "category": "food",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "cooling_cap",
+          "name": "红温散热帽",
+          "category": "accessory",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "demon_hood",
+          "name": "大魔王兜帽",
+          "category": "accessory",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "summit_backpack",
+          "name": "登峰小背包",
+          "category": "accessory",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "mini_gnar_hat",
+          "name": "小纳尔耳帽",
+          "category": "accessory",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "esports_chair",
+          "name": "电竞椅",
+          "category": "furniture",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "training_dummy",
+          "name": "训练假人",
+          "category": "furniture",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "tactics_screen",
+          "name": "战术大屏",
+          "category": "furniture",
+          "current_status": "implemented_local"
+        },
+        {
+          "id": "postmatch_studio",
+          "name": "赛后录音棚",
+          "category": "furniture",
+          "current_status": "implemented_local"
+        }
+      ]
+    },
+    {
+      "part": 1,
+      "name": "商城特技与演出共用底座",
+      "status": "implemented_local_verified",
+      "depends_on": [
+        0
+      ],
+      "item_ids": [],
+      "trick_ids": [],
+      "goals": [
+        "统一新道具/特技ID注册与存档校验；face/back/effect采用多商品槽选择与默认回退，覆盖旧墨镜开关迁移及未知ID兼容。",
+        "复用trick_products/永久所有权与购买路径；共用开始/结束/中断受理事件。",
+        "捕获实际脚底起点，统一替换/取消/停场清理，最多一个前景演出。",
+        "为Flag/复盘提供最近3条有上限的本机游戏摘要，缺字段旧档默认空；不取截图/剪贴板/网络。",
+        "统一图标、PNG优先和构建资源白名单；房间只读姿态，桌宠物理只推进一次。",
+        "复用已独立交付的开发无限币；本Part补齐注册、多槽、摘要与生命周期，不额外发币或新增占位商品。"
+      ],
+      "tests": [
+        "正式余额0拒绝，开发可支付，真实余额不变；六种购买链共用支付策略，资格/库存/冷却仍校验。",
+        "开发购买正常库存/所有权可保存；无限标记不入档，正式重启正常余额。",
+        "连续动作及点击/摸头/投喂/拖拽/隐藏/换皮肤中断，实际脚底最终回位。",
+        "旧schema5缺摘要字段安全读取，正式菜单无开发入口。",
+        "face/back/effect多商品换装、当前旧字段迁移与重启恢复；未知商品ID不得丢失玩家已合法拥有的其余物品。"
+      ],
+      "exit_criteria": [
+        "底座独立回归通过后再投放新品，不先挂占位商品卡。",
+        "共用底座已验证；等待用户验收与Part2指令，当前仍只保留已实现商品。"
+      ],
+      "counts": {
+        "trick": 0
+      },
+      "total_products": 0,
+      "original_items": [],
+      "implementation_date": "2026-10-24",
+      "verification_status": "automated_and_native_verified",
+      "acceptance_guide": "docs/Part1底座验收.md",
+      "verification": {
+        "unique_test_cases": 753,
+        "new_test_cases": 59,
+        "native_checks": 64,
+        "platform": "Windows",
+        "device_pixel_ratio": 1.5,
+        "guide": "docs/Part1底座验收.md",
+        "note": "最终覆盖全部753用例。首轮旧UI繁忙全禁断言与新替换契约冲突，修订后所属21项复测全部通过；未以放宽坐标或交易断言规避失败。"
+      }
+    },
+    {
+      "part": 2,
+      "name": "练习与走位篇",
+      "status": "implemented_local_verified",
+      "depends_on": [
+        1
+      ],
+      "item_ids": [
+        "gnar_workbook",
+        "practice_hourglass",
+        "fist_bump_glove",
+        "postmatch_noodles",
+        "late_practice_snack",
+        "seven_goggles",
+        "kiting_scarf",
+        "practice_room",
+        "summit_wall"
+      ],
+      "trick_ids": [
+        "reverse_flash"
+      ],
+      "goals": [
+        "9件原草案商品逐件完成插画/商城/使用/存档/演出。",
+        "练习册+现有假人/纳尔帽三次练习盖章；无人击拳正常结束。",
+        "岩壁+现有登山镐/背包挂点与路标联动；反向闪现两种模式完整。"
+      ],
+      "tests": [
+        "3礼物仅结算一次；2食物零EXP；击拳有无点击收益相同。",
+        "围巾滞后不推挤碰撞，训练室不自动加经验，未装岩壁不渲染。",
+        "短闪屏边/固定/自由/1.5x皮肤+1.2xBuff包围盒及结束/中断后实际脚底。"
+      ],
+      "exit_criteria": [
+        "10款都可买可用且重启恢复；无残留道具，不把组合变成额外资源收益。",
+        "称号这次真练好了/登峰造圆条件可实际完成，不算商品数。"
+      ],
+      "counts": {
+        "gift": 3,
+        "food": 2,
+        "accessory": 2,
+        "furniture": 2,
+        "trick": 1
+      },
+      "total_products": 10,
+      "original_items": [
+        {
+          "id": "gnar_workbook",
+          "name": "纳尔练习册",
+          "category": "gift",
+          "current_status": "implemented_local_verified"
+        },
+        {
+          "id": "practice_hourglass",
+          "name": "加练沙漏",
+          "category": "gift",
+          "current_status": "implemented_local_verified"
+        },
+        {
+          "id": "fist_bump_glove",
+          "name": "击拳手套",
+          "category": "gift",
+          "current_status": "implemented_local_verified"
+        },
+        {
+          "id": "postmatch_noodles",
+          "name": "赛后泡面",
+          "category": "food",
+          "current_status": "implemented_local_verified"
+        },
+        {
+          "id": "late_practice_snack",
+          "name": "加练夜宵",
+          "category": "food",
+          "current_status": "implemented_local_verified"
+        },
+        {
+          "id": "seven_goggles",
+          "name": "七号护目镜",
+          "category": "accessory",
+          "current_status": "implemented_local_verified"
+        },
+        {
+          "id": "kiting_scarf",
+          "name": "拉扯围巾",
+          "category": "accessory",
+          "current_status": "implemented_local_verified"
+        },
+        {
+          "id": "practice_room",
+          "name": "加练训练室",
+          "category": "furniture",
+          "current_status": "implemented_local_verified"
+        },
+        {
+          "id": "summit_wall",
+          "name": "登峰岩壁",
+          "category": "furniture",
+          "current_status": "implemented_local_verified"
+        }
+      ],
+      "implementation_date": "2026-10-24",
+      "verification_status": "automated_and_native_verified",
+      "acceptance_guide": "docs/Part2练习与走位验收.md",
+      "implementation_notes": [
+        "这次真练好了：成功使用练习册、加练沙漏及真实点击已布置训练假人各一次。开发预览不计。",
+        "登峰造圆：布置登峰岩壁时成功使用登山镐；背包加强小旗视觉，不作为称号必要条件。",
+        "称号只由模型接受的操作一次授予，不以演出结束再扣库存或加经验；中断/预览不重复结算。",
+        "击拳0.3～4.8秒邀请可点击；无人点击4.8秒自动合拳，两种情况收益一致。"
+      ],
+      "verification": {
+        "unique_tests": 808,
+        "new_tests": 55,
+        "native_interaction_checks": 89,
+        "native_edge_checks": 33,
+        "platform": "Windows",
+        "dpr": 1.5,
+        "note": "包括窄窗/1.5x皮肤+1.2xBuff/巨翼皇冠的首帧与自然端点、真实鼠标输入连续、最终实际HOME和固定桌宠锚点；两次真实缺陷修复后重新跑全套。"
+      }
+    },
+    {
+      "part": 3,
+      "name": "Flag回收与嘴硬篇",
+      "status": "planned",
+      "depends_on": [
+        1,
+        2
+      ],
+      "item_ids": [
+        "prematch_flag",
+        "callback_boomerang",
+        "reverse_crystal",
+        "selective_earplugs",
+        "hype_soda",
+        "optimistic_jester",
+        "tactical_monocle",
+        "flag_capsule_cabinet",
+        "nonstick_bowl"
+      ],
+      "trick_ids": [
+        "recall_taunt"
+      ],
+      "goals": [
+        "先立Flag再回收，柜翻最近3条；无历史用明确原创默认短句。",
+        "水晶球只预测虚构小动作，耳塞不改全局静音。",
+        "满饱锅盖/香槟小丑帽/单片镜看饭碗，各有独立演出。",
+        "回城嘲讽九成读条自取消，与回城装扮区分。"
+      ],
+      "tests": [
+        "最近3条环缓存/重启/空记录/旧档；无网络与剪贴板访问。",
+        "满饱照现有规则消费，恢复0/食物EXP0，不退款或重计。",
+        "回城自然完成/打断/隐藏后无阵纹；未拥有拒绝、重复买不扣币。"
+      ],
+      "exit_criteria": [
+        "10款闭环，回旋镖无柜/有柜都能正常完成。",
+        "合理质疑/不粘圆称号一次授予，不计商品数。"
+      ],
+      "counts": {
+        "gift": 4,
+        "food": 1,
+        "accessory": 2,
+        "furniture": 2,
+        "trick": 1
+      },
+      "total_products": 10,
+      "original_items": [
+        {
+          "id": "prematch_flag",
+          "name": "赛前Flag牌",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "callback_boomerang",
+          "name": "回旋镖",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "reverse_crystal",
+          "name": "反向预测水晶球",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "selective_earplugs",
+          "name": "选择性耳塞",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "hype_soda",
+          "name": "上头气泡水",
+          "category": "food",
+          "current_status": "proposal"
+        },
+        {
+          "id": "optimistic_jester",
+          "name": "乐观小丑帽",
+          "category": "accessory",
+          "current_status": "proposal"
+        },
+        {
+          "id": "tactical_monocle",
+          "name": "战术单片镜",
+          "category": "accessory",
+          "current_status": "proposal"
+        },
+        {
+          "id": "flag_capsule_cabinet",
+          "name": "Flag时光柜",
+          "category": "furniture",
+          "current_status": "proposal"
+        },
+        {
+          "id": "nonstick_bowl",
+          "name": "不粘锅食盆",
+          "category": "furniture",
+          "current_status": "proposal"
+        }
+      ]
+    },
+    {
+      "part": 4,
+      "name": "复盘弹幕与机制篇",
+      "status": "planned",
+      "depends_on": [
+        1,
+        3
+      ],
+      "item_ids": [
+        "review_tape",
+        "tactics_board",
+        "chat_remote",
+        "smoke_practice_can",
+        "review_rice",
+        "blue_energy_drink",
+        "recall_pillar",
+        "rift_sandtable"
+      ],
+      "trick_ids": [
+        "golden_stasis",
+        "chat_barrier"
+      ],
+      "goals": [
+        "录像带用最近本机事件摘要，无记录明确演示；战术屏+拌饭联动。",
+        "白板/沙盘原创三路，遥控器最多3卡，烟圈安全区不盖HUD。",
+        "回城装扮低频无声，蓝饮属性卡只演出；金身不暂停计时器。",
+        "弹幕护体有卡片碰撞和反转，不读外部直播。"
+      ],
+      "tests": [
+        "事件环缓存有界；回放不是截图/赛果，组合不重新结算。",
+        "Alpha/UI命中、9内置皮肤/旧档GIF及挂件同层跟随。",
+        "金身期间饱食/Buff到期照常；特技互换/饿扁/拖拽清层。"
+      ],
+      "exit_criteria": [
+        "10款闭环，最多一个显式演出、粒子上限16。",
+        "纯路人称号以3种本地反应一次获得，无限币不跳体验条件。"
+      ],
+      "counts": {
+        "gift": 4,
+        "food": 2,
+        "accessory": 1,
+        "furniture": 1,
+        "trick": 2
+      },
+      "total_products": 10,
+      "original_items": [
+        {
+          "id": "review_tape",
+          "name": "复盘录像带",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "tactics_board",
+          "name": "战术白板",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "chat_remote",
+          "name": "弹幕遥控器",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "smoke_practice_can",
+          "name": "烟位练习罐",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "review_rice",
+          "name": "复盘拌饭",
+          "category": "food",
+          "current_status": "proposal"
+        },
+        {
+          "id": "blue_energy_drink",
+          "name": "蓝色能量饮",
+          "category": "food",
+          "current_status": "proposal"
+        },
+        {
+          "id": "recall_pillar",
+          "name": "回城小光柱",
+          "category": "accessory",
+          "current_status": "proposal"
+        },
+        {
+          "id": "rift_sandtable",
+          "name": "峡谷沙盘",
+          "category": "furniture",
+          "current_status": "proposal"
+        }
+      ]
+    },
+    {
+      "part": 5,
+      "name": "音乐短剧与反打篇",
+      "status": "planned",
+      "depends_on": [
+        1,
+        2,
+        4
+      ],
+      "item_ids": [
+        "debut_demo",
+        "encore_stick",
+        "engage_horn",
+        "overheat_hotpot",
+        "jungle_meal",
+        "spring_tiger_cape",
+        "earthfire_steps",
+        "costream_desk",
+        "drama_stage"
+      ],
+      "trick_ids": [
+        "clutch_turnaround"
+      ],
+      "goals": [
+        "Demo原创4音、应援棒皮肤色呼应；TES吉他/麦克风资格保持。",
+        "摄影棚联动原场记板，二路台最多2句原创反应，无自动广播。",
+        "火锅短时红脸不强制跑；披风/脚印短亮不留实体。",
+        "残血反打含诱退/三拍反击/虚构演出血条，零死亡惩罚保持。"
+      ],
+      "tests": [
+        "总静音/主动短音/隐藏停止，无常驻deng；TES拒绝路径不耗库存。",
+        "短剧/烟圈/披风/地火顺次互换遵守单演出并完整清理。",
+        "演出血条不改饱食/引入死亡；固定自由全中断与最终脚底。"
+      ],
+      "exit_criteria": [
+        "10款闭环，全部自制二创，无商用歌曲片段/真人原声。",
+        "乐坛新汤称号按原组合一次授予，不绕过TES权限。"
+      ],
+      "counts": {
+        "gift": 3,
+        "food": 2,
+        "accessory": 2,
+        "furniture": 2,
+        "trick": 1
+      },
+      "total_products": 10,
+      "original_items": [
+        {
+          "id": "debut_demo",
+          "name": "出道Demo",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "encore_stick",
+          "name": "返场应援棒",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "engage_horn",
+          "name": "开团小喇叭",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "overheat_hotpot",
+          "name": "红温火锅",
+          "category": "food",
+          "current_status": "proposal"
+        },
+        {
+          "id": "jungle_meal",
+          "name": "打野营养餐",
+          "category": "food",
+          "current_status": "proposal"
+        },
+        {
+          "id": "spring_tiger_cape",
+          "name": "春日虎纹披风",
+          "category": "accessory",
+          "current_status": "proposal"
+        },
+        {
+          "id": "earthfire_steps",
+          "name": "地火脚印",
+          "category": "accessory",
+          "current_status": "proposal"
+        },
+        {
+          "id": "costream_desk",
+          "name": "二路解说台",
+          "category": "furniture",
+          "current_status": "proposal"
+        },
+        {
+          "id": "drama_stage",
+          "name": "短剧摄影棚",
+          "category": "furniture",
+          "current_status": "proposal"
+        }
+      ]
+    },
+    {
+      "part": 6,
+      "name": "颁奖与收集篇",
+      "status": "planned",
+      "depends_on": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "item_ids": [
+        "glory_invitation",
+        "award_envelope",
+        "duo_cookie",
+        "five_blade_circlet",
+        "champion_star_ring",
+        "understated_halo",
+        "trophy_cabinet",
+        "silent_seven_clock",
+        "summit_rug"
+      ],
+      "trick_ids": [
+        "trophy_lift"
+      ],
+      "goals": [
+        "9原草案款闭环，柜仅玩家里程碑，钟真实走针且永不自动报时。",
+        "分享饼有/无伴宠均能完成，总恢复仍35、零EXP。",
+        "捧杯有热汤反转；颁奖/皇冠/聚光灯只加表现不加奖励。",
+        "复核10组原组合与6称号，前面完成项只回归不重消费。"
+      ],
+      "tests": [
+        "捧杯冷却/固定/自由/工作区，杯/光/纸屑无残留。",
+        "五剑/星环/光圈粒子不超预算，钟无提示音。",
+        "六称号条件、一次授予/重启/旧档；组合不虚构赛果。"
+      ],
+      "exit_criteria": [
+        "本Part10款闭环；原60覆盖16已完成+44新实现，另6新永久特技。",
+        "不把设计记录或已放卡片当完成，进入Part7统一验收。"
+      ],
+      "counts": {
+        "gift": 2,
+        "food": 1,
+        "accessory": 3,
+        "furniture": 3,
+        "trick": 1
+      },
+      "total_products": 10,
+      "original_items": [
+        {
+          "id": "glory_invitation",
+          "name": "荣光邀请函",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "award_envelope",
+          "name": "颁奖信封",
+          "category": "gift",
+          "current_status": "proposal"
+        },
+        {
+          "id": "duo_cookie",
+          "name": "双人分享饼",
+          "category": "food",
+          "current_status": "proposal"
+        },
+        {
+          "id": "five_blade_circlet",
+          "name": "五剑小冠",
+          "category": "accessory",
+          "current_status": "proposal"
+        },
+        {
+          "id": "champion_star_ring",
+          "name": "冠军星环",
+          "category": "accessory",
+          "current_status": "proposal"
+        },
+        {
+          "id": "understated_halo",
+          "name": "不赖小光圈",
+          "category": "accessory",
+          "current_status": "proposal"
+        },
+        {
+          "id": "trophy_cabinet",
+          "name": "冠军陈列柜",
+          "category": "furniture",
+          "current_status": "proposal"
+        },
+        {
+          "id": "silent_seven_clock",
+          "name": "七点报时钟",
+          "category": "furniture",
+          "current_status": "proposal"
+        },
+        {
+          "id": "summit_rug",
+          "name": "翻山地毯",
+          "category": "furniture",
+          "current_status": "proposal"
+        }
+      ]
+    },
+    {
+      "part": 7,
+      "name": "统一验收与未来打包",
+      "status": "planned",
+      "depends_on": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "item_ids": [],
+      "trick_ids": [],
+      "goals": [
+        "66个ID/图标/配置/持久化逐件审核；10组组合与6附加称号逐组复核。",
+        "全套自动化、原生Qt和高DPI目视，复位/残留/经济/权限/静音为发布阻断项。",
+        "全部源码通过后再做便携包与干净Windows环境验证；资源仅允许清单，不带私人素材/存档/备份。",
+        "发布说明准确区分完成、未验证和构建产物；GitHub最终集中更新仍等待用户指令。"
+      ],
+      "tests": [
+        "正式/--demo --dev-mode两种启动，普通余额拒付、开发无限支付及跨进程普通余额恢复。",
+        "每款房间/桌宠/固定/自由/隐藏恢复/换皮肤；动作末帧+数秒后实际绘制脚底。",
+        "9内置皮肤/旧档PNG-GIF/0.6~1.5缩放/1.2Buff/偏移±30/窄抽屉和DPR1.5。",
+        "旧档升级/备份恢复/单实例/资源白名单/缺图兜底与本地PNG只读；真实无Python电脑启动包。"
+      ],
+      "exit_criteria": [
+        "每件具备交易、表现、存档与验证证据，无占位演出。",
+        "本轮不执行打包，不承诺EXE/GitHub已更新；实际到此Part再构建验收。",
+        "未测干净电脑或打包失败时明确列未验证，不能把源码通过等同免环境包通过。"
+      ],
+      "counts": {
+        "trick": 0
+      },
+      "total_products": 0,
+      "original_items": []
+    }
+  ],
+  "audit": {
+    "original_total": 60,
+    "original_implemented_local": 25,
+    "original_remaining": 35,
+    "new_tricks_proposed": 6,
+    "planned_new_product_implementation": 40,
+    "total_scope_including_baseline": 66,
+    "original_category_counts": {
+      "gift": 20,
+      "food": 12,
+      "accessory": 14,
+      "furniture": 14
+    },
+    "implemented_category_counts": {
+      "gift": 7,
+      "food": 6,
+      "accessory": 6,
+      "furniture": 6
+    },
+    "each_new_content_part_total": 10,
+    "coverage": "原60 ID各一次、新6 ID各一次，无遗漏/重复/既有特技ID冲突",
+    "new_tricks_implemented_local": 1,
+    "new_tricks_remaining": 5,
+    "implemented_products_including_new_tricks": 26
+  },
+  "related_work": {
+    "combinations": [
+      {
+        "name": "降温三件套",
+        "items": [
+          "chili",
+          "air_conditioner",
+          "iced_cola"
+        ],
+        "performance": "红温后依次开空调、喝可乐，先嘴硬再降温；只改变演出，不重复计数值"
+      },
+      {
+        "name": "滔搏录音现场",
+        "items": [
+          "tes_guitar",
+          "tes_microphone",
+          "postmatch_studio"
+        ],
+        "performance": "飞行桃团持琴或开麦，主题用录音棚灯光呼应；仍受TES皮肤使用权限约束"
+      },
+      {
+        "name": "从练习生到我练好了",
+        "items": [
+          "gnar_workbook",
+          "training_dummy",
+          "mini_gnar_hat"
+        ],
+        "performance": "连续三次不同练习动作完成后盖章；演出成功不额外加经验"
+      },
+      {
+        "name": "山顶见",
+        "items": [
+          "summit_pickaxe",
+          "summit_backpack",
+          "summit_wall"
+        ],
+        "performance": "岩壁挂点逐级亮起，背包小旗升起，人物最后回原锚点"
+      },
+      {
+        "name": "剧情反转",
+        "items": [
+          "drama_clapper",
+          "drama_stage"
+        ],
+        "performance": "两个汤圆剪影一动一静，最后一格故作平静，台词和表情反差"
+      },
+      {
+        "name": "回旋镖闭环",
+        "items": [
+          "prematch_flag",
+          "callback_boomerang",
+          "flag_capsule_cabinet"
+        ],
+        "performance": "记录自己游戏内说过的话，再拿回来对照本次小动作，不接真实比赛赛果"
+      },
+      {
+        "name": "世一汤受访",
+        "items": [
+          "crown",
+          "award_envelope"
+        ],
+        "performance": "颁奖后皇冠亮一下，汤圆一本正经回答自己提出的问题"
+      },
+      {
+        "name": "红温但散热",
+        "items": [
+          "cooling_cap",
+          "steam"
+        ],
+        "performance": "散热帽越忙，嘴上越淡定；全程无被动音效"
+      },
+      {
+        "name": "一边复盘一边吃",
+        "items": [
+          "review_tape",
+          "review_rice",
+          "tactics_screen"
+        ],
+        "performance": "大屏画简洁本地回放，饭粒排成箭头，汤圆吃完后仍维持自信"
+      },
+      {
+        "name": "先相信",
+        "items": [
+          "early_champagne",
+          "optimistic_jester"
+        ],
+        "performance": "过早庆祝后小瓶塞顶到帽子，帽球依旧乐观摆动；不扣钱、不扣好感"
+      }
+    ],
+    "bonus_titles": [
+      {
+        "name": "合理质疑",
+        "condition": "首次完成Flag牌与回旋镖的组合演出"
+      },
+      {
+        "name": "乐坛新汤",
+        "condition": "飞行桃团分别使用过吉他、麦克风和出道Demo"
+      },
+      {
+        "name": "这次真练好了",
+        "condition": "练习册、训练假人、加练沙漏各体验一次"
+      },
+      {
+        "name": "登峰造圆",
+        "condition": "布置登峰岩壁并完成登山镐演出"
+      },
+      {
+        "name": "纯路人",
+        "condition": "体验弹幕遥控器的三种原创反应，不要求真实站队"
+      },
+      {
+        "name": "不粘圆",
+        "condition": "布置不粘锅食盆并体验一次满饱喂食反应"
+      }
+    ],
+    "note": "10组合与6称号不计商品数，设计记录不代表完成。"
+  },
+  "release_boundary": "仅本地，本轮不发布GitHub或重建EXE。"
+}

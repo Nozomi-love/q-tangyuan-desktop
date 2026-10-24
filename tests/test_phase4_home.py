@@ -45,7 +45,7 @@ class HomeFurnitureModelTests(unittest.TestCase):
                     "rice_clock": ("wall", 70), "ficus_plant": ("corner", 60),
                     "warm_lamp": ("corner", 90), "cheese_room": ("theme", 0),
                     "sakura_room": ("theme", 100), "matcha_room": ("theme", 100)}
-        self.assertEqual(set(furniture), set(expected) | {"sunny_chime","camp_room","sesame_friend","royal_rug","air_conditioner"})
+        self.assertEqual(set(furniture), set(expected) | {"sunny_chime","camp_room","sesame_friend","royal_rug","air_conditioner","esports_chair","training_dummy","tactics_screen","postmatch_studio","practice_room","summit_wall"})
         self.assertEqual((furniture["air_conditioner"]["slot"],furniture["air_conditioner"]["price"]),("wall",360))
         for key, (slot, cost) in expected.items():
             with self.subTest(key=key):

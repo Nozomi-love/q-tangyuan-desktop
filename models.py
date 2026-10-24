@@ -16,6 +16,10 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
 
+from content_registry import (ACCESSORY_SLOTS, BUILTIN_REGISTRY, HISTORY_EVENTS,
+                              BUILTIN_FURNITURE_SLOTS, FURNITURE_SLOTS,
+                              ContentRegistry, strict_json_object, valid_content_id)
+
 
 DEFAULT_DIALOGUES = {
     "poke": [
@@ -73,6 +77,7 @@ DEFAULT_DIALOGUES = {
 
 
 EXP_PER_LEVEL = 500
+PRACTICE_EXPERIENCES = frozenset(("gnar_workbook", "practice_hourglass", "training_dummy"))
 TEAM_SKIN_IDS = frozenset("team_s16_" + team for team in ("al", "blg", "tes", "ig", "gen", "hle", "t1", "dk"))
 
 
@@ -85,25 +90,12 @@ GUARDIAN_TITLE = "阿一古"
 LEGACY_GUARDIAN_TITLES = {"\u2728 汤圆守护神", "汤圆守护神"}
 
 
-FURNITURE_SLOTS = ("theme", "rug", "wall", "corner", "bowl", "window", "companion")
+# Compatibility exports; model operations use their own catalogue's registry.
+ACCESSORY_CHOICES = dict(BUILTIN_REGISTRY.accessory_choices)
+
 DEFAULT_FURNITURE = {"theme": "cheese_room", "rug": "cloud_cushion",
                      "wall": "", "corner": "", "bowl": "wood_bowl", "window": "", "companion": ""}
-FURNITURE_SLOT_BY_ID = {
-    "air_conditioner": "wall",
-    "cheese_room": "theme",
-    "sakura_room": "theme",
-    "matcha_room": "theme",
-    "cloud_cushion": "rug",
-    "lotus_cushion": "rug",
-    "cat_paw_rug": "rug",
-    "sunflower_painting": "wall",
-    "rice_clock": "wall",
-    "ficus_plant": "corner",
-    "warm_lamp": "corner",
-    "wood_bowl": "bowl",
-    "porcelain_bowl": "bowl", "sunny_chime": "window", "camp_room": "theme",
-    "sesame_friend": "companion", "royal_rug": "rug"
-}
+FURNITURE_SLOT_BY_ID = BUILTIN_FURNITURE_SLOTS
 
 
 def _valid_pet_name(value) -> bool:
@@ -161,7 +153,15 @@ class GameRules:
 
 class Catalog:
     """Validated, data-driven food and achievement definitions."""
-    def __init__(self, source: dict) -> None:
+    def __init__(self, source: dict, registry: ContentRegistry | None = None) -> None:
+        if not isinstance(source, dict):
+            raise ValueError("catalog 根节点必须为对象")
+        self.registry = registry if registry is not None else BUILTIN_REGISTRY
+        if not isinstance(self.registry, ContentRegistry):
+            raise ValueError("内容注册表无效")
+        self.trick_definitions = self.registry.tricks
+        self.accessory_definitions = self.registry.accessories
+        self.accessory_choices = self.registry.accessory_choices
         self.items = deepcopy(source["items"])
         self.dialogues = deepcopy(DEFAULT_DIALOGUES)
         configured_dialogues = source.get("dialogues", {})
@@ -190,6 +190,8 @@ class Catalog:
                     or not isinstance(product, dict) or product.get("id") != furniture_id
                     or product.get("slot") not in FURNITURE_SLOTS):
                 raise ValueError("家具 ID 或槽位无效")
+            if self.registry.furniture_slots.get(furniture_id) != product["slot"]:
+                raise ValueError("家具必须先注册已实现的绘制与槽位")
             for key in ("name", "description", "emoji"):
                 if not isinstance(product.get(key), str) or not product[key]:
                     raise ValueError("家具名称、说明和图标不能为空")
@@ -198,6 +200,9 @@ class Catalog:
             _integer(product.get("price"), "家具价格", 0 if product["default"] or product.get("unlock_perk") else 1)
             if product["default"] and (product["price"] != 0 or DEFAULT_FURNITURE.get(product["slot"]) != furniture_id):
                 raise ValueError("初始家具必须与默认房间对应且免费")
+        if any(value and (value not in self.furniture or self.furniture[value]["slot"] != slot)
+               for slot, value in DEFAULT_FURNITURE.items()):
+            raise ValueError("家具配置缺少初始房间必需品")
         self.achievements = deepcopy(source["achievements"])
         self.interactions = dict(source["interactions"])
         self.perks = deepcopy(source.get("perks", {}))
@@ -208,7 +213,9 @@ class Catalog:
         if not isinstance(self.accessory_products, dict):
             raise ValueError("装扮商品配置无效")
         for accessory_id, product in self.accessory_products.items():
-            if accessory_id != "phoenix_wings" or product.get("slot") != "back":
+            definition = self.accessory_definitions.get(accessory_id)
+            if (definition is None or not isinstance(product, dict)
+                    or product.get("slot") != definition.slot):
                 raise ValueError("装扮商品槽位无效")
             _integer(product.get("cost"), "装扮价格", 1)
             for key in ("name", "icon", "description"):
@@ -229,16 +236,19 @@ class Catalog:
         if not isinstance(self.trick_products, dict):
             raise ValueError("特技商品必须为对象")
         for trick_id, product in self.trick_products.items():
-            if trick_id not in ("screen_roll",) or not isinstance(product, dict):
+            if trick_id not in self.trick_definitions or not isinstance(product, dict):
                 raise ValueError("商城特技配置无效")
             for key in ("name", "icon", "description"):
                 if not isinstance(product.get(key), str) or not product[key]:
                     raise ValueError("特技商品名称、图标和说明不能为空")
             _integer(product.get("cost"), "特技价格", 1)
+            if self.trick_definitions[trick_id].exp != 0:
+                raise ValueError("商城永久特技不能反复获取经验")
         for perk_id, perk in self.perks.items():
-            if not isinstance(perk_id, str) or not isinstance(perk, dict) or not isinstance(perk.get("name"), str):
+            if not valid_content_id(perk_id) or not isinstance(perk, dict) or not isinstance(perk.get("name"), str):
                 raise ValueError("等级特权配置无效")
             _integer(perk["level"], "特权等级", 1, 30)
+        self._validate_registration_references()
         for milestone in self.milestones:
             _integer(milestone["level"], "里程碑等级", 1, 30)
             if not isinstance(milestone["label"], str) or any(p not in self.perks for p in milestone["perks"]):
@@ -246,8 +256,10 @@ class Catalog:
         if not isinstance(self.items, dict) or not self.items:
             raise ValueError("items 必须是商品对象")
         for item_id, item in self.items.items():
-            if not isinstance(item_id, str) or not isinstance(item, dict):
+            if not valid_content_id(item_id) or not isinstance(item, dict):
                 raise ValueError("商品配置无效")
+            if item_id not in self.registry.item_ids:
+                raise ValueError("消费品必须先注册已实现的表现")
             for key in ("name", "icon"):
                 if not isinstance(item.get(key), str) or not item[key]:
                     raise ValueError("商品名称和图标不能为空")
@@ -298,10 +310,68 @@ class Catalog:
         for key in ("rapid_window_seconds", "rapid_target", "shake_min_speed", "shake_distance", "shake_reversals"):
             _number(self.interactions[key], key, 1, 10000)
 
+        groups = (set(self.items), set(self.furniture), set(self.team_skins),
+                  set(self.accessory_definitions), set(self.trick_definitions))
+        seen = set()
+        for group in groups:
+            if group & seen:
+                raise ValueError("不同内容类型不能使用重复 ID")
+            seen.update(group)
+        self.content_ids = frozenset(seen)
+        icon_ids = set(self.registry.icon_ids)
+        for mapping in (self.items, self.furniture, self.accessory_products, self.trick_products):
+            icon_ids.update(product.get("icon", product.get("emoji", key)) for key, product in mapping.items())
+        icon_ids.update(a["id"] for a in self.achievements)
+        icon_ids.update(perk["icon"] for perk in self.perks.values() if "icon" in perk)
+        if any(not valid_content_id(icon) for icon in icon_ids):
+            raise ValueError("内容图标需要安全 ID")
+        self.icon_ids = frozenset(icon_ids)
+
+    def _validate_registration_references(self) -> None:
+        """Metadata points to real, correctly typed catalogue definitions."""
+        accessory_refs, trick_refs = set(), set()
+        for perk_id, perk in self.perks.items():
+            kind = perk.get("kind")
+            if kind == "accessory":
+                item_id = perk.get("item")
+                definition = self.accessory_definitions.get(item_id)
+                if (definition is None or definition.perk_id != perk_id or definition.slot != perk.get("slot")
+                        or item_id in accessory_refs):
+                    raise ValueError("装扮特权与已实现注册槽位不一致")
+                accessory_refs.add(item_id)
+            elif kind == "trick":
+                definitions = [row for row in self.trick_definitions.values() if row.perk_id == perk_id]
+                if len(definitions) != 1 or definitions[0].id in trick_refs:
+                    raise ValueError("特技特权必须引用一个已实现特技")
+                trick_refs.add(definitions[0].id)
+            elif kind == "furniture":
+                product = self.furniture.get(perk.get("item"))
+                if product is None or product["slot"] != perk.get("slot"):
+                    raise ValueError("家具特权引用的商品或槽位不存在")
+            elif kind == "team_skin" and perk.get("item") not in self.team_skins:
+                raise ValueError("皮肤特权引用不存在")
+        for accessory_id in self.accessory_products:
+            if accessory_id not in accessory_refs:
+                raise ValueError("装扮商品需要对应已注册权限")
+        for definition in self.trick_definitions.values():
+            if definition.perk_id and definition.perk_id not in self.perks:
+                raise ValueError("已实现特技缺少对应等级权限")
+        for product in self.furniture.values():
+            if product.get("unlock_perk"):
+                perk = self.perks.get(product["unlock_perk"], {})
+                if (perk.get("kind") != "furniture" or perk.get("item") != product["id"]
+                        or perk.get("slot") != product["slot"]):
+                    raise ValueError("等级家具引用不存在或不匹配的权限")
+        for mapping in (self.items, self.furniture, self.accessory_products, self.trick_products):
+            for product in mapping.values():
+                icon = product.get("icon", product.get("emoji", ""))
+                if not valid_content_id(icon):
+                    raise ValueError("内容图标需要安全 ID，不能包含路径")
+
     @classmethod
     def load(cls, path: Path | None = None) -> Catalog:
         path = path or Path(__file__).resolve().parent / "config" / "catalog.json"
-        return cls(json.loads(path.read_text(encoding="utf-8-sig")))
+        return cls(json.loads(path.read_text(encoding="utf-8-sig"), object_pairs_hook=strict_json_object))
 
 
 @dataclass
@@ -311,6 +381,8 @@ class PetData:
     titles: list[str] = field(default_factory=lambda: ["糯米团子"])
     inventory: dict = field(default_factory=dict)
     purchased_tricks: list[str] = field(default_factory=list)
+    interaction_history: list[dict] = field(default_factory=list)
+    practice_experiences: list[str] = field(default_factory=list)
     flavors_seen: list[str] = field(default_factory=list)
     unlocked_achievements: list[str] = field(default_factory=list)
     claimed_achievements: list[str] = field(default_factory=list)
@@ -385,11 +457,25 @@ class PetData:
             raise ValueError("不能选择回收区皮肤")
         if type(item.custom_import_unlocked) is not bool:
             raise ValueError("导入权限需要布尔值")
-        for slot, choices in (("head", ("", "sprout", "crown", "bow", "orange")), ("face", ("", "sunglasses")), ("effect", ("", "steam", "fireflies", "rainbow"))):
-            if item.accessories[slot] not in choices:
+        # Schema-5 snapshots from early builds used one Boolean face switch.
+        # Only that exact legacy representation is migrated; arbitrary values fail.
+        if type(item.accessories.get("face")) is bool:
+            item.accessories["face"] = "sunglasses" if item.accessories["face"] else ""
+        if "sunglasses" in item.accessories:
+            legacy = item.accessories.pop("sunglasses")
+            if type(legacy) is not bool:
+                raise ValueError("旧墨镜开关需要布尔值")
+            if "face" not in raw.get("accessories", {}):
+                item.accessories["face"] = "sunglasses" if legacy else ""
+        for slot in ACCESSORY_SLOTS:
+            value = item.accessories.get(slot, "")
+            if not valid_content_id(value, empty=True):
                 raise ValueError("挂件配置无效")
-        if item.accessories.get("back", "") not in ("", "phoenix_wings"):
-            raise ValueError("背部挂件配置无效")
+            known = BUILTIN_REGISTRY.accessories.get(value)
+            if known is not None and known.slot != slot:
+                raise ValueError("已知挂件不能存入错误槽位")
+        if set(item.accessories) - {*ACCESSORY_SLOTS, "offset_y"}:
+            raise ValueError("挂件槽位无效")
         _integer(item.accessories["offset_y"], "挂件垂直偏移", -30, 30)
         for key in ("name", "equipped_title"):
             if not isinstance(getattr(item, key), str) or not 1 <= len(getattr(item, key)) <= 40:
@@ -404,7 +490,7 @@ class PetData:
                 raise ValueError(f"{key} 必须为不重复的字符串列表")
         if not set(item.owned_team_skins).issubset(TEAM_SKIN_IDS):
             raise ValueError("已拥有战队皮肤 ID 无效")
-        if not set(item.purchased_accessories).issubset({"phoenix_wings"}):
+        if any(not valid_content_id(value) for value in item.purchased_accessories):
             raise ValueError("已购装扮 ID 无效")
         if any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", trick) for trick in item.purchased_tricks):
             raise ValueError("已购特技 ID 无效")
@@ -434,11 +520,11 @@ class PetData:
         if not set(item.claimed_achievements).issubset(item.unlocked_achievements):
             raise ValueError("不能领取尚未达成的成就")
         for key, count in item.inventory.items():
-            if not isinstance(key, str):
+            if not valid_content_id(key):
                 raise ValueError("背包物品 ID 必须为字符串")
             _integer(count, "背包数量")
         if item.active_buff:
-            if not isinstance(item.active_buff.get("item_id"), str):
+            if not valid_content_id(item.active_buff.get("item_id")):
                 raise ValueError("Buff 需要物品 ID")
             _number(item.active_buff.get("remaining_seconds"), "Buff 剩余时间", 0, 3600)
             _number(item.active_buff.get("behavior_remaining", 0), "行为剩余时间", 0, 12)
@@ -464,6 +550,18 @@ class PetData:
             raise ValueError("拾币礼包数量应为 10～20")
         if not amount and remaining:
             raise ValueError("不存在礼包时不能保留倒计时")
+        if (not isinstance(item.practice_experiences, list)
+                or any(not isinstance(value, str) or value not in PRACTICE_EXPERIENCES
+                       for value in item.practice_experiences)
+                or len(set(item.practice_experiences)) != len(item.practice_experiences)):
+            raise ValueError("练习体验只能保存练习册、沙漏和训练假人，且不能重复")
+        if not isinstance(item.interaction_history, list) or len(item.interaction_history) > 3:
+            raise ValueError("本机互动摘要只能保留最近3条")
+        for event in item.interaction_history:
+            if (not isinstance(event, dict) or set(event) != {"event", "item_id"}
+                    or not isinstance(event.get("event"), str) or event.get("event") not in HISTORY_EVENTS
+                    or not valid_content_id(event.get("item_id"), empty=True)):
+                raise ValueError("本机互动摘要只能保存受限事件与安全物品 ID")
         return item
 
     def to_dict(self) -> dict:
@@ -488,6 +586,7 @@ class PetModel(QObject):
     dizzy_requested = Signal()
     appearance_changed = Signal(dict)
     perks_unlocked = Signal(list)
+    trick_lifecycle = Signal(dict)
     MAX_LEVEL = 30
 
     def __init__(self, data: PetData | None = None, rules: GameRules | None = None,
@@ -507,7 +606,10 @@ class PetModel(QObject):
         self._roll_day()
         self.set_rules(self.rules)
         self.debug_unlock_all = False
-        self.trick_cooldowns = {"flip": 0.0, "clone": 0.0, "ball": 0.0, "screen_roll": 0.0, "disco": 0.0}
+        # A process-only spending override; never inflate or serialize the real balance.
+        self._unlimited_coins = False
+        self._presentation_managed = False
+        self.trick_cooldowns = dict.fromkeys(self.catalog.trick_definitions, 0.0)
         self.trick_busy = 0.0
         self._active_trick_id = ""
         self._known_perks = set()
@@ -533,6 +635,49 @@ class PetModel(QObject):
 
     def snapshot(self) -> dict:
         return self.data.to_dict()
+
+    def _remember_interaction(self, event: str, item_id: str = "") -> None:
+        """Only model-accepted actions enter this bounded, local-only journal."""
+        if event not in HISTORY_EVENTS or not valid_content_id(item_id, empty=True):
+            raise ValueError("互动摘要事件无效")
+        self.data.interaction_history = (self.data.interaction_history +
+                                         [{"event": event, "item_id": item_id}])[-3:]
+
+    def set_presentation_managed(self, enabled: bool) -> bool:
+        """The live controller finishes accepted tricks after the physical view does.
+
+        Standalone models retain timer-based completion for simulations and tests.
+        This process flag never becomes player data or changes a cooldown.
+        """
+        if type(enabled) is not bool:
+            return False
+        self._presentation_managed = enabled
+        return True
+
+    @property
+    def unlimited_coins(self) -> bool:
+        return self._unlimited_coins
+
+    def set_unlimited_coins(self, enabled: bool, *, authorized: bool = False) -> bool:
+        """Enable free spending only for a controller explicitly in developer mode."""
+        if type(enabled) is not bool or (enabled and authorized is not True):
+            return False
+        if self._unlimited_coins != enabled:
+            self._unlimited_coins = enabled
+            self.state_changed.emit(self.snapshot())
+        return True
+
+    def can_afford(self, cost: int) -> bool:
+        # Reject malformed prices even while testing; no negative-price credits.
+        return type(cost) is int and cost >= 0 and (self.unlimited_coins or self.data.coins >= cost)
+
+    def spend_coins(self, cost: int) -> bool:
+        """Apply one transaction's cost; callers publish their final state afterward."""
+        if not self.can_afford(cost):
+            return False
+        if not self.unlimited_coins:
+            self.data.coins -= cost
+        return True
 
     def set_rules(self, rules: GameRules) -> None:
         self.rules = rules
@@ -621,6 +766,7 @@ class PetModel(QObject):
 
     def poke(self) -> None:
         self.interaction_started.emit("poke")
+        self._remember_interaction("poke")
         previous = self.starving
         self._roll_day()
         self.data.stats["total_clicks"] += 1
@@ -661,11 +807,10 @@ class PetModel(QObject):
         if feed_now and not self.can_use_item(item_id):
             self.feedback.emit("这件道具是TES专属，请先换上TES皮肤；没有扣币。", "normal")
             return False
-        if self.data.coins < item["cost"]:
+        if not self.spend_coins(item["cost"]):
             self.feedback.emit("糯米币不够啦，戳戳或等一会儿拾币吧～", "hungry")
             return False
         previous = self.starving
-        self.data.coins -= item["cost"]
         if feed_now:
             self._consume(item_id, item, previous)
         else:
@@ -698,13 +843,18 @@ class PetModel(QObject):
 
     def _consume(self, item_id: str, item: dict, previous: bool) -> None:
         self.interaction_started.emit(item["category"])
+        self._remember_interaction("gift" if item["category"] == "gift" else "feed", item_id)
         if item["category"] == "gift":
             self.data.stats["total_presents"] += 1
             before_exp = self._lifetime_exp()
             levels = self._add_exp(item["exp"])
             actual_exp = self._lifetime_exp() - before_exp
             message = self.dialogue(item.get("dialogue", "gift"))
-            self._publish(previous, levels, message, "interaction")
+            if item_id in {"gnar_workbook", "practice_hourglass"} and item_id not in self.data.practice_experiences:
+                self.data.practice_experiences.append(item_id)
+            titles = self._unlock_practice_titles(item_id)
+            feedback = message + (" 新称号：" + "、".join(titles) if titles else "")
+            self._publish(previous, levels, feedback, "achievement" if titles else "interaction")
             self.gifted.emit()
             self.presentation_requested.emit({"item_id": item_id, "category": "gift",
                 "effect": item.get("room_effect", item_id),
@@ -721,6 +871,9 @@ class PetModel(QObject):
         if previous and not self.starving:
             self.data.stats["starvation_recoveries"] += 1
             self.data.timers["hungry_notice_elapsed"] = 0.0
+        if item_id == "iced_cola" and self.data.active_buff.get("item_id") == "chili":
+            self.data.active_buff = {}
+            self.buff_changed.emit({})
         if "buff" in item:
             self.data.active_buff = {"item_id": item_id, "remaining_seconds": self.rules.buff_seconds,
                                      "behavior_remaining": item["buff"].get("behavior_seconds", 0)}
@@ -728,11 +881,39 @@ class PetModel(QObject):
                 self.data.flavors_seen.append(item_id)
             self.buff_changed.emit(self.buff_view())
         event = "feed_full" if was_full else "feed_recover" if previous and not self.starving else "feed"
-        self._publish(previous, message=self.dialogue(event), tone="interaction")
+        self._publish(previous, message=self.dialogue(item.get("dialogue", event) if event == "feed" else event), tone="interaction")
         self.food_consumed.emit(item_id)
         self.fed.emit()
         self.presentation_requested.emit({"item_id": item_id, "category": "food",
             "hunger_gain": self.data.hunger - before_hunger, "exp_gain": 0})
+
+    def _unlock_practice_titles(self, item_id: str = "") -> list[str]:
+        """Accepted actions award collection titles once; animation never settles data."""
+        unlocked = []
+        if PRACTICE_EXPERIENCES.issubset(self.data.practice_experiences):
+            unlocked.append("这次真练好了")
+        if item_id == "summit_pickaxe" and self.data.equipped_furniture.get("wall") == "summit_wall":
+            unlocked.append("登峰造圆")
+        granted = [title for title in unlocked if title not in self.data.titles]
+        self.data.titles.extend(granted)
+        return granted
+
+    def record_furniture_interaction(self, furniture_id: str) -> bool:
+        """A real click on the installed dummy records experience, without rewards.
+
+        Repeated valid clicks are accepted no-ops.  A development preview or a
+        hidden/uninstalled prop has no authority to add a practice experience.
+        """
+        if (furniture_id != "training_dummy"
+                or self.data.equipped_furniture.get("corner") != furniture_id):
+            return False
+        if furniture_id in self.data.practice_experiences:
+            return True
+        self.data.practice_experiences.append(furniture_id)
+        titles = self._unlock_practice_titles()
+        self._publish(self.starving, message="获得称号：" + "、".join(titles) if titles else "",
+                      tone="achievement" if titles else "normal")
+        return True
 
     def _lifetime_exp(self) -> int:
         level = self.data.affection_level
@@ -817,10 +998,9 @@ class PetModel(QObject):
         if product.get("unlock_perk"):
             self.feedback.emit("这件家具是好感等级专属奖励。", "normal")
             return False
-        if self.data.coins < product["price"]:
+        if not self.spend_coins(product["price"]):
             self.feedback.emit("糯米币还差一点，先攒一攒再布置吧～", "normal")
             return False
-        self.data.coins -= product["price"]
         self.data.owned_furniture.append(furniture_id)
         if product["price"] > 0:
             self.data.stats["furniture_purchases"] += 1
@@ -855,9 +1035,9 @@ class PetModel(QObject):
 
     def has_perk(self, perk_id: str) -> bool:
         perk = self.catalog.perks.get(perk_id)
-        return bool(perk and (self.debug_unlock_all or self.data.affection_level >= perk["level"]
+        return bool(perk and (self.debug_unlock_all or (not perk.get("store_only") and self.data.affection_level >= perk["level"])
                               or (perk.get("kind") == "team_skin" and perk.get("item") in self.data.owned_team_skins)
-                              or (perk_id == "accessory_phoenix_wings" and "phoenix_wings" in self.data.purchased_accessories)
+                              or (perk.get("kind") == "accessory" and perk.get("item") in self.data.purchased_accessories)
                               or (perk_id == "custom_import" and self.data.custom_import_unlocked)))
 
     def perk_status(self) -> list[dict]:
@@ -897,28 +1077,32 @@ class PetModel(QObject):
     def unlock_custom_import(self) -> bool:
         if self.has_perk("custom_import"):
             return True
-        if self.data.coins < 50:
+        if not self.spend_coins(50):
             self.feedback.emit("提前打开衣橱需要 50 糯米币，Lv.3 可免费开启。", "hungry")
             return False
-        self.data.coins -= 50
         self.data.custom_import_unlocked = True
         self._publish(self.starving, message=" 衣橱已提前开启，试试导入自己的小伙伴吧！")
         return True
 
     def effective_accessories(self) -> dict:
         result = deepcopy(self.data.accessories)
-        for slot in ("head", "face", "effect", "back"):
+        for slot in ACCESSORY_SLOTS:
             value = result.get(slot, "")
-            perk_id = ("effect_" if slot == "effect" else "accessory_") + value
-            if value and not self.has_perk(perk_id):
+            definition = self.catalog.accessory_definitions.get(value)
+            if value and (definition is None or definition.slot != slot or not self.has_perk(definition.perk_id)):
                 result[slot] = ""
         return result
 
     def equip_accessory(self, slot: str, item: str) -> bool:
-        choices = {"head": ("", "sprout", "crown", "bow", "orange"), "face": ("", "sunglasses"), "effect": ("", "steam", "fireflies", "rainbow"), "back": ("", "phoenix_wings")}
+        choices = self.catalog.accessory_choices
         if slot not in choices or item not in choices[slot]:
             return False
-        perk_id = ("effect_" if slot == "effect" else "accessory_") + item
+        definition = self.catalog.accessory_definitions.get(item)
+        perk_id = definition.perk_id if definition else ""
+        if (item and (not definition.newly_selectable or self.catalog.perks.get(perk_id, {}).get("retired"))
+                and self.data.accessories.get(slot) != item):
+            self.feedback.emit("这件旧装扮已下架，已穿戴的收藏仍会保留。", "normal")
+            return False
         if item and not self.has_perk(perk_id):
             self.feedback.emit("再陪伴一阵子，就能解锁这个装扮啦～", "normal")
             return False
@@ -935,14 +1119,14 @@ class PetModel(QObject):
         product = self.catalog.accessory_products.get(accessory_id)
         if product is None:
             return False
-        if self.has_perk("accessory_" + accessory_id):
+        definition = self.catalog.accessory_definitions[accessory_id]
+        if self.has_perk(definition.perk_id):
             return True
-        if self.data.coins < product["cost"]:
-            self.feedback.emit("糯米币还不够，也可以升级后免费解锁。", "normal")
+        if not self.spend_coins(product["cost"]):
+            self.feedback.emit("糯米币还不够，攒一攒再来吧。", "normal")
             return False
-        self.data.coins -= product["cost"]
         self.data.purchased_accessories.append(accessory_id)
-        self._publish(self.starving, message=f"已收藏{product['name']}，到挂件页展开翅膀吧。", tone="reward")
+        self._publish(self.starving, message=f"已收藏{product['name']}，到背包的挂件页穿戴吧。", tone="reward")
         return True
 
     def set_air_conditioner_on(self, enabled: bool) -> bool:
@@ -997,11 +1181,15 @@ class PetModel(QObject):
 
     def replace_data(self, data: PetData) -> None:
         previous = self.starving
-        self.data = PetData.from_dict(data.to_dict())
+        replacement = PetData.from_dict(data.to_dict())
+        active = self._active_trick_id
+        self.data = replacement
         self._poke_times.clear()
         self.trick_busy = 0.0
         self._active_trick_id = ""
         self.trick_cooldowns = dict.fromkeys(self.trick_cooldowns, 0.0)
+        if active:
+            self.trick_lifecycle.emit({"phase": "interrupted", "trick_id": active, "reason": "restore"})
         self._known_perks.clear()
         self._refresh_perks(announce=False)
         self._publish(previous)
@@ -1024,10 +1212,9 @@ class PetModel(QObject):
             return False
         if skin_id in self.data.owned_team_skins:
             return True
-        if self.data.coins < product["cost"]:
+        if not self.spend_coins(product["cost"]):
             self.feedback.emit("糯米币还不够，达到对应等级也能免费获得这款皮肤。", "normal")
             return False
-        self.data.coins -= product["cost"]
         self.data.owned_team_skins.append(skin_id)
         self._publish(self.starving, message=f"已获得{product['name']}，可以在衣橱换上。", tone="reward")
         return True
@@ -1046,15 +1233,19 @@ class PetModel(QObject):
         return True
 
     def has_trick(self, trick_id: str) -> bool:
+        definition = self.catalog.trick_definitions.get(trick_id)
+        if definition is None:
+            return False
         if trick_id in self.catalog.trick_products:
             return trick_id in self.data.purchased_tricks
-        return self.has_perk("trick_" + trick_id)
+        return bool(definition.perk_id and self.has_perk(definition.perk_id))
 
     def trick_name(self, trick_id: str) -> str:
         product = self.catalog.trick_products.get(trick_id)
         if product:
             return str(product["name"])
-        return self.catalog.perks.get("trick_" + trick_id, {}).get("name", trick_id)
+        definition = self.catalog.trick_definitions.get(trick_id)
+        return self.catalog.perks.get(definition.perk_id, {}).get("name", definition.name) if definition else trick_id
 
     def buy_trick(self, trick_id: str) -> bool:
         product = self.catalog.trick_products.get(trick_id)
@@ -1064,40 +1255,48 @@ class PetModel(QObject):
         if trick_id in self.data.purchased_tricks:
             self.feedback.emit("这项特技已经永久解锁啦，无需重复购买。", "normal")
             return False
-        if self.data.coins < product["cost"]:
+        if not self.spend_coins(product["cost"]):
             self.feedback.emit("糯米币不够啦，再攒一点就能学会这个特技～", "normal")
             return False
-        self.data.coins -= product["cost"]
         self.data.purchased_tricks.append(trick_id)
         self._publish(self.starving, message=f" 已永久学会【{product['name']}】，现在可以表演啦！", tone="reward")
         return True
 
-    def finish_trick(self, trick_id: str) -> None:
-        if trick_id == self._active_trick_id and self.trick_busy > 0:
-            self.trick_busy = 0.0
-            self._active_trick_id = ""
-            self._publish(self.starving)
+    def finish_trick(self, trick_id: str, reason: str = "completed") -> bool:
+        if (reason not in {"completed", "replaced", "input", "hidden", "skin_changed", "shutdown",
+                           "restore", "starving", "cancelled"} or trick_id != self._active_trick_id or not trick_id):
+            return False
+        self.trick_busy = 0.0
+        self._active_trick_id = ""
+        self.trick_lifecycle.emit({"phase": "finished" if reason == "completed" else "interrupted",
+                                   "trick_id": trick_id, "reason": reason})
+        self._publish(self.starving)
+        return True
 
-    def can_perform_trick(self, trick_id: str) -> bool:
+    def can_perform_trick(self, trick_id: str, *, replacing: bool = False) -> bool:
         return (trick_id in self.trick_cooldowns and self.has_trick(trick_id)
-                and self.trick_cooldowns[trick_id] <= 0 and self.trick_busy <= 0 and not self.starving)
+                and self.trick_cooldowns[trick_id] <= 0 and (self.trick_busy <= 0 or replacing is True) and not self.starving)
 
     def record_trick(self, trick_id: str) -> bool:
         if not self.can_perform_trick(trick_id):
             return False
-        duration = {"flip": 1.1, "clone": 2.5, "ball": 5.0, "screen_roll": 12.0, "disco": 6.0}[trick_id]
-        self.trick_busy = duration
+        definition = self.catalog.trick_definitions[trick_id]
+        self.trick_busy = definition.duration
         self._active_trick_id = trick_id
-        self.trick_cooldowns[trick_id] = 20.0 if trick_id == "screen_roll" else max(5.0, duration)
-        levels = self._add_exp(5) if trick_id == "flip" else []
+        self.trick_cooldowns[trick_id] = definition.cooldown
+        self._remember_interaction("trick", trick_id)
+        self.trick_lifecycle.emit({"phase": "started", "trick_id": trick_id, "reason": "accepted"})
+        levels = self._add_exp(definition.exp) if definition.exp else []
         self._publish(self.starving, levels, self.dialogue("trick_" + trick_id), "interaction")
         return True
 
     def record_drop(self) -> None:
+        self._remember_interaction("drop")
         self.data.stats["total_drops"] += 1
         self._publish(self.starving, message=self.dialogue("drop"), tone="interaction")
 
     def record_shake(self) -> None:
+        self._remember_interaction("shake")
         self.data.stats["total_shakes"] += 1
         self._publish(self.starving)
 
@@ -1109,6 +1308,7 @@ class PetModel(QObject):
         self.data.timers["pet_cooldown_remaining"] = self.rules.pet_cooldown
         self.data.stats["total_pets"] += 1
         self.interaction_started.emit("pet")
+        self._remember_interaction("pet")
         levels = self._add_exp(3)
         self._publish(self.starving, levels, self.dialogue("pet_head"), "interaction")
         return True
@@ -1134,7 +1334,10 @@ class PetModel(QObject):
         if not math.isfinite(seconds) or seconds <= 0:
             return
         previous = self.starving
-        self.trick_busy = max(0.0, self.trick_busy - seconds)
+        self.trick_busy = max(1e-9 if self._presentation_managed and self._active_trick_id else 0.0,
+                              self.trick_busy - seconds)
+        if not self._presentation_managed and self._active_trick_id and self.trick_busy == 0:
+            self.finish_trick(self._active_trick_id)
         for trick_id in self.trick_cooldowns:
             self.trick_cooldowns[trick_id] = max(0.0, self.trick_cooldowns[trick_id] - seconds)
         self._roll_day()

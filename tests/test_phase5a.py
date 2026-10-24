@@ -250,8 +250,13 @@ class RoomIntegrationTests(unittest.TestCase):
         self.room.set_home_state({"equipped_furniture": {"rug": "cloud_cushion"}})
         image = QImage(320, 120, QImage.Format.Format_ARGB32); image.fill(Qt.GlobalColor.transparent)
         painter = QPainter(image); self.room._paint_rug(painter, QPointF(160, 40)); painter.end()
+        # The rebuilt cushion has a vertical material gradient. Adjacent
+        # lobes still form one opaque continuous surface without internal seams.
+        fill = image.pixelColor(160, 53)
         for point in ((80, 53), (120, 53), (160, 53), (210, 53), (240, 53)):
-            self.assertEqual(image.pixelColor(*point), QColor("#f8ecd9"), point)
+            self.assertEqual(image.pixelColor(*point), fill, point)
+            self.assertEqual(image.pixelColor(*point).alpha(), 255, point)
+        self.assertNotEqual(image.pixelColor(160, 40), image.pixelColor(160, 73))
 
     def test_day_night_and_lamp_have_distinct_frames(self):
         self.room.set_home_state({"equipped_furniture": {"corner": "warm_lamp"}, "lamp_on": False})

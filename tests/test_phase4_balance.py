@@ -55,7 +55,7 @@ class BalanceModelTests(unittest.TestCase):
                 self.assertEqual(pet.data.stats['total_feeds'],1)
     def test_food_tiers_have_distinct_recovery_and_zero_exp(self):
         items=[item for item in Catalog.load().items.values() if item['category']=='food']
-        self.assertEqual(len(items),9)
+        self.assertEqual(len(items),15)
         for tier,hunger in ((1,15),(2,35),(3,65)):
             same=[i for i in items if i['tier']==tier]
             self.assertTrue(same)

@@ -1,6 +1,6 @@
 # 手绘插画图标
 
-本目录67张80×80透明PNG由illustrated_assets.py以QPainter三倍超采样绘制，使用圆角深棕描边、柔和填充、高光和底影，无外部素材或Unicode Emoji。
+本目录116张80×80透明PNG由illustrated_assets.py及item_expansion.py以QPainter三倍超采样绘制，使用圆角深棕描边、柔和填充、高光和底影，无外部素材或Unicode Emoji。
 
 运行时同名PNG永远优先。更换画师图片时直接替换对应文件（建议80×80或更高分辨率等比例透明PNG），重启或在游戏设置点击「重新加载外观与图标」。加载器不会覆盖既有图；损坏图片仅使用内存矢量兜底，原文件不动。缺失图才自动生成PNG。个人素材不需要提交GitHub，请在后续协作中明确哪些画师图片可以发布。
 
@@ -88,4 +88,27 @@
 | rainbow.png | 七彩祥云光环 |
 | level_8.png / level_10.png / level_15.png / level_20.png / level_25.png / level_30.png | 对应等级里程碑徽章 |
 
-当前共81张透明PNG，原67张图片保持原字节；自定义皮肤卡片用实际idle素材生成缩略图，不再套用avatar.png。
+以上为历史等级奖励图记录。本轮前已有87张图；本轮追加19张后共106张，原有图片保持原字节。2.0前端已移除个人皮肤导入入口。
+
+## 首批道具与旧装扮重做（本地）
+
+新增16件各使用同名ID.png，见[道具清单与验收](../../docs/首批道具扩充验收.md)。三个重做图标使用red_steam.png、cleanse_orange.png、champion_spotlight.png；原steam/orange/rainbow缓存保留。sprout、bow、fireflies仅为旧存档兼容保留，不再出现在新奖励与换装列表。所有既有PNG未被覆盖。
+
+## Part 2 练习与走位（本地）
+
+本批追加10张独立插画，共116张。沿用80×80透明PNG、3倍超采样、暖咖描边和明暗面；原106张PNG保持原字节，没有用新图覆盖旧缓存。运行与构建资源使用同一显式图标清单，仍优先读取画师同名本地图。
+
+| 文件 | 对应内容 |
+| --- | --- |
+| gnar_workbook.png | 纳尔练习册 |
+| practice_hourglass.png | 加练沙漏 |
+| fist_bump_glove.png | 击拳手套 |
+| postmatch_noodles.png | 赛后泡面 |
+| late_practice_snack.png | 加练夜宵 |
+| seven_goggles.png | 七号护目镜 |
+| kiting_scarf.png | 拉扯围巾 |
+| practice_room.png | 加练训练室 |
+| summit_wall.png | 登峰岩壁 |
+| reverse_flash.png | 反向闪现 |
+
+[本批操作验收](../../docs/Part2练习与走位验收.md)。代码与素材已通过808项自动化及122项原生检查，纳入2026-10-24 main源码更新；EXE未重建。

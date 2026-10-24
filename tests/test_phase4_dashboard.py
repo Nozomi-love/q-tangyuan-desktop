@@ -47,16 +47,16 @@ class WardrobeDashboardTests(unittest.TestCase):
         self.assertFalse(self.window.head_combo.model().item(1).isEnabled())
         self.assertTrue(all(not button.isEnabled() for button in self.window.trick_buttons.values()))
 
-    def test_level_two_sprout_flip_only(self):
+    def test_level_two_flip_without_retired_sprout(self):
         self.level(2)
-        self.assertTrue(self.window.head_combo.model().item(1).isEnabled())
-        self.assertFalse(self.window.head_combo.model().item(2).isEnabled())
+        self.assertEqual(self.window.head_combo.findData("sprout"), -1)
+        self.assertFalse(self.window.head_combo.model().item(1).isEnabled())
         self.assertTrue(self.window.trick_buttons["flip"].isEnabled())
         self.assertFalse(self.window.trick_buttons["clone"].isEnabled())
 
     def test_level_three_unlocks_crown_and_import_free(self):
         self.level(3)
-        self.assertTrue(self.window.head_combo.model().item(2).isEnabled())
+        self.assertTrue(self.window.head_combo.model().item(self.window.head_combo.findData("crown")).isEnabled())
         self.assertEqual(self.model.data.coins, 100)
 
     def test_no_early_import_purchase_entry(self):
@@ -165,7 +165,13 @@ class WardrobeDashboardTests(unittest.TestCase):
         self.window.refresh()
         self.assertFalse(self.window.trick_buttons["flip"].isEnabled())
         self.assertIn("秒", self.window.trick_buttons["flip"].text())
-        self.assertFalse(self.window.trick_buttons["clone"].isEnabled())
+        # Other learned tricks may request replacement; this UI signal itself
+        # must not end the old performance or charge/grant another action.
+        self.assertTrue(self.window.trick_buttons["clone"].isEnabled())
+        self.window.trick_buttons["clone"].click()
+        self.assertEqual(outputs, ["flip", "clone"])
+        self.assertEqual(self.model._active_trick_id, "flip")
+        self.assertEqual(self.model.trick_cooldowns["clone"], 0)
         self.model.advance(5)
         self.window.refresh()
         self.assertTrue(self.window.trick_buttons["flip"].isEnabled())

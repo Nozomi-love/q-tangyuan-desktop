@@ -32,10 +32,11 @@ class CompactHomeTests(unittest.TestCase):
         self.panel.stop(); self.panel.close(); self.panel.deleteLater()
         APP.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
-    def test_default_home_devotes_about_four_fifths_to_scene(self):
+    def test_default_home_is_edge_to_edge_room_scene(self):
         p = self.panel
         ratio = p.room.width() * p.room.height() / (p.width() * p.height())
-        self.assertGreaterEqual(ratio, .75); self.assertLessEqual(ratio, .83)
+        self.assertAlmostEqual(ratio, 1.0, places=2)
+        self.assertEqual(p.room.size(), p.home_scroll.viewport().size())
         self.assertTrue(p.drawer.isHidden())
 
     def test_wide_hud_is_separate_cards_with_clear_wall_between(self):
@@ -110,9 +111,14 @@ class CompactHomeTests(unittest.TestCase):
         self.assertEqual(p.room._slot("theme"), "sakura_room")
         self.assertTrue(p.room.isVisible()); self.assertTrue(p.drawer.isVisible())
 
-    def test_all_illustrated_dock_buttons_are_shallow(self):
-        for button in self.panel.nav_buttons.values():
-            self.assertEqual(button.height(), 62); self.assertFalse(button.icon().isNull())
+    def test_illustrated_dock_uses_compact_nonstretching_badges(self):
+        buttons = list(self.panel.nav_buttons.values())
+        for button in buttons:
+            self.assertGreaterEqual(button.height(), 64)
+            self.assertLessEqual(button.height(), 86)
+            self.assertLessEqual(button.width(), 76)
+            self.assertFalse(button.icon().isNull())
+        self.assertLess(sum(button.width() for button in buttons), self.panel.room.width() * .5)
 
     def test_native_focus_primitive_draws_no_dots_but_slider_keeps_keyboard(self):
         image = QImage(80, 40, QImage.Format.Format_ARGB32); image.fill(Qt.GlobalColor.transparent)
@@ -162,6 +168,7 @@ class EnvironmentTests(unittest.TestCase):
 
     def test_night_tone_changes_the_foreground_and_lamp_adds_warmth(self):
         panel = DashboardWindow(PetModel()); panel.preview_timer.stop(); room = panel.room
+        room.setFixedSize(960, 500)  # Keep the paint fixture and scene in the same coordinate system.
         def color(day, on):
             room.daytime_override = day
             room.set_home_state({"equipped_furniture": {"corner": "warm_lamp"}, "lamp_on": on})

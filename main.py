@@ -85,14 +85,15 @@ class PetApplication:
 
     def __init__(self, app: QApplication, save_path: Path | None = PROJECT_ROOT / "data" / "save_data.json",
                  accelerated: bool = False, skins_root: Path | None = None,
-                 dev_mode: bool | None = None) -> None:
+                 dev_mode: bool = False) -> None:
         self.app = app
-        self.dev_mode = accelerated if dev_mode is None else dev_mode
+        self.dev_mode = dev_mode is True
         self.skin_manager = SkinManager(skins_root or PROJECT_ROOT / "assets" / "skins",
                                         builtin_root=PROJECT_ROOT / "assets/skins/teams_s16")
         self.save_manager = SaveManager(save_path) if save_path is not None else None
         self._restoring = True
         self._stopped = False
+        self._cancelling_presentation = False
         self._dirty = False
         self._save_blocked = False
         self._warned_save = False
@@ -104,6 +105,8 @@ class PetApplication:
                 self._save_blocked = True
                 logging.warning("存档读取失败，本次只在内存体验，原文件保留：%s", error)
         self.model = PetModel(data, self._load_rules(accelerated))
+        self.model.set_unlimited_coins(self.dev_mode, authorized=self.dev_mode)
+        self.model.set_presentation_managed(True)
         self.window = PetWindow(PROJECT_ROOT / "assets" / "skins" / "default")
         self.audio = ProceduralAudio(PROJECT_ROOT / "assets" / "sounds", data.muted, self.window)
         self._skin_restore_warning = ""
@@ -113,6 +116,7 @@ class PetApplication:
                     or restored.name != data.selected_skin_id or not self.window.set_skin(restored)):
                 self._skin_restore_warning = "旧外观暂时无法读取，先使用白汤圆；原文件与进度保留。"
         self.window.engine.skin_scale=self.model.skin_config()["scale_multiplier"]
+        self.window.engine.cooling = data.equipped_furniture.get("wall") == "air_conditioner" and data.air_conditioner_on
         self.window.set_accessories(self.model.effective_accessories())
         self.icon = create_tray_icon(self.window.renderer)
         app.setWindowIcon(self.icon)
@@ -129,7 +133,9 @@ class PetApplication:
         self.model.gains_received.connect(self._gains_received)
         self.model.reward_sound_requested.connect(lambda: self.audio.play("coin"))
         self.model.interaction_started.connect(self._interaction_started)
-        self.window.drag_started.connect(lambda: self.dashboard.room.interact(cancel_gift=True))
+        self.window.drag_started.connect(lambda: self._cancel_presentation("input"))
+        self.window.presentation_interrupt_requested.connect(self._cancel_presentation)
+        self.window.presentation_event.connect(self._presentation_event)
 
         self.model.state_changed.connect(self._state_changed)
         self.model.starvation_changed.connect(self.window.set_starving)
@@ -145,8 +151,6 @@ class PetApplication:
         self.model.dizzy_requested.connect(self._dizzy)
         self.model.appearance_changed.connect(self.window.set_accessories)
         self.model.perks_unlocked.connect(self._perks_unlocked)
-        self.window.trick_finished.connect(self.model.finish_trick)
-        self.window.trick_finished.connect(self.dashboard.room.finish_trick)
         self.window.clicked.connect(self.model.poke)
         self.window.dashboard_requested.connect(self.dashboard.summon)
         self.window.drag_started.connect(lambda: self.window.show_message(self.model.dialogue("drag"), "interaction"))
@@ -272,14 +276,16 @@ class PetApplication:
             (self.level_info, "avatar"), (self.hunger_info, "water"), (self.coins_info, "coin")):
             action.setIcon(self.ui_icons.icon(icon_id))
         for key, action in self.trick_actions.items():
-            action.setIcon(self.ui_icons.icon(key))
+            action.setIcon(self.ui_icons.icon(self.model.catalog.trick_definitions[key].icon))
         self.menu.aboutToShow.connect(self._refresh_menu)
 
     def _connect_dashboard(self) -> None:
+        self.dashboard.foreground_cancel_requested.connect(self._cancel_presentation)
         self.dashboard.rename_requested.connect(self.model.rename_pet)
         self.dashboard.overlay_requested.connect(self.model.set_overlay_visible)
         self.dashboard.mute_requested.connect(self.model.set_muted)
         self.dashboard.furniture_requested.connect(self.model.equip_furniture)
+        self.dashboard.room.furniture_interacted.connect(self.model.record_furniture_interaction)
         self.dashboard.poke_requested.connect(self._room_poke)
         self.dashboard.pet_requested.connect(self._pet_head)
         self.dashboard.pin_requested.connect(self.pin_action.setChecked)
@@ -326,9 +332,10 @@ class PetApplication:
         exp = "MAX" if data.affection_level == 30 else f"{data.affection_exp}/{self.model.exp_required}"
         self.level_info.setText(f" 等级: Lv.{data.affection_level} (EXP: {exp})")
         self.hunger_info.setText(f" 饱食度: {data.hunger:g}/100" + (" · 饿扁啦" if self.model.starving else ""))
-        self.coins_info.setText(f" 糯米币: {data.coins}")
+        balance = "无限（开发）" if self.model.unlimited_coins else str(data.coins)
+        self.coins_info.setText(f" 糯米币: {balance}")
         self.feed_action.setText(f" 快捷投喂白砂糖 (-{rules.sugar_cost}币, 饱食度+{rules.sugar_hunger:g})")
-        self.feed_action.setEnabled(data.coins >= rules.sugar_cost)
+        self.feed_action.setEnabled(self.model.can_afford(rules.sugar_cost))
         remaining = math.ceil(data.timers["pet_cooldown_remaining"])
         self.pet_action.setText(" 摸摸头 (好感+3)" + (f" · 冷却 {remaining} 秒" if remaining else ""))
         self.pet_action.setEnabled(remaining == 0)
@@ -341,14 +348,18 @@ class PetApplication:
             else:
                 suffix = f" · {remaining}s" if remaining else ""
             action.setText(self.model.trick_name(trick_id) + suffix)
-            action.setEnabled(self.model.can_perform_trick(trick_id))
+            action.setEnabled(self.model.can_perform_trick(trick_id, replacing=True))
 
     def _state_changed(self, _state: dict) -> None:
         self._dirty = True
+        self.window.engine.cooling = (self.model.data.equipped_furniture.get("wall") == "air_conditioner"
+                                      and self.model.data.air_conditioner_on)
         scale=self.model.skin_config()["scale_multiplier"]
         if scale != self.window.engine.skin_scale:
-            self.window.engine.cancel_trick()
+            self._cancel_presentation("input")
             self.window.engine.skin_scale=scale
+        if self.model.starving and self.window.engine.active_trick:
+            self._cancel_presentation("starving")
         self.window.set_accessories(self.model.effective_accessories())
         self.audio.set_muted(self.model.data.muted)
         self.mute_action.blockSignals(True); self.mute_action.setChecked(self.model.data.muted); self.mute_action.blockSignals(False)
@@ -368,10 +379,50 @@ class PetApplication:
         self.window.show_gains(gains)
 
     def _interaction_started(self, kind: str) -> None:
+        room = self.dashboard.room
+        keep_queue = ((kind == "food" and room.foreground_kind == "food")
+                      or (kind == "gift" and room.foreground_kind == "gift"))
+        if not keep_queue:
+            self._cancel_presentation("input")
         if kind == "poke": self.audio.play("poke")
         elif kind == "food" and not self.dashboard.room.isVisible(): self.audio.play("eat")
 
+    @staticmethod
+    def _presentation_reason(reason: str) -> str:
+        if not isinstance(reason, str): return "cancelled"
+        if reason in {"completed", "replaced", "input", "hidden", "skin_changed",
+                      "shutdown", "restore", "starving", "cancelled"}:
+            return reason
+        if "hidden" in reason or reason == "hide": return "hidden"
+        if "skin" in reason: return "skin_changed"
+        if reason in {"stop", "stopped", "quit"}: return "shutdown"
+        return "input"
+
+    def _cancel_presentation(self, reason: str = "cancelled") -> None:
+        """Capture the room before shared physics clears its temporary offsets."""
+        if self._cancelling_presentation or not hasattr(self, "dashboard"):
+            return
+        self._cancelling_presentation = True
+        try:
+            reason = self._presentation_reason(reason)
+            self.dashboard.room.cancel_presentation(reason, cancel_engine=False)
+            self.window.cancel_presentation(reason)
+        finally:
+            self._cancelling_presentation = False
+
+    def _presentation_event(self, event: dict) -> None:
+        # Engine events are authoritative for tricks; room food/gift events
+        # have no authority to spend resources or finish another performance.
+        if event.get("kind") != "trick": return
+        phase, trick_id = event.get("phase"), event.get("id", "")
+        if phase == "finished":
+            self.dashboard.room.finish_trick(trick_id)
+            self.model.finish_trick(trick_id)
+        elif phase == "cancelled":
+            self.model.finish_trick(trick_id, self._presentation_reason(event.get("reason", "cancelled")))
+
     def _room_poke(self) -> None:
+        self._cancel_presentation("input")
         self.window.engine.click()
         self.model.poke()
 
@@ -439,14 +490,22 @@ class PetApplication:
         self.window.show_message(" 新特权解锁：" + "、".join(names), "achievement")
 
     def _perform_trick(self, trick_id: str) -> bool:
-        if not self.model.can_perform_trick(trick_id):
+        if not self.model.can_perform_trick(trick_id, replacing=True):
             self.model.feedback.emit("特技还在休息，或尚未解锁哦～", "normal")
             return False
-        if not self.window.perform_trick(trick_id):
+        if not self.window.can_start_trick(trick_id, replacing=True):
             self.model.feedback.emit("先让汤圆站稳、吃饱，再来表演吧～", "normal")
             return False
+        self._cancel_presentation("replaced")
+        self.dashboard.room.prepare_trick()
+        if not self.window.perform_trick(trick_id):
+            self.dashboard.room._prepared_trick = None
+            return False
         self.dashboard.room.begin_trick(trick_id)
-        return self.model.record_trick(trick_id)
+        if self.model.record_trick(trick_id):
+            return True
+        self._cancel_presentation("cancelled")
+        return False
 
     def _refresh_wardrobe(self) -> None:
         self.dashboard.set_phase4_context(self.skin_manager.list_skins(), self.dev_mode)
@@ -484,7 +543,7 @@ class PetApplication:
             self._save()
             if self._dirty: raise SaveDataError("当前进度尚未安全保存，恢复已停止")
             data,position,rollback=BackupManager(self.save_manager,self.skin_manager).restore(Path(source))
-            self.window.engine.cancel_trick()
+            self._cancel_presentation("restore")
             self.window.engine.fireworks_until=0
             self.flat_action.setChecked(False)
             self.window.restore_position(position)
@@ -530,6 +589,7 @@ class PetApplication:
     def stop(self) -> None:
         if self._stopped:
             return
+        self._cancel_presentation("shutdown")
         self._save()
         self._stopped = True
         for timer in (self.tick_timer, self.autosave_timer, self.save_timer):
@@ -548,7 +608,8 @@ def main() -> int:
     parser.add_argument("--version", action="version", version=APP_VERSION)
     parser.add_argument("--smoke-test", action="store_true",
                         help="启动真实窗口与托盘，2 秒后输出诊断并自动退出")
-    parser.add_argument("--dev-mode", action="store_true", help="开启养成计时加速：饥饿 2 秒、拾币 10 秒")
+    parser.add_argument("--dev-mode", action="store_true",
+                        help="开启开发调试、无限糯米币消费与养成加速；建议配合 --demo 隔离玩家进度")
     parser.add_argument("--demo", action="store_true", help="创建独立演示存档，不影响正式玩家数据")
     parser.add_argument("--resume-demo", type=Path, help="继续已有演示存档（仅允许 tests/artifacts 内的 save_data.json）")
     parser.add_argument("--smoke-report", type=Path, help="仅配合--smoke-test，将诊断写入一个新的JSON文件")
@@ -625,6 +686,7 @@ def main() -> int:
             diagnostics = {
                 "version": APP_VERSION,
                 "debug_menu_visible": controller.debug_menu.menuAction().isVisible(),
+                "unlimited_coins": controller.model.unlimited_coins,
                 "data_directory": str(save_path.parent),
                 "platform": QGuiApplication.platformName(),
                 "frozen": bool(getattr(sys, "frozen", False)),

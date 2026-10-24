@@ -1,17 +1,17 @@
-/* Illustrated paper, walnut outlines and soft leaf-green highlights. */
+/* The room is the window. Controls are small objects suspended in the scene. */
 QWidget { font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 13px; color: #6c523d; }
-QMainWindow#dashboard, QWidget#dashboardRoot { background: #eee0c8; }
+QMainWindow#dashboard, QWidget#dashboardRoot { background: #d3b89b; border: none; padding: 0; margin: 0; }
 QScrollArea, QScrollArea > QWidget > QWidget, QWidget#bookPage { background: transparent; border: none; }
 QFrame#floatingHud { background: transparent; border: none; }
-QFrame#hudProfile { background: rgba(255, 248, 230, 226); border: 1px solid #b29472; border-radius: 16px; }
-QFrame#coinCapsule { background: rgba(249, 229, 183, 238); border: 1px solid #b39767; border-radius: 17px; min-height: 29px; }
+QFrame#hudProfile { background: rgba(255, 248, 231, 218); border: 1px solid rgba(159, 126, 85, 150); border-radius: 17px; }
+QFrame#coinCapsule { background: rgba(255, 235, 187, 224); border: 1px solid rgba(170, 134, 77, 170); border-radius: 17px; min-height: 27px; }
 QLabel { background: transparent; border: none; }
 QLabel#petName { color: #6a4935; font-size: 16px; font-weight: 700; }
 QLabel#titlePlaque { color: #9e7954; font-size: 11px; }
 QLabel#levelBadge { background: #c5a476; color: #fff9e7; border: 1px solid #a3835e; border-radius: 9px; font-size: 12px; font-weight: 600; }
 QLabel#coinAmount { font-size: 17px; font-weight: 700; color: #956f3b; min-width: 34px; }
 QLabel#buffBadge { color: #9d7257; font-size: 11px; padding: 2px; }
-QFrame#inventoryBook { background: #f9edd6; border: 2px solid #805f45; border-radius: 15px; }
+QFrame#inventoryBook { background: #f9edd6; border: none; border-left: 1px solid #b79770; border-radius: 0; }
 QLabel#bookTitle { font-size: 18px; font-weight: 700; color: #765339; padding: 2px; }
 QFrame#gameCard { background: #fff6e2; border: 1px solid #b99a76; border-bottom: 2px solid #b99a76; border-radius: 13px; }
 QLabel#itemName { font-size: 14px; font-weight: 700; color: #79543a; qproperty-alignment: AlignCenter; }
@@ -19,7 +19,13 @@ QLabel#itemTag { color: #9b774f; font-size: 12px; qproperty-alignment: AlignCent
 QLabel#sectionTitle { font-size: 16px; color: #82603f; font-weight: 700; padding: 5px 0; }
 QLabel#muted { color: #9c846b; font-size: 12px; }
 QFrame#navDivider { background: #dcc5a4; border: none; }
-QFrame#feedingShelf { background: #e5cdac; border: 1px solid #a7805a; border-bottom: 2px solid #a98258; border-radius: 11px; }
+QFrame#feedingShelf, QWidget#floatingDock, QWidget#shelfFoodContents { background: transparent; border: none; border-radius: 0; margin: 0; padding: 0; }
+QFrame#feedingShelf QScrollArea, QFrame#feedingShelf QScrollArea > QWidget { background: transparent; border: none; }
+QLabel#shelfEmpty { color: #785635; font-size: 11px; padding-left: 5px; }
+QPushButton#woodenFoodSign { background: qlineargradient(x1:0,y1:0,x2:0.2,y2:1,stop:0 #fae6bc,stop:0.65 #ddb783,stop:1 #ce9e68); color: #714b2e; border: 1px solid #ad8052; border-bottom: 4px solid #9d7148; border-radius: 9px; padding: 2px 3px; font-size: 11px; }
+QPushButton#woodenFoodSign:hover { background: #f8dfac; border-color: #9c7044; }
+QPushButton#woodenFoodSign:pressed { border-bottom-width: 1px; background: #dab27e; }
+QPushButton#shelfFood { background: transparent; border: none; margin: 0; padding: 0; min-height: 0; }
 QPushButton { background: #efd9b5; border: 1px solid #bc996c; border-bottom: 3px solid #b48f62; border-radius: 10px; padding: 7px 9px; min-height: 18px; color: #6e4f35; }
 QPushButton:hover { background: #f6e4c2; border-color: #aa875c; }
 QPushButton:pressed { background: #dfc299; border-bottom: 1px solid #a58258; }
@@ -74,8 +80,8 @@ QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { backgro
 QPushButton#muteControl { background: #f5e4c7; border: 1px solid #b89b73; }
 QPushButton#muteControl:checked { background: #dbc6cf; border: 2px solid #aa7c8d; }
 
-/* Painted dock buttons reserve their full content height after QSS polish. */
-QPushButton#dockNavigation { min-height: 62px; max-height: 62px; padding: 0; margin: 0; border: none; background: transparent; }
+/* The dock paints separate beveled medallions rather than a full-width bar. */
+QPushButton#dockNavigation { min-height: 78px; max-height: 78px; padding: 0; margin: 0; border: none; background: transparent; }
 
 /* Release wardrobe preview and the next shared growth goal. */
 QFrame#skinPreviewCard { background: #f3e7cc; border: 1px solid #bc9e78; border-radius: 12px; padding: 4px; }

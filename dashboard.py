@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 from PySide6.QtCore import QEvent, QEasingCurve, QPoint, QPropertyAnimation, QPointF, QRectF, QSize, Qt, QTimer, Signal, Property
-from PySide6.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPainter, QPen, QLinearGradient, QIcon, QPixmap
+from PySide6.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPainter, QPainterPath, QPen, QLinearGradient, QRadialGradient, QIcon, QPixmap
 from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog,
     QLabel, QMainWindow, QProgressBar, QPushButton, QScrollArea, QSlider, QSizePolicy,
     QTabBar, QTabWidget, QVBoxLayout, QWidget, QGraphicsOpacityEffect, QAbstractButton, QApplication, QProxyStyle, QStyle, QMessageBox)
@@ -129,32 +129,87 @@ class IconTile(QPushButton):
 
 
 class NavigationButton(IconTile):
-    """A shallow illustrated dock with a readable single-line label."""
+    """A small suspended wooden badge, with its own soft hover animation."""
     def __init__(self, title, icon_id, atlas):
         super().__init__(title, icon_id, atlas)
         self.setObjectName("dockNavigation")
-        self.setMinimumWidth(100); self.setFixedHeight(62); self.setIconSize(QSize(36, 36))
+        self.setMinimumSize(48, 78); self.setMaximumHeight(78); self.setIconSize(QSize(42, 42))
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setToolTip(self.text())
-    def sizeHint(self): return QSize(144, 62)
-    def minimumSizeHint(self): return QSize(100, 62)
+        self._hover_lift = 0.0
+        self.hover_animation = QPropertyAnimation(self, b"hover_lift", self)
+        self.hover_animation.setDuration(160); self.hover_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def _set_hover_lift(self, value):
+        self._hover_lift = float(value); self.update()
+    hover_lift = Property(float, lambda self: self._hover_lift, _set_hover_lift)
+
+    def enterEvent(self, event):
+        self.hover_animation.stop(); self.hover_animation.setStartValue(self._hover_lift)
+        self.hover_animation.setEndValue(5.0); self.hover_animation.start(); super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.hover_animation.stop(); self.hover_animation.setStartValue(self._hover_lift)
+        self.hover_animation.setEndValue(0.0); self.hover_animation.start(); super().leaveEvent(event)
+
+    def sizeHint(self): return QSize(68, 78)
+    def minimumSizeHint(self): return QSize(48, 78)
     def paintEvent(self, event):
         p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        area = QRectF(self.rect()).adjusted(2, 2, -2, -3)
-        p.setBrush(QColor("#dce3c4" if self.isChecked() else "#f4e5c9"))
-        p.setPen(QPen(QColor("#788457" if self.isChecked() else "#947457"), 1.5))
-        p.drawRoundedRect(area, 18, 18)
-        p.setFont(QFont("Microsoft YaHei UI", 9, QFont.Weight.DemiBold)); p.setPen(QColor("#654b36"))
-        content = area.adjusted(10, 5, -10, -5)
-        side = min(36, max(0, content.height()))
-        available = max(0, int(content.width() - side - 8))
+        lift = self._hover_lift - (2 if self.isDown() else 0)
+        area = QRectF(3, 7 - lift, self.width() - 6, self.height() - 15)
+        shadow = QRadialGradient(QPointF(self.width() / 2, self.height() - 8), self.width() * .54)
+        shadow.setColorAt(0, QColor(65, 39, 25, 64)); shadow.setColorAt(1, QColor(65, 39, 25, 0))
+        p.setPen(Qt.PenStyle.NoPen); p.setBrush(shadow)
+        p.drawEllipse(QRectF(0, self.height() - 18, self.width(), 17))
+        p.setBrush(QColor("#8c9970" if self.isChecked() else "#a7774e"))
+        p.drawRoundedRect(area.translated(0, 4), 19, 19)
+        gradient = QLinearGradient(area.topLeft(), area.bottomRight())
+        gradient.setColorAt(0, QColor("#eef3dc" if self.isChecked() else "#fff2d4"))
+        gradient.setColorAt(.65, QColor("#d8e2bd" if self.isChecked() else "#e9c99c"))
+        gradient.setColorAt(1, QColor("#c1cf9f" if self.isChecked() else "#d8af7c"))
+        p.setBrush(gradient); p.setPen(QPen(QColor("#74845d" if self.isChecked() else "#a47c55"), 1.15))
+        p.drawRoundedRect(area, 19, 19)
+        p.setPen(QPen(QColor(255, 252, 228, 175), 1.2))
+        p.drawArc(area.adjusted(3, 2, -3, -3), 35 * 16, 110 * 16)
+        side = min(41, area.width() - 8)
+        self.icon().paint(p, QRectF(area.center().x() - side / 2, area.top() + 1, side, side).toRect())
+        p.setFont(QFont("Microsoft YaHei UI", 9, QFont.Weight.DemiBold)); p.setPen(QColor("#634a34"))
+        available = max(0, int(area.width() - 5))
         text = p.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, available)
-        text_width = p.fontMetrics().horizontalAdvance(text)
-        left = content.center().x() - (side + 8 + text_width) / 2
-        icon_rect = QRectF(left, content.center().y() - side / 2, side, side)
-        self.icon().paint(p, icon_rect.toRect())
-        text_rect = QRectF(left + side + 8, content.top(), text_width, content.height())
-        p.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextSingleLine, text)
+        p.drawText(QRectF(area.left() + 2, area.bottom() - 23, area.width() - 4, 20),
+                   Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextSingleLine, text)
         p.end()
+
+
+class ShelfFoodButton(QPushButton):
+    """Food sits directly on the scene's foreground table, without a UI card."""
+    def __init__(self, item_id, atlas):
+        super().__init__()
+        self.setObjectName("shelfFood"); self.setProperty("icon_id", item_id)
+        self.setIcon(atlas.icon(item_id)); self.setIconSize(QSize(48, 48))
+        self.setFixedSize(62, 62); self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def paintEvent(self, event):
+        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        shadow = QRadialGradient(QPointF(29, 48), 29)
+        shadow.setColorAt(0, QColor(70, 38, 20, 85)); shadow.setColorAt(1, QColor(70, 38, 20, 0))
+        p.setBrush(shadow); p.setPen(Qt.PenStyle.NoPen); p.drawEllipse(QRectF(2, 40, 55, 15))
+        up = 2 if self.underMouse() and not self.isDown() else 0
+        self.icon().paint(p, QRectF(4, 1 - up, 49, 49).toRect())
+        p.setFont(QFont("Microsoft YaHei UI", 9, QFont.Weight.DemiBold))
+        text_width = max(22, p.fontMetrics().horizontalAdvance(self.text()) + 9)
+        plate = QRectF(61 - text_width, 42, text_width, 18)
+        p.setBrush(QColor(255, 243, 210, 224)); p.setPen(QPen(QColor(143, 104, 66, 145), .8)); p.drawRoundedRect(plate, 7, 7)
+        p.setPen(QColor("#765233")); p.drawText(plate, Qt.AlignmentFlag.AlignCenter, self.text()); p.end()
+
+
+class FoodShelfScroll(QScrollArea):
+    def wheelEvent(self, event):
+        amount = event.pixelDelta().x() or event.pixelDelta().y() or event.angleDelta().y() / 2
+        self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - round(amount))
+        event.accept()
 
 
 class IconChoice(QWidget):
@@ -239,11 +294,12 @@ class DashboardWindow(QMainWindow):
     furniture_requested = Signal(str, str)
     poke_requested = Signal()
     pet_requested = Signal()
+    foreground_cancel_requested = Signal(str)
 
     def __init__(self, model: PetModel, engine: PetEngine | None = None, renderer_provider=None):
         super().__init__()
         install_game_style()
-        self.model = model; self.atlas = IconAtlas(); self.atlas.warm()
+        self.model = model; self.atlas = IconAtlas(); self.atlas.warm(self.model.catalog)
         self._skin_entries = [{"id": "default", "name": "白汤圆", "author": "默认皮肤"}]
         self._phase4_dev_mode = False
         self._home_engine_owned = engine is None
@@ -260,12 +316,14 @@ class DashboardWindow(QMainWindow):
         self.resize(1240, 760); self.setMinimumSize(780, 610)
         self.home_scroll = QScrollArea(); self.home_scroll.setWidgetResizable(False)
         self.home_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.home_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.home_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setCentralWidget(self.home_scroll)
-        root = QWidget(); root.setObjectName("dashboardRoot"); root.setMinimumWidth(760)
+        root = QWidget(); root.setObjectName("dashboardRoot")
         self.home_scroll.setWidget(root)
         self.home_scroll.viewport().installEventFilter(self)
-        layout = QVBoxLayout(root); layout.setContentsMargins(10, 8, 10, 8); layout.setSpacing(6)
-        self.scene_row = QHBoxLayout(); self.scene_row.setSpacing(8); layout.addLayout(self.scene_row, 1)
+        layout = QVBoxLayout(root); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
+        self.scene_row = QHBoxLayout(); self.scene_row.setSpacing(0); layout.addLayout(self.scene_row, 1)
         self.room = IllustratedRoomCanvas(self._home_engine, renderer_provider, self, self.atlas)
         self.room.setMinimumHeight(420); self.room.installEventFilter(self)
         self.room.setMinimumWidth(300); self.scene_row.addWidget(self.room, 1)
@@ -304,12 +362,11 @@ class DashboardWindow(QMainWindow):
         self.drawer_animation.finished.connect(self._finish_drawer)
         self.drawer.hide(); self.current_section = "home"
         self._build_shelf(layout); self._build_navigation(layout)
-        self.notice = label("左键戳戳，右键摸摸头。今天也陪你慢慢长大。", "muted"); self.notice.setMaximumHeight(0); self.notice.hide(); layout.addWidget(self.notice)
+        self.notice = label("左键戳戳，右键摸摸头。今天也陪你慢慢长大。", "muted"); self.notice.setMaximumHeight(0); self.notice.hide()
         model.state_changed.connect(self._model_changed); model.feedback.connect(self._feedback)
         self.model.presentation_requested.connect(self.room.present_item)
         self.model.gains_received.connect(self.room.receive_gains)
-        self.model.interaction_started.connect(
-            lambda kind: self.room.interact(cancel_gift=kind in ("poke", "pet", "food")))
+        self.model.interaction_started.connect(self.room.record_interaction)
         self.room.mood_requested.connect(self._home_engine.enjoy_interaction)
         for control in self.findChildren(QAbstractButton):
             control.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -372,18 +429,20 @@ class DashboardWindow(QMainWindow):
         outer.addWidget(self.hud_right); self.hud.raise_()
 
     def _layout_hud(self):
-        width = max(264, self.room.width() - 18)
-        self.hud.setGeometry(9, 8, width, 102)
-        right = max(92, min(190, int(width * .30)))
+        width = max(264, self.room.width() - 28)
+        self.hud.setGeometry(14, 14, width, 94)
+        right = max(88, min(178, int(width * .30)))
         self.hud_right.setFixedWidth(right)
-        self.hud_profile.setFixedWidth(min(340, width - right - 8))
+        self.hud_profile.setFixedWidth(min(304, width - right - 8))
         self.hud.layout().activate()
+        self.hud.raise_()
 
     def eventFilter(self, watched, event):
         if watched is self.home_scroll.viewport() and event.type() == QEvent.Type.Resize:
             self._fit_home()
         if watched is getattr(self, "room", None) and event.type() == QEvent.Type.Resize and hasattr(self, "hud"):
             self._layout_hud()
+            self._layout_scene_controls()
         return super().eventFilter(watched, event)
 
     def _rename(self):
@@ -395,41 +454,75 @@ class DashboardWindow(QMainWindow):
         if self.model.pet_head(): self._home_engine.rebound()
 
     def _build_shelf(self, layout):
-        shelf = QFrame(); shelf.setObjectName("feedingShelf")
-        row = QHBoxLayout(shelf); row.setContentsMargins(12, 4, 12, 4); row.setSpacing(7)
-        self.shelf_empty = label("喂养架还空着\n去杂货铺买点好吃的", "muted"); row.addWidget(self.shelf_empty)
-        self.feeding_scroll = QScrollArea(); self.feeding_scroll.setWidgetResizable(True); self.feeding_scroll.setFixedHeight(66)
+        self.feeding_shelf = QFrame(self.room); self.feeding_shelf.setObjectName("feedingShelf")
+        self.feeding_shelf.setFrameShape(QFrame.Shape.NoFrame)
+        self.feeding_shelf.setAutoFillBackground(False)
+        self.feeding_shelf.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        row = QHBoxLayout(self.feeding_shelf); row.setContentsMargins(8, 0, 8, 0); row.setSpacing(4)
+        self.shelf_empty = label("案几还空着\n带点好吃的回来", "shelfEmpty"); row.addWidget(self.shelf_empty, 1)
+        self.feeding_scroll = FoodShelfScroll(); self.feeding_scroll.setWidgetResizable(True); self.feeding_scroll.setFixedHeight(64)
         self.feeding_scroll.setFrameShape(QFrame.Shape.NoFrame); self.feeding_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.feeding_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.feeding_scroll.setAutoFillBackground(False); self.feeding_scroll.viewport().setAutoFillBackground(False)
         content = QWidget(); foods = QHBoxLayout(content); foods.setContentsMargins(0, 0, 0, 0); foods.setSpacing(4)
+        content.setObjectName("shelfFoodContents"); content.setAutoFillBackground(False)
         self.feeding_buttons = {}
         for key, item in self.model.catalog.items.items():
             if item["category"] != "food": continue
-            button = self._button("", key); button.setIconSize(QSize(44, 44)); button.setFixedHeight(58)
+            button = ShelfFoodButton(key, self.atlas)
             button.clicked.connect(lambda checked=False, food=key, origin=button: self._use_item(food, source=origin)); button.setToolTip(item["name"])
             foods.addWidget(button); self.feeding_buttons[key] = button
         foods.addStretch(); self.feeding_scroll.setWidget(content); row.addWidget(self.feeding_scroll, 1)
-        buy = self._button("买粮", "shop"); buy.clicked.connect(self._buy_food); row.addWidget(buy)
-        layout.addWidget(shelf)
+        self.shelf_buy_button = self._button("去买粮", "shop"); self.shelf_buy_button.setObjectName("woodenFoodSign")
+        self.shelf_buy_button.setFixedSize(76, 43); self.shelf_buy_button.setIconSize(QSize(23, 23))
+        self.shelf_buy_button.clicked.connect(self._buy_food); row.addWidget(self.shelf_buy_button)
 
     def _buy_food(self):
         self.show_section("shop"); self.market_tabs.setCurrentIndex(0); self.shop_tabs.setCurrentIndex(0)
 
     def _build_navigation(self, layout):
-        row = QHBoxLayout(); row.setSpacing(10); self.nav_buttons = {}
-        for section, text, art in (("home", "小屋主页", "home"), ("bag", "背包", "bag"),
-                                  ("shop", "商城", "shop"), ("achievements", "成就与等级奖励", "achievements"),
+        self.dock = QWidget(self.room); self.dock.setObjectName("floatingDock")
+        self.dock.setAutoFillBackground(False)
+        self.dock.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        row = QHBoxLayout(self.dock); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(6); self.nav_buttons = {}
+        for section, text, art in (("home", "小窝", "home"), ("bag", "背包", "bag"),
+                                  ("shop", "商城", "shop"), ("achievements", "成长", "achievements"),
                                   ("settings", "设置", "settings")):
             button = NavigationButton(text, art, self.atlas)
             button.setCheckable(True); button.clicked.connect(lambda checked=False, key=section: self.show_section(key))
-            row.addWidget(button, 1); self.nav_buttons[section] = button
-        self.nav_buttons["home"].setChecked(True); layout.addLayout(row)
+            if section == "achievements": button.setToolTip("成就与等级奖励")
+            row.addWidget(button); self.nav_buttons[section] = button
+        self.nav_buttons["home"].setChecked(True)
+        self._layout_scene_controls()
+
+    def _layout_scene_controls(self):
+        if not hasattr(self, "dock"): return
+        width, height = self.room.width(), self.room.height()
+        stacked = width < 780
+        self.room.setProperty("sceneControlsStacked", stacked)
+        table_provider = getattr(self.room, "foreground_table_rect", None)
+        table = table_provider() if callable(table_provider) else QRectF(
+            width * (.04 if stacked else .035), height - (184 if stacked else 114),
+            width * .92 if stacked else min(width * .48, 540), 76 if stacked else 78)
+        self.feeding_shelf.setGeometry(table.adjusted(3, -6, -3, -12).toAlignedRect())
+        dock_provider = getattr(self.room, "foreground_navigation_rect", None)
+        navigation = dock_provider() if callable(dock_provider) else QRectF(
+            8 if stacked else width * .55, height - 90,
+            width - 16 if stacked else width * .42, 80)
+        gap = 6 if navigation.width() >= 330 else 3
+        button_width = max(48, min(68, int((navigation.width() - 4 * gap) / 5)))
+        dock_width = button_width * 5 + 4 * gap
+        self.dock.layout().setSpacing(gap)
+        for button in self.nav_buttons.values(): button.setFixedSize(button_width, 78)
+        self.dock.setGeometry(round(navigation.center().x() - dock_width / 2), round(navigation.top()), dock_width, 80)
+        self.feeding_shelf.raise_(); self.dock.raise_(); self.hud.raise_()
 
     def _fit_home(self):
         if not hasattr(self, "drawer_animation"): return
         viewport = self.home_scroll.viewport()
         # Word-wrapped book pages report a large height-for-width. Fit the scene
         # explicitly so opening a book cannot push the permanent dock off-screen.
-        self.home_scroll.widget().resize(max(760, viewport.width()), max(600, viewport.height()))
+        self.home_scroll.widget().resize(viewport.size())
         self._place_drawer()
 
     def _set_drawer_width(self, width):
@@ -442,8 +535,8 @@ class DashboardWindow(QMainWindow):
         else: self.drawer_opacity.setOpacity(1)
 
     def _place_drawer(self):
-        available = self.home_scroll.viewport().width() - 28
-        self._drawer_target = max(400, min(660, int(available * .49)))
+        available = self.home_scroll.viewport().width()
+        self._drawer_target = min(max(300, available - 300), max(400, min(660, int(available * .49))))
         if not self.drawer_animation.state() == QPropertyAnimation.State.Running:
             self._set_drawer_width(self._drawer_target if self.current_section != "home" else 0)
 
@@ -590,9 +683,9 @@ class DashboardWindow(QMainWindow):
         for accessory_id, product in self.model.catalog.accessory_products.items():
             frame, body = self._item_card(product["icon"], product["name"])
             body.addWidget(label(product["description"], "itemTag"))
-            buy=self._button("永久收藏"); equip=self._button("展开翅膀")
+            buy=self._button("永久收藏"); equip=self._button("穿戴")
             buy.clicked.connect(lambda checked=False, key=accessory_id:self.model.buy_accessory(key))
-            equip.clicked.connect(lambda checked=False, key=accessory_id:self.accessory_requested.emit("back",key))
+            equip.clicked.connect(lambda checked=False, key=accessory_id, slot=product["slot"]:self.accessory_requested.emit(slot,key))
             row=QHBoxLayout(); row.addWidget(buy); row.addWidget(equip); body.addLayout(row)
             page.addWidget(frame); self.accessory_shop_buttons[accessory_id]=(buy,equip)
         page.addStretch()
@@ -644,25 +737,26 @@ class DashboardWindow(QMainWindow):
         self.scale_value = label("1.00x"); self.scale_slider.valueChanged.connect(lambda v: self.scale_requested.emit(v/100))
         size_row.addWidget(self.scale_slider, 1); size_row.addWidget(self.scale_value); page.addLayout(size_row); page.addStretch()
         page = self._page("挂件", self.dress_tabs)
-        self.head_combo = IconChoice(self.atlas); self.head_combo.setObjectName("headChoices")
-        for title, key in (("不佩戴", ""), ("呆毛嫩芽", "sprout"), ("迷你金皇冠", "crown"), ("樱粉蝴蝶结", "bow"), ("大吉小橘子", "orange")):
-            self.head_combo.addItem(title, key, key or "remove")
-        self.head_combo.currentIndexChanged.connect(self._head_selected); page.addWidget(self.head_combo)
-        row = QHBoxLayout(); self.face_check = IconTile("酷盖墨镜", "sunglasses", self.atlas); self.face_check.setCheckable(True)
-        self.effect_check = IconTile("暖心热气", "steam", self.atlas); self.effect_check.setCheckable(True)
+        self.accessory_choices = {}
+        for slot, title in (("head", "头部挂件"), ("face", "面部挂件"),
+                            ("back", "背部挂件"), ("effect", "周身特效")):
+            page.addWidget(label(title, "sectionTitle"))
+            choice = IconChoice(self.atlas); choice.setObjectName(slot + "Choices")
+            choice.currentIndexChanged.connect(
+                lambda index, s=slot: self._accessory_selected(s, index))
+            self.accessory_choices[slot] = choice; page.addWidget(choice)
+        self.head_combo = self.head_choices = self.accessory_choices["head"]
+        self.face_choices = self.accessory_choices["face"]
+        self.back_choices = self.accessory_choices["back"]
+        self.aura_choices = self.effect_choices = self.accessory_choices["effect"]
+        # Compatibility adapters for existing controllers. Actual wardrobe choices
+        # are the four registered slot grids above, with exactly one item per slot.
+        self.face_check = IconTile("酷盖墨镜", "sunglasses", self.atlas, page.parentWidget())
+        self.effect_check = IconTile("红温热气", "red_steam", self.atlas, page.parentWidget())
+        for adapter in (self.face_check, self.effect_check):
+            adapter.setCheckable(True); adapter.hide()
         self.face_check.toggled.connect(lambda on: self.accessory_requested.emit("face", "sunglasses" if on else ""))
         self.effect_check.toggled.connect(lambda on: self.accessory_requested.emit("effect", "steam" if on else ""))
-        row.addWidget(self.face_check); row.addWidget(self.effect_check); page.addLayout(row)
-        self.aura_choices=IconChoice(self.atlas)
-        for name,key in (("收起周身特效",""),("暖心热气","steam"),("流光萤火虫","fireflies"),("七彩祥云光环","rainbow")):
-            self.aura_choices.addItem(name,key,key or "remove")
-        self.aura_choices.currentIndexChanged.connect(lambda i:self.accessory_requested.emit("effect",str(self.aura_choices.itemData(i))) if i>=0 else None)
-        page.addWidget(self.aura_choices)
-        self.back_choices=IconChoice(self.atlas)
-        self.back_choices.addItem("收起背部挂件","","remove")
-        self.back_choices.addItem("凤凰翅膀","phoenix_wings","phoenix_wings")
-        self.back_choices.currentIndexChanged.connect(lambda i:self.accessory_requested.emit("back",str(self.back_choices.itemData(i))) if i>=0 else None)
-        page.addWidget(self.back_choices)
         page.addWidget(label("挂件高度（每个皮肤独立记忆）", "sectionTitle")); line = QHBoxLayout()
         self.offset_slider = QSlider(Qt.Orientation.Horizontal); self.offset_slider.setRange(-30, 30); self.offset_slider.valueChanged.connect(self._offset_changed)
         self.offset_value = label("0 px"); line.addWidget(self.offset_slider, 1); line.addWidget(self.offset_value); page.addLayout(line)
@@ -674,10 +768,14 @@ class DashboardWindow(QMainWindow):
 
     def _build_tricks(self):
         page = self._page("特技", self.bag_tabs); grid = AdaptiveGrid(page.parentWidget(), 108, 4); self.trick_buttons = {}
-        self.trick_descriptions = {"flip": ("原地空翻", "Lv.2"), "clone": ("Q弹影分身", "Lv.4"), "ball": ("芝麻弹力球", "Lv.5"), "disco": ("迪斯科蹦迪", "Lv.10")}
-        for key, item in self.model.catalog.trick_products.items(): self.trick_descriptions[key] = (plain_text(item["name"]), "商城永久学习")
-        for i, (key, (name, requirement)) in enumerate(self.trick_descriptions.items()):
-            button = IconTile(name, key, self.atlas); button.badge = requirement
+        self.trick_descriptions = {}
+        for i, (key, definition) in enumerate(self.model.catalog.trick_definitions.items()):
+            perk = self.model.catalog.perks.get(definition.perk_id, {})
+            product = self.model.catalog.trick_products.get(key, {})
+            name = plain_text(product.get("name", perk.get("name", definition.name)))
+            requirement = "商城永久学习" if product else f"Lv.{perk.get('level', 1)}"
+            self.trick_descriptions[key] = (name, requirement)
+            button = IconTile(name, definition.icon, self.atlas); button.badge = requirement
             button.clicked.connect(lambda checked=False, k=key: self.trick_requested.emit(k)); grid.addWidget(button, i // 2, i % 2); self.trick_buttons[key] = button
         page.addLayout(grid); self.trick_status = label("", "muted"); page.addWidget(self.trick_status)
         page.addStretch()
@@ -694,11 +792,14 @@ class DashboardWindow(QMainWindow):
 
     def _build_settings(self):
         page = self._page("设置")
+        self.dev_currency_label = label("开发模式：无限糯米币，购买不扣存档余额。", "muted")
+        self.dev_currency_label.setWordWrap(True)
+        page.addWidget(self.dev_currency_label)
         self.pin_check = GameToggle("固定桌宠位置", "desktop", self.atlas)
         self.dev_check = GameToggle("加速养成计时", "debug", self.atlas)
         self.flat_check = GameToggle("测试饿扁外观", "avatar", self.atlas)
         self.pin_check.toggled.connect(self.pin_requested.emit); self.dev_check.toggled.connect(self.dev_requested.emit); self.flat_check.toggled.connect(self.flat_requested.emit)
-        self.release_debug_widgets=[self.dev_check,self.flat_check]
+        self.release_debug_widgets=[self.dev_currency_label,self.dev_check,self.flat_check]
         for widget in (self.pin_check, self.dev_check, self.flat_check): page.addWidget(widget)
         for text, signal, art in (("重置桌宠位置", self.reset_requested, "desktop"), ("调试：饥饿归零", self.hunger_zero_requested, "avatar"),
             ("恢复满饱食度", self.hunger_full_requested, "sugar"), ("结算在线收入", self.gift_requested, "coin"), ("重新加载外观与图标", self.reload_requested, "dress")):
@@ -719,7 +820,11 @@ class DashboardWindow(QMainWindow):
         debug.addLayout(environment)
         self.preview_gift_buttons = {}
         debug.addWidget(label("礼物演出预览（不扣币、不加经验）", "sectionTitle"))
-        for key, text in (("spinning_top", "试玩陀螺"), ("music_box", "试听八音盒"), ("paper_star", "看看折纸星星"), ("flower_bouquet", "闻闻花束")):
+        for key, text in (("spinning_top", "试玩陀螺"), ("music_box", "试听八音盒"), ("paper_star", "看看折纸星星"), ("flower_bouquet", "闻闻花束"),
+                          ("form_dice", "试玩状态骰子"), ("kiting_rope", "试玩拉扯弹力绳"),
+                          ("summit_pickaxe", "试玩登山镐"), ("drama_clapper", "试玩短剧场记板"),
+                          ("gnar_workbook", "翻翻纳尔练习册"), ("practice_hourglass", "试玩加练沙漏"),
+                          ("fist_bump_glove", "试玩击拳手套")):
             button = self._button(text, key); self.preview_gift_buttons[key] = button
             button.clicked.connect(lambda checked=False, k=key: self.room.present_item({"item_id": k, "category": "gift", "duration": 7,
                 "dialogue": self.model.dialogue(self.model.item(k).get("dialogue", "gift"))}))
@@ -806,6 +911,50 @@ class DashboardWindow(QMainWindow):
         if index >= 0:
             self.accessory_requested.emit("head", str(self.head_combo.itemData(index)))
 
+    def _accessory_selected(self, slot: str, index: int) -> None:
+        choice = self.accessory_choices[slot]
+        if 0 <= index < choice.count():
+            self.accessory_requested.emit(slot, str(choice.itemData(index)))
+
+    def _refresh_accessory_choices(self) -> None:
+        """Only explicit renderer registrations can create wearable UI entries."""
+        definitions = self.model.catalog.accessory_definitions
+        for slot, choice in self.accessory_choices.items():
+            selected = self.model.data.accessories.get(slot, "")
+            entries = [("不佩戴", "", "remove", None, {})]
+            for item_id, definition in definitions.items():
+                if definition.slot != slot:
+                    continue
+                perk = self.model.catalog.perks.get(definition.perk_id, {})
+                product = self.model.catalog.accessory_products.get(item_id, {})
+                retired = bool(perk.get("retired") or product.get("retired") or not definition.newly_selectable)
+                unavailable = (perk.get("enabled") is False or product.get("enabled") is False
+                               or perk.get("available") is False or product.get("available") is False)
+                if unavailable or (retired and item_id != selected):
+                    continue
+                name = plain_text(product.get("name", perk.get("name", definition.name or item_id)))
+                entries.append((name, item_id, product.get("icon", perk.get("icon", definition.icon)), definition, perk))
+            signature = [(entry[0], entry[1], entry[2]) for entry in entries]
+            choice.blockSignals(True)
+            try:
+                if getattr(choice, "_registry_signature", None) != signature:
+                    choice.clear()
+                    for name, item_id, icon_id, _definition, _perk in entries:
+                        choice.addItem(name, item_id, icon_id)
+                    choice._registry_signature = signature
+                choice.setCurrentIndex(max(0, choice.findData(selected)))
+                for index, (_name, item_id, _icon, definition, perk) in enumerate(entries):
+                    button = choice.buttons[index]
+                    owned = not item_id or self._has_perk(definition.perk_id)
+                    worn = bool(item_id and item_id == selected)
+                    button.setEnabled(bool(owned))
+                    button.badge = ("不佩戴" if not item_id else "已穿戴" if worn else "已拥有" if owned
+                                    else "商城 / 等级奖励" if item_id in self.model.catalog.accessory_products
+                                    else f"Lv.{perk.get('level', 1)}")
+                    button.update()
+            finally:
+                choice.blockSignals(False)
+
     def _offset_changed(self, value: int) -> None:
         self.offset_value.setText(f"{value:+d} px" if value else "0 px")
         self.offset_requested.emit(value)
@@ -843,16 +992,7 @@ class DashboardWindow(QMainWindow):
         metadata = next((entry for entry in entries if entry["id"] == selected), entries[0])
         self.scale_slider.blockSignals(True); scale=self.model.skin_config()["scale_multiplier"]
         self.scale_slider.setValue(round(scale*100)); self.scale_value.setText(f"{scale:.2f}x"); self.scale_slider.blockSignals(False)
-        self.aura_choices.blockSignals(True)
-        self.aura_choices.setCurrentIndex(max(0,self.aura_choices.findData(data.accessories.get("effect",""))))
-        for i,button in enumerate(self.aura_choices.buttons):
-            key=self.aura_choices.itemData(i); button.setEnabled(not key or self._has_perk("effect_"+key))
-        self.aura_choices.blockSignals(False)
-        self.back_choices.blockSignals(True)
-        self.back_choices.setCurrentIndex(max(0,self.back_choices.findData(data.accessories.get("back",""))))
-        self.back_choices.buttons[1].setEnabled(self._has_perk("accessory_phoenix_wings"))
-        self.back_choices.buttons[1].badge="已穿戴" if data.accessories.get("back")=="phoenix_wings" else "已拥有" if self._has_perk("accessory_phoenix_wings") else "Lv.15 / 商城"
-        self.back_choices.buttons[1].update(); self.back_choices.blockSignals(False)
+        self._refresh_accessory_choices()
         self.skin_combo.setEnabled(True)
         for index, button in enumerate(self.skin_combo.buttons):
             skin_id = self.skin_combo.itemData(index)
@@ -861,17 +1001,6 @@ class DashboardWindow(QMainWindow):
                 product = self.model.catalog.team_skins[skin_id]
                 button.badge = "已穿戴" if skin_id == selected else "已拥有" if self.model.has_team_skin(skin_id) else f"Lv.{product['level']}"
                 button.update()
-        head = data.accessories.get("head", "")
-        self.head_combo.blockSignals(True)
-        for index in range(1, self.head_combo.count()):
-            item_id = self.head_combo.itemData(index)
-            self.head_combo.model().item(index).setEnabled(self._has_perk(f"accessory_{item_id}"))
-        self.head_combo.setCurrentIndex(max(0, self.head_combo.findData(head)))
-        self.head_combo.blockSignals(False)
-        for index, tile in enumerate(self.head_combo.buttons):
-            key = self.head_combo.itemData(index)
-            tile.badge = "已穿戴" if key and key == head else "不佩戴" if not key else "可穿戴" if self._has_perk("accessory_" + key) else "未解锁"
-            tile.update()
         for checkbox, value, perk in ((self.face_check, data.accessories.get("face") == "sunglasses", "accessory_sunglasses"),
                                       (self.effect_check, data.accessories.get("effect") == "steam", "effect_steam"),
                                       (self.debug_unlock_check, self.model.debug_unlock_all, "")):
@@ -894,23 +1023,23 @@ class DashboardWindow(QMainWindow):
             title = self.trick_descriptions[key][0]
             suffix = f" · {math.ceil(cooldown)} 秒" if cooldown > 0 else " · 未解锁" if not unlocked else ""
             button.setText(title + suffix)
-            button.setEnabled(self.model.can_perform_trick(key))
+            button.setEnabled(self.model.can_perform_trick(key, replacing=True))
         for key, (buy, perform, status) in self.shop_trick_buttons.items():
             product = self.model.catalog.trick_products[key]
             owned = key in data.purchased_tricks
             buy.setText(" 已永久解锁" if owned else f"购买特技 · {product['cost']} 币")
-            buy.setEnabled(not owned and data.coins >= product["cost"])
-            perform.setEnabled(self.model.can_perform_trick(key))
+            buy.setEnabled(not owned and self.model.can_afford(product["cost"]))
+            perform.setEnabled(self.model.can_perform_trick(key, replacing=True))
             remaining = math.ceil(self.model.trick_cooldowns[key])
             status.setText("已学会 · 随时从商城、背包特技页或右键菜单发动" if owned else f"{product['cost']} 糯米币 · 购买一次永久拥有")
             if owned and remaining:
                 status.setText(f"休息中 · 还需 {remaining} 秒；表演中点击汤圆可提前回家")
-        self.trick_status.setText("肚子饿扁啦，投喂恢复后就能表演。" if self.model.starving else "正在表演中，稍候再来一个～" if self.model.trick_busy > 0 else "当前外观可以使用所有已解锁特技；绕屏后回到原位，途中点击可结束。")
+        self.trick_status.setText("肚子饿扁啦，投喂恢复后就能表演。" if self.model.starving else "正在表演，点击可结束，也可换一个已就绪的特技。" if self.model.trick_busy > 0 else "当前外观可以使用所有已解锁特技；绕屏后回到原位，途中点击可结束。")
         for skin_id, (buy, equip, status) in self.team_skin_buttons.items():
             product = self.model.catalog.team_skins[skin_id]
             owned = self.model.has_team_skin(skin_id)
             buy.setText("已拥有" if owned else f"{product['cost']} 币获得")
-            buy.setEnabled(not owned and data.coins >= product["cost"])
+            buy.setEnabled(not owned and self.model.can_afford(product["cost"]))
             equip.setEnabled(owned and data.selected_skin_id != skin_id)
             equip.setText("已穿戴" if data.selected_skin_id == skin_id else "换上")
             status.setText("已永久收藏" if skin_id in data.owned_team_skins else "开发试用" if owned else f"Lv.{product['level']} 免费奖励")
@@ -918,8 +1047,8 @@ class DashboardWindow(QMainWindow):
             product=self.model.catalog.accessory_products[accessory_id]
             owned=self._has_perk("accessory_"+accessory_id)
             buy.setText("已拥有" if owned else f"{product['cost']} 币收藏")
-            buy.setEnabled(not owned and data.coins>=product["cost"])
-            equip.setEnabled(owned); equip.setText("已穿戴" if data.accessories.get("back")==accessory_id else "展开翅膀")
+            buy.setEnabled(not owned and self.model.can_afford(product["cost"]))
+            equip.setEnabled(owned); equip.setText("已穿戴" if data.accessories.get(product["slot"])==accessory_id else "穿戴")
         self.perk_summary.setText(self.model.next_milestone()["text"] + (" 开发模式已临时解锁全部特权。" if self.model.debug_unlock_all else ""))
         milestones = {milestone["level"]: milestone for milestone in self.model.perk_status()}
         for level, widget in self.milestone_widgets.items():
@@ -944,7 +1073,8 @@ class DashboardWindow(QMainWindow):
 
     def refresh(self, _state=None):
         data = self.model.data
-        self.balance.setText(str(data.coins)); self.balance.setToolTip(f"{data.coins} 糯米币")
+        self.balance.setText("无限" if self.model.unlimited_coins else str(data.coins))
+        self.balance.setToolTip(f"开发模式：购买不扣币；存档实际余额 {data.coins} 糯米币" if self.model.unlimited_coins else f"{data.coins} 糯米币")
         self.pet_name.setText(plain_text(data.name))
         titles = [(plain_text(t), t) for t in data.titles]
         self.title_combo.blockSignals(True)
@@ -975,10 +1105,10 @@ class DashboardWindow(QMainWindow):
         for key, (buy, use, time) in self.shop_buttons.items():
             item = self.model.item(key); effect = f"好感 +{item['exp']}" if item["category"] == "gift" else f"饱食度 +{item['hunger']:g}"
             self.shop_details[key].setText(f"{item['tier']}级 · {effect} · {item['cost']} 糯米币")
-            buy.setEnabled(data.coins >= item["cost"]); use.setEnabled(data.coins >= item["cost"] and self.model.can_use_item(key))
+            buy.setEnabled(self.model.can_afford(item["cost"])); use.setEnabled(self.model.can_afford(item["cost"]) and self.model.can_use_item(key))
             use.setToolTip("先换上TES皮肤再演出" if item.get("required_skin") else "")
-            time.setText("TES皮肤专属 · 7秒演出" if item.get("required_skin") else (f"{item['buff']['name']} · {self.model.rules.buff_seconds:g}秒") if "buff" in item else "")
-            time.setVisible("buff" in item or bool(item.get("required_skin")))
+            time.setText("TES皮肤专属 · 7秒演出" if item.get("required_skin") else (f"{item['buff']['name']} · {self.model.rules.buff_seconds:g}秒") if "buff" in item else item.get("description", ""))
+            time.setVisible("buff" in item or bool(item.get("required_skin")) or bool(item.get("description")))
         ready = set(data.unlocked_achievements) - set(data.claimed_achievements)
         self.achievement_summary.setText(f"收集 {len(data.unlocked_achievements)}/{len(self.model.catalog.achievements)} · 可领取 {len(ready)}")
         for achievement in self.model.catalog.achievements:
@@ -1022,7 +1152,7 @@ class DashboardWindow(QMainWindow):
             button.setEnabled(owned); button.badge = "已布置" if equipped else "未拥有" if not owned else "布置"; button.update()
         for key, button in self.furniture_shop_buttons.items():
             item = self.model.catalog.furniture[key]; owned = key in data.owned_furniture
-            button.setText("已拥有" if owned else "等级奖励" if item.get("unlock_perk") else f"{item['price']} 币 · 购买"); button.setEnabled(not owned and not item.get("unlock_perk") and data.coins >= item["price"])
+            button.setText("已拥有" if owned else "等级奖励" if item.get("unlock_perk") else f"{item['price']} 币 · 购买"); button.setEnabled(not owned and not item.get("unlock_perk") and self.model.can_afford(item["price"]))
         self.lamp_check.blockSignals(True); self.lamp_check.setChecked(data.lamp_on); self.lamp_check.setEnabled(data.equipped_furniture.get("corner") == "warm_lamp"); self.lamp_check.blockSignals(False)
         if self._home_engine_owned:
             self._home_engine.skin_scale=self.model.skin_config()["scale_multiplier"]
@@ -1070,6 +1200,8 @@ class DashboardWindow(QMainWindow):
         self.showNormal(); self.raise_(); self.activateWindow(); self.refresh()
 
     def hideEvent(self, event):
+        if hasattr(self, "room"):
+            self.foreground_cancel_requested.emit("dashboard_hidden")
         if hasattr(self, "drawer"): self.drawer.hide()
         super().hideEvent(event)
 
